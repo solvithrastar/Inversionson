@@ -116,6 +116,16 @@ class autoinverter(object):
         :type iteration: str
         """
 
+    def interpolate_gradient(self, event: str, iteration: str):
+        """
+        Interpolate gradient to master mesh
+
+        :param event: Name of event
+        :type event: str
+        :param iteration: Name of iteration
+        :type iteration: str
+        """
+
     def run_forward_simulation(self):
         """
         Submit forward simulation to daint and possibly monitor aswell
@@ -167,7 +177,9 @@ class autoinverter(object):
             # Cut sources and receivers?
             self.interpolate_gradient()
             # Smooth gradients
-            self.move_gradient_to_salvus_opt_folder
+            self.salvus_opt.move_gradient_to_salvus_opt_folder(
+                self.inversion_status["iteration_name"], event
+            )
             self.salvus_opt.close_salvus_opt_task()
             task = self.salvus_opt.read_salvus_opt()
             self.perform_task(task)
