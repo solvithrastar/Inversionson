@@ -1,0 +1,5 @@
+{
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 200,
+    "python.pythonPath": "/Users/solvi/anaconda3/envs/salvus/bin/python"
+}
