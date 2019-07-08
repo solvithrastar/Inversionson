@@ -6,9 +6,7 @@ automatic Full-Waveform Inversion
 """
 import numpy as np
 import pyasdf
-import lasif.api as lapi
 import multi_mesh.api as mapi
-from communicators import lasif, salvus_flow, salvus_opt
 from storyteller import Storyteller
 
 
@@ -31,17 +29,22 @@ class autoinverter(object):
     I can regularly save the inversion_dict as a toml file and reload it
     """
 
-    def __init__(self, info_dict: dict, simulation_dict: dict, inversion_dict: dict):
+    def __init__(self, info_dict: dict, simulation_dict: dict,
+                 inversion_dict: dict):
         self.info = info_dict
-        self.sim_info = simulation_dict
-        self.inversion_status = inversion_dict
-        self.lasif = lasif.lasif_comm(self.info)
-        self.salvus_flow = salvus_flow.salvus_flow_comm(
-            self.info, self.sim_info)
-        self.salvus_opt = salvus_opt.salvus_opt_comm(self.info)
+        self.comm = self._find_project_comm()
         self.storyteller = Storyteller()
+        self.iteration_dict = {}
 
-    def validate_inversion_project(self):
+    def _find_project_comm(self):
+        """
+        Get lasif communicator.
+        """
+        from inversionson.components.project import ProjectComponent
+
+        return ProjectComponent(self.info).get_communicator()
+
+    def _validate_inversion_project(self):
         """
         Make sure everything is correctly set up in order to perform inversion.
 
@@ -104,32 +107,61 @@ class autoinverter(object):
         Create iteration
         Pick events
         Make meshes if needed
+        Update information in iteration dictionary.
         """
+        it_name = self.comm.salvus_opt.get_newest_iteration_name()
+        self.comm.project.current_iteration = it_name
 
-    def interpolate_model(self, event: str, iteration: str):
+        events = self.comm.lasif.get_minibatch(it_name)  # Sort this out.
+        self.comm.lasif.set_up_iteration(it_name, events)
+
+        for event in events:
+            if not self.comm.lasif.has_mesh(event):
+                self.comm.salvus_mesher.create_mesh(event)
+                self.comm.lasif.move_mesh(event, it_name)
+            else:
+                self.comm.lasif.move_mesh(event, it_name)
+
+        self.comm.project.create_iteration_toml(it_name, events)
+
+        # Storyteller
+
+    def interpolate_model(self, event: str):
         """
         Interpolate model to a simulation mesh
 
         :param event: Name of event
         :type event: str
-        :param iteration: Name of iteration
-        :type iteration: str
         """
+        self.comm.multi_mesh.interpolate_to_simulation_mesh(event)
 
-    def interpolate_gradient(self, event: str, iteration: str):
+    def interpolate_gradient(self, event: str, first: bool):
         """
         Interpolate gradient to master mesh
 
         :param event: Name of event
         :type event: str
-        :param iteration: Name of iteration
-        :type iteration: str
+        :param first: First iteration gradient to be interolated?
+        :type first: bool
         """
+        self.comm.multi_mesh.interpolate_gradient_to_model(event, first=first)
 
-    def run_forward_simulation(self):
+    def run_forward_simulation(self, event: str, iteration: str) -> object:
         """
         Submit forward simulation to daint and possibly monitor aswell
+
+        :param event: Name of event
+        :type event: str
+        :param iteration: Name of iteration
+        :type iteration: str
+        :return: receiver object
+        :return type: object
         """
+        receivers = self.salvus_flow.get_receivers(event)
+        source = self.salvus_flow.get_source_object(iteration, event)
+        w = self.salvus_flow.construct_simulation(iteration, event, source, receivers)
+        self.salvus_flow.submit_job()
+
 
     def run_adjoint_simulation(self):
         """
@@ -154,8 +186,7 @@ class autoinverter(object):
         if task == "compute_misfit_and_gradient":
             self.prepare_iteration()
             # Figure out a way to do this on a per event basis.
-            self.interpolate_model(
-                event, self.inversion_status["iteration_name"])
+            self.interpolate_model(event)
             self.run_forward_simulation()
             self.misfit_quantification(adjoint=True)
             self.run_adjoint_simulation()
@@ -177,9 +208,7 @@ class autoinverter(object):
             # Cut sources and receivers?
             self.interpolate_gradient()
             # Smooth gradients
-            self.salvus_opt.move_gradient_to_salvus_opt_folder(
-                self.inversion_status["iteration_name"], event
-            )
+            self.salvus_opt.move_gradient_to_salvus_opt_folder(event)
             self.salvus_opt.close_salvus_opt_task()
             task = self.salvus_opt.read_salvus_opt()
             self.perform_task(task)
