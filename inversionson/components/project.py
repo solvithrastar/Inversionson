@@ -93,6 +93,9 @@ class ProjectComponent(Component):
         self.inversion_id = self.info["inversion_id"]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
         self.gradient_interpolation_mode = self.info["gradient_interpolation_mode"]
+        self.site_name = self.info["site_name"]
+        self.ranks = self.info["ranks"]
+        self.wall_time = self.info["wall_time"]
         self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
 
         # Some useful paths
@@ -127,7 +130,7 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml")
         if os.path.exists(iteration_toml):
             raise InversionsonError(
-                f"Iteration toml for iteration: {iteration} already exists")
+                f"Iteration toml for iteration: {iteration} already exists.")
 
         it_dict = {}
         it_dict["name"] = iteration
@@ -150,13 +153,15 @@ class ProjectComponent(Component):
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
-    def update_iteration_toml(self, iteration: str):
+    def update_iteration_toml(self, iteration="current"):
         """
         Use iteration parameters to update iteration toml file
 
         :param iteration: Name of iteration
         :type iteration: str
         """
+        if iteration == "current":
+            iteration = self.current_iteration
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml")
         if not os.path.exists(iteration_toml):
@@ -201,7 +206,6 @@ class ProjectComponent(Component):
         # Not sure if it's worth it to include station misfits
         for event in self.events_in_iteration:
             self.misfits[event] = it_dict["events"][event]["misfit"]
-            
             self.forward_job[event] = it_dict["events"][event]["jobs"]["forward"]
             self.adjoint_job[event] = it_dict["events"][event]["jobs"]["adjoint"]
     

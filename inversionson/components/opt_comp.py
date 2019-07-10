@@ -7,6 +7,7 @@ initialize it as such but change into hdf5 once I can.
 from .component import Component
 import toml
 import os
+import subprocess
 import shutil
 from inversionson import InversionsonError
 
@@ -25,6 +26,13 @@ class SalvusOptComponent(Component):
         # self.lasif_root = self.comm.project.paths["lasif_root"]
         self.task_toml = os.path.join(self.path, "task.toml")
         self.models = os.path.join(self.path, "PHYSICAL_MODELS")
+    
+    def run_salvus_opt(self):
+        """
+        Run salvus opt to get next task. I think this should work well enough.
+        """
+        path_to_run_script = os.path.join(self.path, "run_salvus_opt.sh")
+        subprocess.call([path_to_run_script])
 
     def read_salvus_opt(self) -> dict:
         """
@@ -33,8 +41,11 @@ class SalvusOptComponent(Component):
         :return: The information contained in the task toml file
         :rtype: dictionary
         """
-        task = toml.load(os.path.join(self.path, "task.toml"))
-        return task
+        if os.path.exists(os.path.join(self.path, "task.toml")):
+            task = toml.load(os.path.join(self.path, "task.toml"))
+            return task["task"][0]["input"]["type"]
+        else:
+            return "no_task_toml"
 
     def close_salvus_opt_task(self):
         """
@@ -73,30 +84,27 @@ class SalvusOptComponent(Component):
 
         shutil.copy(model_path, lasif_path)
 
-    def get_model_path(self, iteration: str, gradient=False) -> str:
+    def get_model_path(self, gradient=False) -> str:
         """
         Get path of model related to iteration
 
-        :param iteration: Name of iteration
-        :type iteration: string
         :param gradient: Is it a gradient?
         :type gradient: bool
         """
+        iteration = self.comm.project.current_iteration
         if gradient:
             return os.path.join(self.models, "gradient_" + iteration + ".e")
         else:
             return os.path.join(self.models, iteration + ".e")
 
-    def write_misfit_to_task_toml(self, iteration: str):
+    def write_misfit_to_task_toml(self):
         """
         Report the correct misfit value to salvus opt.
         ** Still have to find a consistant place to read/write misfit **
         ** Maybe this should be done on an individual level aswell **
-
-        :param iteration: Name of iteration
-        :type iteration: string
         """
-        misfits = toml.load(os.path.join(self.lasif_root, "something"))
+        iteration = self.comm.project.current_iteration
+        misfits = toml.load(os.path.join(self.comm.project.lasif_root, "something"))
         misfit = misfits["blabla"][1]  # This needs to be fixed
         task = self.read_salvus_opt()
         task["task"][0]["output"]["misfit"] = float(misfit)
@@ -104,15 +112,13 @@ class SalvusOptComponent(Component):
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
 
-    def write_gradient_path_to_task_toml(self, iteration: str):
+    def write_gradient_path_to_task_toml(self):
         """
         Give salvus opt the path to the iteration gradient.
         Currently only for a single summed gradient, might change.
         Make sure you move gradient to salvus opt directory first.
-
-        :param iteration: Name of iteration
-        :type iteration: string
         """
+        iteration = self.comm.project.current_iteration
         grad_path = os.path.join(self.models, "gradient_", iteration + ".e")
         task = self.read_salvus_opt()
         task["task"][0]["output"]["gradient"] = grad_path
