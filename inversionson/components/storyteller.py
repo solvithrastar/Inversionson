@@ -127,6 +127,33 @@ class StoryTellerComponent(Component):
             alt_text="text"
         )
     
+    def _get_misfit_reduction(self):
+        """
+        Compute misfit reduction between previous two iterations
+        """
+        # We start with misfit of previous iteration
+        prev_iter = self.comm.salvus_opt.get_previous_iteration_name
+        prev_it_dict = self.comm.project.get_old_iteration_info(prev_iter)
+
+        prev_total_misfit = 0.0
+        prev_cg_misfit = 0.0
+        for key in prev_it_dict["events"]:
+            prev_total_misfit += prev_it_dict["events"][key]["misfit"]
+            for key in prev_it_dict["new_control_group"]:
+                prev_cg_misfit += prev_it_dict["events"][key]["misfit"]
+        
+        current_total_misfit = 0.0
+        current_cg_misfit = 0.0
+        for key, value in self.comm.project.misfits:
+            current_total_misfit += value
+            if key in self.comm.project.old_control_group:
+                current_cg_misfit += value
+        
+        tot_red = (prev_total_misfit - current_total_misfit) / prev_total_misfit
+        cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
+
+        return tot_red, cg_red
+
     def _add_table_of_events_and_misfits(self):
         """
         Include a table of events and corresponding misfits to
@@ -146,20 +173,42 @@ class StoryTellerComponent(Component):
             headers=["Events", "Misfits"]
         )
         total_misfit = 0.0
-        new_control_group_misfit = 0.0
         old_control_group_misfit = 0.0
         for key, value in self.comm.project.misfits:
             total_misfit += value
-            if key in self.comm.project.new_control_group:
-                new_control_group_misfit += value
             if key in self.comm.project.old_control_group:
                 old_control_group_misfit += value
         
+        _, cg_red = self._get_misfit_reduction()
+        
         text = f"Total misfit for iteration: {total_misfit} \n"
         text += f"Misfit for the old control group: {old_control_group_misfit}"
-        text += f" \n"
-        text += f"Misfit for the new control group: {new_control_group_misfit}"
+        text += f"\n Misfit reduction between the control groups: {cg_red}"
 
+        self.markdown.add_paragraph(text=text)
+    
+    def _report_control_group(self):
+        """
+        Report what the new control group is and what the current misfit is.
+        """
+        self.markdown.add_header(
+            header_style=4,
+            text="Selection of New Control Group"
+        )
+        text = "The events which will continue on to the next iteration are "
+        text += "listed below."
+
+        self.markdown.add_paragraph(
+            text=text
+        )
+        self.markdown.add_list(items=self.comm.project.new_control_group)
+
+        cg_misfit = 0.0
+        for key, value in self.comm.project.misfits:
+            if key in self.comm.project.new_control_group:
+                cg_misfit += value
+        
+        text = f"The current misfit for the control group is {cg_misfit}"
         self.markdown.add_paragraph(text=text)
 
     def document_task(self, task: str):
@@ -186,6 +235,8 @@ class StoryTellerComponent(Component):
             self._start_entry_for_iteration()
             self._add_image_of_data_coverage()
             self._add_table_of_events_and_misfits()
+
+        elif task == "compute_gradient":
             self._report_control_group()
 
     class MarkDown(StoryTellerComponent):
@@ -326,6 +377,19 @@ class StoryTellerComponent(Component):
             self._add_line_break()
             self._add_line_break()
             self._append_to_file()
+        
+        def add_list(self, items: list):
+            """
+            Add an unordered list to a markdown file.
+            
+            :param items: Items to be listed
+            :type items: list
+            """
+            self.stream = ""
 
-
-
+            for item in items:
+                self.stream += f"* {item} \n"
+            
+            self._add_line_break()
+            self._add_line_break()
+            self._append_to_file()

@@ -420,8 +420,8 @@ class autoinverter(object):
             self.wait_for_all_jobs_to_finish("forward")
             self.wait_for_all_jobs_to_finish("adjoint")
             self.comm.salvus_opt.write_misfit_to_task_toml()
-            self.storyteller.document_task(task)
             self.comm.project.update_iteration_toml()
+            self.comm.storyteller.document_task(task)
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.salvus_opt.run_salvus_opt()
             task = self.comm.salvus_opt.read_salvus_opt()
@@ -445,6 +445,7 @@ class autoinverter(object):
                         self.select_windows(event)
                         self.misfit_quantification(event)
 
+            self.comm.storyteller.document_task(task)
             self.comm.salvus_opt.write_misfit_to_task_toml()
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.project.update_iteration_toml()
@@ -473,6 +474,7 @@ class autoinverter(object):
             # Smooth gradients
             self.comm.salvus_opt.move_gradient_to_salvus_opt_folder(event)
             self.comm.salvus_opt.get_new_control_group()
+            self.comm.storyteller.document_task(task)
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.salvus_opt.run_salvus_opt()
             task = self.comm.salvus_opt.read_salvus_opt()
