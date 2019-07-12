@@ -11,7 +11,6 @@ class MultiMeshComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        # self.lasif_root = info_dict["lasif_project"]
         super(MultiMeshComponent, self).__init__(communicator, component_name)
         self.physical_models = self.comm.salvus_opt.models
 

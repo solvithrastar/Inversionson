@@ -42,18 +42,35 @@ class LasifComponent(Component):
         """
         lapi.set_up_iteration(self.lasif_comm, name=name, events=events)
 
-    def get_minibatch(self, it_name):
+    def get_minibatch(self) -> list:
         """
-        Will do later
+        Get a batch of events to use in the coming iteration.
+        This is still under development
+
+        :return: A fresh batch of earthquakes
+        :rtype: list
         """
-        return []
+        blocked_events = self.comm.salvus_opt.find_blocked_events()
+        count = self.comm.salvus_opt.get_batch_size()
+        events = self.list_events()
+        batch = lapi.get_subset_of_events(
+            self.lasif_comm,
+            count=count,
+            events=events,
+            existing_events=blocked_events
+        )
+        return batch
 
     def list_events(self):
         """
         Make lasif list events, supposed to be used when all events
         are used per iteration.
         """
-        return lapi.list_events(self.lasif_comm, list=True, iteration=None)
+        return lapi.list_events(
+            self.lasif_comm,
+            just_list=True,
+            iteration=None,
+            output=True)
 
     def has_mesh(self, event: str) -> bool:
         """
@@ -108,6 +125,28 @@ class LasifComponent(Component):
             return gradient
         else:
             raise ValueError(f"File: {gradient} does not exist.")
+    
+    def plot_iteration_events(self) -> str:
+        """
+        Return the path to a file containing an illustration of
+        event distribution for the current iteration
+        
+        :return: Path to figure
+        :rtype: str
+        """
+        lapi.plot_events(
+            self.lasif_comm,
+            type="map",
+            iteration=self.comm.project.current_iteration,
+            save=True
+        )
+        file = os.path.join(
+            self.lasif_root,
+            "OUTPUT",
+            "event_plots",
+            "events",
+            f"events_{self.comm.project.current_iteration}.png")
+        return file
 
     def get_source(self, event_name: str) -> dict:
         """

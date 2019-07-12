@@ -103,6 +103,7 @@ class autoinverter(object):
         # Check status of inversion. If no task file or if task is closed,
         # run salvus opt. Otherwise just read task and start working.
         # Will do later.
+
         task = self.comm.salvus_opt.read_salvus_opt()
         if task == "no_task_toml":
             print("Salvus Opt has not been fully configured yet."
@@ -112,6 +113,10 @@ class autoinverter(object):
                   "directory. Do this and start Inversionson.")
             # Do something regarding initializing inversion
         else:
+            self.comm.project.get_inversion_attributes(
+                simulation_info=self.comm.project.simulation_dict
+            )
+            self.comm.project.create_control_group_toml()
             self.perform_task(task)
 
     def prepare_iteration(self):
@@ -119,14 +124,14 @@ class autoinverter(object):
         Prepare iteration.
         Get iteration name from salvus opt
         Modify name in inversion status
-        Create iteration
         Pick events
+        Create iteration
         Make meshes if needed
         Update information in iteration dictionary.
         """
         it_name = self.comm.salvus_opt.get_newest_iteration_name()
         self.comm.project.current_iteration = it_name
-        it_toml = os.path.join(self.comm.project.paths["iteration_tomls"], iteration + ".toml")
+        it_toml = os.path.join(self.comm.project.paths["iteration_tomls"], it_name + ".toml")
         if os.path.exists(it_toml):
             self.comm.project.get_iteration_attributes(it_name)
             # If the iteration toml was just created but
@@ -143,6 +148,7 @@ class autoinverter(object):
             else:
                 self.comm.lasif.move_mesh(event, it_name)
 
+        self.comm.project.update_control_group_toml()
         self.comm.project.create_iteration_toml(it_name, events)
         self.comm.project.get_iteration_attributes(it_name)
         # Storyteller
@@ -447,7 +453,8 @@ class autoinverter(object):
             self.perform_task(task)
 
         elif task == "compute_gradient":
-            iteration = self.comm.project.get_newest_iteration_name()
+            iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            self.comm.project.current_iteration = iteration
             self.comm.project.get_iteration_attributes(iteration)
             for event in self.comm.project.events_used:
                 self.run_adjoint_simulation(event)
@@ -465,13 +472,15 @@ class autoinverter(object):
                         first = False
             # Smooth gradients
             self.comm.salvus_opt.move_gradient_to_salvus_opt_folder(event)
+            self.comm.salvus_opt.get_new_control_group()
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.salvus_opt.run_salvus_opt()
             task = self.comm.salvus_opt.read_salvus_opt()
             self.perform_task(task)
 
         elif task == "finalize_iteration":
-            iteration = self.comm.project.get_newest_iteration_name()
+            iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            self.comm.project.current_iteration = iteration
             self.comm.project.get_iteration_attributes(iteration)
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.project.update_iteration_toml()

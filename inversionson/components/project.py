@@ -16,6 +16,7 @@ from .multimesh_comp import MultiMeshComponent
 from .flow_comp import SalvusFlowComponent
 from .mesh_comp import SalvusMeshComponent
 from .opt_comp import SalvusOptComponent
+from .storyteller import StoryTellerComponent
 
 
 class ProjectComponent(Component):
@@ -71,8 +72,10 @@ class ProjectComponent(Component):
         SalvusMeshComponent(communicator=self.comm,
                             component_name="salvus_mesher")
         SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
+        StoryTellerComponent(communicator=self.comm,
+                             component_name="storyteller")
 
-    def __get_inversion_attributes(self, simulation_info: dict):
+    def get_inversion_attributes(self, simulation_info: dict):
         """
         Read crucial components into memory to keep them easily accessible.
 
@@ -92,7 +95,8 @@ class ProjectComponent(Component):
         self.lasif_root = self.info["lasif_project"]
         self.inversion_id = self.info["inversion_id"]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
-        self.gradient_interpolation_mode = self.info["gradient_interpolation_mode"]
+        self.gradient_interpolation_mode = self.info[
+            "gradient_interpolation_mode"]
         self.site_name = self.info["site_name"]
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]
@@ -112,11 +116,16 @@ class ProjectComponent(Component):
             self.inversion_root, "DOCUMENTATION")
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
+            os.mkdir(os.path.join(self.paths["documentation"], "BACKUP"))
 
         self.paths["iteration_tomls"] = os.path.join(
             self.paths["documentation"], "ITERATIONS")
         if not os.path.exists(self.paths["iteration_tomls"]):
             os.makedirs(self.paths["iteration_tomls"])
+
+        self.paths["control_group_toml"] = os.path.join(
+            self.paths["documentation"], "control_groups.toml"
+        )
 
     def create_iteration_toml(self, iteration: str):
         """
@@ -136,7 +145,8 @@ class ProjectComponent(Component):
         it_dict["name"] = iteration
         it_dict["events"] = self.comm.lasif.list_events(iteration=iteration)
         # I need a way to figure out what the controlgroup is
-        it_dict["control_group"] = []
+        it_dict["last_control_group"] = []
+        it_dict["new_control_group"] = []
         for event in it_dict["events"]:
             it_dict["events"][event]["misfit"] = 0.0
             it_dict["events"][event]["jobs"]["forward"] = {
@@ -153,6 +163,32 @@ class ProjectComponent(Component):
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
+    def update_control_group_toml(self, new=False, first=False):
+        """
+        A toml file for monitoring which control group is used in each
+        iteration.
+        Structure: dict[iteration] = {old: [], new: []}
+        :param new: Should the new control group be updated?
+        :type new: bool, optional
+        :param first: Does the toml need to be created?
+        :type first: bool, optional
+        """
+        iteration = self.current_iteration
+
+        if first:
+            cg_dict = {}
+            cg_dict[iteration] = {"old": [], "new": []}
+            with open(self.paths["control_group_toml"], "w") as fh:
+                toml.dump(cg_dict, fh)
+        else:
+            cg_dict = toml.load(self.paths["control_group_toml"])
+            if not new:
+                prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
+                cg_dict[iteration] = {}
+                cg_dict[iteration]["old"] = cg_dict[prev_iter]["new"]
+            if new:
+                cg_dict[iteration]["new"] = self.new_control_group
+
     def update_iteration_toml(self, iteration="current"):
         """
         Use iteration parameters to update iteration toml file
@@ -167,12 +203,15 @@ class ProjectComponent(Component):
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
                 f"Iteration toml for iteration: {iteration} does not exists")
-
+        control_group_dict = toml.load(self.paths["control_group_toml"])
+        control_group_dict = control_group_dict[iteration]
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = self.events_in_iteration
         # I need a way to figure out what the controlgroup is
-        it_dict["control_group"] = self.control_group
+        # This definitely needs improvement
+        it_dict["last_control_group"] = control_group_dict["old"]
+        it_dict["new_control_group"] = control_group_dict["new"]
         for event in it_dict["events"]:
             it_dict["events"][event]["misfit"] = self.misfits[event]
             it_dict["events"][event]["jobs"]["forward"] = self.forward_job
@@ -194,12 +233,12 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 f"No toml file eists for iteration: {iteration}")
 
-        with open(iteration_toml, "r") as fh:
-            it_dict = toml.load(fh)
+        it_dict = toml.load(iteration_toml)
 
         self.iteration_name = it_dict["name"]
         self.events_in_iteration = it_dict["events"]
-        self.control_group = it_dict["control_group"]
+        self.old_control_group = it_dict["old_control_group"]
+        self.new_control_group = it_dict["new_control_group"]
         self.misfits = {}
         self.forward_job = {}
         self.adjoint_job = {}
@@ -208,11 +247,11 @@ class ProjectComponent(Component):
             self.misfits[event] = it_dict["events"][event]["misfit"]
             self.forward_job[event] = it_dict["events"][event]["jobs"]["forward"]
             self.adjoint_job[event] = it_dict["events"][event]["jobs"]["adjoint"]
-    
+
     def get_old_iteration_info(self, iteration: str) -> dict:
         """
         For getting information about something else than current iteration
-        
+
         :param iteration: Name of iteration
         :type iteration: str
         :return: Information regarding that iteration
@@ -223,7 +262,7 @@ class ProjectComponent(Component):
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
                 f"No toml file eists for iteration: {iteration}")
-        
+
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)
         return it_dict

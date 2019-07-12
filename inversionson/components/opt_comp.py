@@ -147,6 +147,53 @@ class SalvusOptComponent(Component):
         new_it_tr_region = min(iterations[new_it_number])
 
         return self._create_iteration_name(new_it_number, new_it_tr_region)
+    
+    def get_previous_iteration_name(self):
+        """
+        Get the name of the previous iteration in order to find
+        information needed from previous iteration.
+        """
+        models = []
+        for r, d, f in os.walk(self.models):
+            for file in f:
+                if 'gradient' not in file:
+                    models.append(file)
+
+        if len(models) == 0:
+            raise InversionsonError("Please initialize inversion in Salvus Opt")
+        iterations = self._parse_model_files(models)
+
+        old_it_number = max(iterations) - 1
+        old_it_tr_region = min(iterations[old_it_number])
+
+        return self._create_iteration_name(old_it_number, old_it_tr_region)
+
+    def find_blocked_events(self):
+        """
+        Events which are not in control group but were used in previous
+        iteration are blocked in the new one. This function finds these
+        events.
+        """
+        prev_iter = self.get_previous_iteration_name()
+
+        prev_it_toml = os.path.join(
+            self.comm.project.paths["iteration_tomls"],
+            prev_iter + ".toml"
+        )
+        prev_it_dict = toml.load(prev_it_toml)
+        blocked_events = []
+
+        for key in prev_it_dict["events"]:
+            if key not in prev_it_dict["new_control_group"]:
+                blocked_events.append(key)
+        return blocked_events
+    
+    def get_new_control_group(self):
+        """
+        No idea how this works, need to know how Salvus opt communicates
+        this with me.
+        Remember to update this in all relevant parameters.
+        """
 
     def _parse_model_files(self, models: list) -> dict:
         """
