@@ -19,12 +19,12 @@ if (_v.major, _v.minor) != (3, 7):
 path = os.path.join(os.path.abspath(os.path.dirname(inspect.getfile(
     inspect.currentframe()))), "inversionson")
 sys.path.insert(0, path)
-from version import get_git_version  # noqa
+#from version import get_git_version  # noqa
 
 
 setup_config = dict(
     name="inversionson",
-    version=get_git_version(),
+    version="0.0.1",
     description="",
     author="Solvi Thrastarson",
     author_email="soelvi.thrastarson@erdw.ethz.ch",
@@ -48,7 +48,6 @@ setup_config = dict(
         "pytest",
         "flask",
         "flask-cache"]
-    }
 )
 
 

@@ -33,12 +33,22 @@ class StoryTellerComponent(Component):
         super(StoryTellerComponent, self).__init__(
             communicator, component_name)
         self.root, self.backup = self._create_root_folder()
-        self.root = self.comm.project.paths["documentation"]
-        self.backup = os.path.join(self.root, "BACKUP")
         self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
-        self.markdown = self.MarkDown(self.story_file)
+        self.markdown = MarkDown(self.story_file)
+    
+    def _create_root_folder(self):
+        """
+        Initiate the folder structure if needed
+        """
+        root = self.comm.project.paths["documentation"]
+        backup = os.path.join(root, "BACKUP")
+        if not os.path.exists(root):
+            os.mkdir(root)
+        if not os.path.exists(backup):
+            os.mkdir(backup)
+        return root, backup
 
     def _backup_story_file(self):
         """
@@ -239,157 +249,158 @@ class StoryTellerComponent(Component):
         elif task == "compute_gradient":
             self._report_control_group()
 
-    class MarkDown(StoryTellerComponent):
+
+class MarkDown(StoryTellerComponent):
+    """
+    A little class designed to contain a few helper functions
+    to write text in Markdown style
+    """
+
+    def __init__(self, file_name):
+        self.file = file_name
+        self.text_styles = ['normal', 'italic', 'bold']
+        self.stream = ""
+
+    def _read_file(self):
+        with open(self.file, "r") as fh:
+            self.stream = fh.read()
+
+    def _append_to_file(self):
+        with open(self.file, "a") as fh:
+            fh.write(self.stream)
+
+    def _write_to_file(self):
+        with open(self.file, "w") as fh:
+            fh.write(self.stream)
+
+    def _add_line_break(self):
+        self.stream += "\n "
+
+    def add_header(self, header_style: int, text: str, new=False):
         """
-        A little class designed to contain a few helper functions
-        to write text in Markdown style
+        Add a header to a markdown file. The header style
+        has to be between 1 and 6
+
+        :param header_style: Style of header, 1-6
+        :type header_style: int
+        :param text: Content of header
+        :type text: str
+        :param new: Add it to a new file?, defaults to False
+        :type new: bool
         """
+        if header_style < 1 or header_style > 6:
+            raise ValueError(
+                "Header style must be an integer between 1 and 6")
 
-        def __init__(self, file_name):
-            self.file = file_name
-            self.text_styles = ['normal', 'italic', 'bold']
-            self.stream = ""
+        self.stream = "#"*int(header_style) + " "
+        self.stream += text
+        self._add_line_break()
+        self._add_line_break()
 
-        def _read_file(self):
-            with open(self.file, "r") as fh:
-                self.stream = fh.read()
+        if new:
+            self._write_to_file()
+        else:
+            self._append_to_file()
 
-        def _append_to_file(self):
-            with open(self.file, "a") as fh:
-                fh.write(self.stream)
-
-        def _write_to_file(self):
-            with open(self.file, "w") as fh:
-                fh.write(self.stream)
-
-        def _add_line_break(self):
-            self.stream += "\n "
-
-        def add_header(self, header_style: int, text: str, new=False):
-            """
-            Add a header to a markdown file. The header style
-            has to be between 1 and 6
-
-            :param header_style: Style of header, 1-6
-            :type header_style: int
-            :param text: Content of header
-            :type text: str
-            :param new: Add it to a new file?, defaults to False
-            :type new: bool
-            """
-            if header_style < 1 or header_style > 6:
-                raise ValueError(
-                    "Header style must be an integer between 1 and 6")
-
-            self.stream = "#"*int(header_style) + " "
-            self.stream += text
-            self._add_line_break()
-            self._add_line_break()
-
-            if new:
-                self._write_to_file()
-            else:
-                self._append_to_file()
-
-        def _transform_special_characters(self):
-            """
-            Take special markdown characters from string
-            and make sure they are interpreted correctly
-            """
-            string = self.stream
-            string = string.replace('*', '\*')
-            string = string.replace('`', '\`')
-            string = string.replace('_', '\_')
-            string = string.replace('{', '\{')
-            string = string.replace('}', '\}')
-            string = string.replace('[', '\[')
-            string = string.replace(']', '\]')
-            string = string.replace('(', '\(')
-            string = string.replace(')', '\)')
-            string = string.replace('#', '\#')
-            string = string.replace('+', '\+')
-            string = string.replace('-', '\-')
-            string = string.replace('!', '\!')
-            string = string.replace('&', '&amp;')
-            string = string.replace('<', '&lt;')
-            self.stream = string
+    def _transform_special_characters(self):
+        """
+        Take special markdown characters from string
+        and make sure they are interpreted correctly
+        """
+        string = self.stream
+        string = string.replace('*', '\*')
+        string = string.replace('`', '\`')
+        string = string.replace('_', '\_')
+        string = string.replace('{', '\{')
+        string = string.replace('}', '\}')
+        string = string.replace('[', '\[')
+        string = string.replace(']', '\]')
+        string = string.replace('(', '\(')
+        string = string.replace(')', '\)')
+        string = string.replace('#', '\#')
+        string = string.replace('+', '\+')
+        string = string.replace('-', '\-')
+        string = string.replace('!', '\!')
+        string = string.replace('&', '&amp;')
+        string = string.replace('<', '&lt;')
+        self.stream = string
+    
+    def add_paragraph(self, text: str, textstyle='normal'):
+        """
+        Add a brand new paragraph to the markdown file
         
-        def add_paragraph(self, text: str, textstyle='normal'):
-            """
-            Add a brand new paragraph to the markdown file
-            
-            :param text: Content of paragraph
-            :type text: str
-            :param textstyle: Style of text, defaults to 'normal'
-            :type textstyle: str, optional
-            """
-            if textstyle not in self.text_styles:
-                raise ValueError(f"Text style {textstyle} is not available")
-            
-            self.stream = text
-            self._transform_special_characters()
+        :param text: Content of paragraph
+        :type text: str
+        :param textstyle: Style of text, defaults to 'normal'
+        :type textstyle: str, optional
+        """
+        if textstyle not in self.text_styles:
+            raise ValueError(f"Text style {textstyle} is not available")
+        
+        self.stream = text
+        self._transform_special_characters()
 
-            if textstyle != self.text_styles[0]:
-                text = self.stream
+        if textstyle != self.text_styles[0]:
+            text = self.stream
+            text = "_" + text + "_"
+            if textstyle == self.text_styles[2]:
                 text = "_" + text + "_"
-                if textstyle == self.text_styles[2]:
-                    text = "_" + text + "_"
-                self.stream = text
+            self.stream = text
 
-            self._add_line_break()
-            self._add_line_break()
-            self._append_to_file()
+        self._add_line_break()
+        self._add_line_break()
+        self._append_to_file()
+    
+    def add_image(self, image_url: str, image_title="", alt_text="text"):
+        """
+        Add an image to a markdown file
         
-        def add_image(self, image_url: str, image_title="", alt_text="text"):
-            """
-            Add an image to a markdown file
-            
-            :param image_url: Location of an image, I think this can be a file
-            when using a local markdown and not an online one.
-            :type image_url: str
-            :param image_title: Title when hovering on pic, defaults to ""
-            :type image_title: str, optional
-            :param alt_text: Text when pic doesn't appear, defaults to "text"
-            :type alt_text: str, optional
-            """
-            self.stream = f"![Alt {alt_text}]"
-            self.stream += f"({image_url} \"{image_title}\")"
-            self._add_line_break()
-            self._append_to_file()
+        :param image_url: Location of an image, I think this can be a file
+        when using a local markdown and not an online one.
+        :type image_url: str
+        :param image_title: Title when hovering on pic, defaults to ""
+        :type image_title: str, optional
+        :param alt_text: Text when pic doesn't appear, defaults to "text"
+        :type alt_text: str, optional
+        """
+        self.stream = f"![Alt {alt_text}]"
+        self.stream += f"({image_url} \"{image_title}\")"
+        self._add_line_break()
+        self._append_to_file()
+    
+    def add_table(self, data: dict, headers=["Events", "Misfits"]):
+        """
+        Add a table to a markdown file. Currently only for 2 column
+        based data.
         
-        def add_table(self, data: dict, headers=["Events", "Misfits"]):
-            """
-            Add a table to a markdown file. Currently only for 2 column
-            based data.
-            
-            :param data: Data to display in table
-            :type data: dict
-            :param headers: Table headers, defaults to ["Events", "Misfits"]
-            :type headers: list, optional
-            """
-            self.stream = ""
-            self.stream += f"| {headers[0]} | {headers[1]} |\n"
-            self.stream += "| --- | ---: | \n"
-            
-            for key, value in data:
-                self.stream += f"| {key} | {value} |\n"
-            
-            self._add_line_break()
-            self._add_line_break()
-            self._append_to_file()
+        :param data: Data to display in table
+        :type data: dict
+        :param headers: Table headers, defaults to ["Events", "Misfits"]
+        :type headers: list, optional
+        """
+        self.stream = ""
+        self.stream += f"| {headers[0]} | {headers[1]} |\n"
+        self.stream += "| --- | ---: | \n"
         
-        def add_list(self, items: list):
-            """
-            Add an unordered list to a markdown file.
-            
-            :param items: Items to be listed
-            :type items: list
-            """
-            self.stream = ""
+        for key, value in data:
+            self.stream += f"| {key} | {value} |\n"
+        
+        self._add_line_break()
+        self._add_line_break()
+        self._append_to_file()
+    
+    def add_list(self, items: list):
+        """
+        Add an unordered list to a markdown file.
+        
+        :param items: Items to be listed
+        :type items: list
+        """
+        self.stream = ""
 
-            for item in items:
-                self.stream += f"* {item} \n"
-            
-            self._add_line_break()
-            self._add_line_break()
-            self._append_to_file()
+        for item in items:
+            self.stream += f"* {item} \n"
+        
+        self._add_line_break()
+        self._add_line_break()
+        self._append_to_file()

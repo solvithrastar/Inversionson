@@ -49,7 +49,6 @@ class SalvusFlowComponent(Component):
                 self.comm.project.forward_job[event]["name"] = job
             else:
                 self.comm.project.adjoint_job[event]["name"] = job
-        self.comm.project.update_iteration_toml()
         # Here we just want to return a previously defined job name
         else:
             if old_iter:
@@ -61,7 +60,7 @@ class SalvusFlowComponent(Component):
                     job = self.comm.project.forward_job[event]["name"]
                 else:
                     job = self.comm.project.adjoint_job[event]["name"]
-
+        self.comm.project.update_iteration_toml()
         return job
 
     def get_source_object(self, event_name: str):
@@ -117,8 +116,7 @@ class SalvusFlowComponent(Component):
             source_time_function=stf.Custom(
                 filename=adjoint_filename,
                 dataset_name="auxiliary_data/AdjointSources/" +
-                              rec["network-code"] + "_" + rec["station-code"]
-        ) for rec in receivers]
+                rec["network-code"] + "_" + rec["station-code"])) for rec in receivers]
 
         return adj_src
 
@@ -132,9 +130,9 @@ class SalvusFlowComponent(Component):
         """
         from salvus_flow.simple_config import receiver
 
-        recs=self.comm.lasif.get_receivers(event)
+        recs = self.comm.lasif.get_receivers(event)
 
-        receivers=[receiver.seismology.SideSetPoint3D(
+        receivers = [receiver.seismology.SideSetPoint3D(
             latitude=rec["latitude"],
             longitude=rec["longitude"],
             network_code=rec["network-code"],
@@ -145,7 +143,7 @@ class SalvusFlowComponent(Component):
         return receivers
 
     def construct_simulation(self, event: str, sources: object,
-        receivers: object):
+                             receivers: object):
         """
         Generate the simulation object which salvus flow loves
 
@@ -159,21 +157,21 @@ class SalvusFlowComponent(Component):
 
         from salvus_flow.simple_config import simulation
 
-        mesh=self.comm.lasif.get_simulation_mesh(event)
+        mesh = self.comm.lasif.get_simulation_mesh(event)
 
-        w=simulation.Waveform(
+        w = simulation.Waveform(
             mesh=mesh, sources=sources, receivers=receivers)
 
-        w.physics.wave_equation.end_time_in_seconds=self.comm.project.end_time
-        w.physics.wave_equation.time_step_in_seconds=self.comm.project.time_step
-        w.physics.wave_equation.start_time_in_seconds=self.comm.project.start_time
+        w.physics.wave_equation.end_time_in_seconds = self.comm.project.end_time
+        w.physics.wave_equation.time_step_in_seconds = self.comm.project.time_step
+        w.physics.wave_equation.start_time_in_seconds = self.comm.project.start_time
 
         # For gradient computation
 
-        w.output.volume_data.format="hdf5"
-        w.output.volume_data.filename="output.h5"
-        w.output.volume_data.fields=["adjoint-checkpoint"]
-        w.output.volume_data.sampling_interval_in_time_steps="auto-for-checkpointing"
+        w.output.volume_data.format = "hdf5"
+        w.output.volume_data.filename = "output.h5"
+        w.output.volume_data.fields = ["adjoint-checkpoint"]
+        w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing"
 
         w.validate()
 
@@ -192,13 +190,13 @@ class SalvusFlowComponent(Component):
         """
         from salvus_flow.simple_config import simulation
 
-        mesh=self.comm.lasif.get_simulation_mesh(event)
+        mesh = self.comm.lasif.get_simulation_mesh(event)
 
-        w=simulation.Waveform(mesh=mesh)
-        w.adjoint.forward_meta_json_filename="blabla"
-        w.adjoint.gradient.parameterization="rho-vp-vs"  # temporary
-        w.adjoint.gradient.output_filename="gradient.h5"
-        w.adjoint.point_source=adj_src
+        w = simulation.Waveform(mesh=mesh)
+        w.adjoint.forward_meta_json_filename = "blabla"
+        w.adjoint.gradient.parameterization = "rho-vp-vs"  # temporary
+        w.adjoint.gradient.output_filename = "gradient.h5"
+        w.adjoint.point_source = adj_src
 
         w.validate()
 
@@ -225,17 +223,17 @@ class SalvusFlowComponent(Component):
         :type ranks: int, optional
         """
 
-        job=sapi.run_async(
+        job = sapi.run_async(
             site_name=site,
             input_file=simulation,
             ranks=ranks,
             wall_time_in_seconds=wall_time,
         )
         if sim_type == "forward":
-            self.comm.project.forward_job[event]["name"]=job.name
+            self.comm.project.forward_job[event]["name"] = job.name
 
         elif sim_type == "adjoint":
-            self.comm.project.adjoint_job[event]["name"]=job.name
+            self.comm.project.adjoint_job[event]["name"] = job.name
         self.comm.project.update_iteration_toml()
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
@@ -252,23 +250,23 @@ class SalvusFlowComponent(Component):
         if iteration == "current":
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["submitted"]:
-                    job_name=self.comm.project.forward_job[event]["name"]
+                    job_name = self.comm.project.forward_job[event]["name"]
                 else:
                     raise InversionsonError(
                         f"Forward job for event: {event} has not been "
                         "submitted")
             elif sim_type == "adjoint":
                 if self.comm.project.adjoint_job[event]["submitted"]:
-                    job_name=self.comm.project.adjoint_job[event]["name"]
+                    job_name = self.comm.project.adjoint_job[event]["name"]
                 else:
                     raise InversionsonError(
                         f"Adjoint job for event: {event} has not been "
                         "submitted")
         else:
-            it_dict=self.comm.project.get_old_iteration_info(iteration)
-            job_name=it_dict["events"][event]["jobs"][sim_type]["name"]
+            it_dict = self.comm.project.get_old_iteration_info(iteration)
+            job_name = it_dict["events"][event]["jobs"][sim_type]["name"]
 
-        job=sapi.get_job(
+        job = sapi.get_job(
             job_name=job_name,
             site_name=self.comm.project.site_name)
 

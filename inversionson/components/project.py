@@ -29,9 +29,11 @@ class ProjectComponent(Component):
         self.info = information_dict
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
-
-        self.__setup_components()
         self.simulation_dict = self._read_config_file()
+        self.get_inversion_attributes(first=True)
+        self.__setup_components()
+        self.get_inversion_attributes(first=False)
+        self._validate_inversion_project()
 
     def _read_config_file(self) -> dict:
         """
@@ -41,17 +43,16 @@ class ProjectComponent(Component):
         :return: Simulation dictionary
         :rtype: dict
         """
-        with open(os.path.join(self.info["lasif_project"], "lasif_config.toml"), "r") as fh:
+        with open(os.path.join(self.info["lasif_root"], "lasif_config.toml"), "r") as fh:
             config_dict = toml.load(fh)
 
         simulation_info = {}
         solver_settings = config_dict["solver_settings"]
-        simulation_info["time_step"] = -solver_settings["time_increment"]
+        simulation_info["start_time"] = -solver_settings["time_increment"]
         simulation_info["number_of_time_steps"] = int(round(
-            (solver_settings["end_time"] - solver_settings["start_time"]) / solver_settings["time_increment"]))
+            (solver_settings["end_time"] - simulation_info["start_time"]) / solver_settings["time_increment"]))
         simulation_info["end_time"] = solver_settings["end_time"]
-        simulation_info["start_time"] = solver_settings["start_time"]
-
+        simulation_info["time_step"] = solver_settings["time_increment"]
         simulation_info["period_low"] = config_dict["data_processing"]["highpass_period"]
         simulation_info["period_high"] = config_dict["data_processing"]["lowpass_period"]
 
@@ -60,39 +61,134 @@ class ProjectComponent(Component):
     def get_communicator(self):
         return self.__comm()
 
+    def _validate_inversion_project(self):
+        """
+        Make sure everything is correctly set up in order to perform inversion.
+
+        :param info_dict: Information needed
+        :type info_dict: dict
+        :param simulation_dict: Information regarding simulations
+        :type simulation_dict: dict
+        """
+        import pathlib
+        allowed_interp_modes = ["gll_2_gll", "gll_2_exodus", "exodus_2_gll"]
+        if "inversion_id" not in self.info.keys():
+            raise ValueError(
+                "The inversion needs a name, Key: inversion_id")
+
+        if "inversion_path" not in self.info.keys():
+            raise InversionsonError(
+                "We need a given path for the inversion root directory."
+                " Key: inversion_path"
+            )
+        
+        if "model_interpolation_mode" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on how you want to interpolate "
+                "the model to simulation meshes. "
+                "Key: model_interpolation_mode "
+            )
+
+        if self.info["model_interpolation_mode"] not in allowed_interp_modes:
+            raise InversionsonError(
+                f"The allowable model_interpolation_modes are: "
+                f" {allowed_interp_modes}"
+            )
+
+        if "gradient_interpolation_mode" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on how you want to interpolate "
+                "the model to simulation meshes. "
+                "Key: gradient_interpolation_mode "
+            )
+
+        if self.info["gradient_interpolation_mode"] not in allowed_interp_modes:
+            raise InversionsonError(
+                f"The allowable model_interpolation_modes are: "
+                f" {allowed_interp_modes}"
+            )
+
+        if "site_name" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on the site where jobs are submitted. "
+                "Key: site_name"
+            )
+
+        if "wall_time" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on the site where jobs are submitted. "
+                "Key: site_name"
+            )
+        
+        if "ranks" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on the amount of ranks you want to "
+                "run your simulations. Key: ranks"
+            )
+
+        # Salvus Opt
+        if "salvus_opt_dir" not in self.info.keys():
+            raise InversionsonError(
+                "Information on salvus_opt_dir is missing from information")
+        else:
+            folder = pathlib.Path(self.info["salvus_opt_dir"])
+            if not (folder / "inversion.toml").exists():
+                raise InversionsonError("Salvus opt inversion not initiated")
+
+        # Lasif
+        if "lasif_project" not in self.info.keys():
+            raise InversionsonError(
+                "Information on lasif_project is missing from information")
+        else:
+            folder = pathlib.Path(self.info["lasif_project"])
+            if not (folder / "lasif_config.toml").exists():
+                raise InversionsonError("Lasif project not initialized")
+
+        # Simulation parameters:
+        if "end_time_in_seconds" not in self.sim_info.keys():
+            raise InversionsonError(
+                "Information regarding end time of simulation missing")
+
+        if "time_step_in_seconds" not in self.sim_info.keys():
+            raise InversionsonError(
+                "Information regarding time step of simulation missing")
+
+        if "start_time_in_seconds" not in self.sim_info.keys():
+            raise InversionsonError(
+                "Information regarding start time of simulation missing")
+
     def __setup_components(self):
         """
         Setup the different components that need to be used in the inversion.
         These are wrappers around the main libraries used in the inversion.
         """
         LasifComponent(communicator=self.comm, component_name="lasif")
+        SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
         MultiMeshComponent(communicator=self.comm, component_name="multi_mesh")
         SalvusFlowComponent(communicator=self.comm,
                             component_name="salvus_flow")
         SalvusMeshComponent(communicator=self.comm,
                             component_name="salvus_mesher")
-        SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
         StoryTellerComponent(communicator=self.comm,
                              component_name="storyteller")
 
-    def get_inversion_attributes(self, simulation_info: dict):
+    def get_inversion_attributes(self, first=False):
         """
         Read crucial components into memory to keep them easily accessible.
-
-        :param simulation_info: Information regarding numerical simulations,
-        read from lasif
-        :type simulation_info: dict
+        
+        :param first: Befor components are set up, defaults to False
+        :type first: bool, optional
         """
         # Simulation attributes
-        self.time_step = simulation_info["time_step"]
-        self.start_time = simulation_info["start_time"]
-        self.end_time = simulation_info["end_time"]
-        self.period_low = simulation_info["period_low"]
-        self.period_high = simulation_info["period_high"]
+        self.time_step = self.simulation_dict["time_step"]
+        self.start_time = self.simulation_dict["start_time"]
+        self.end_time = self.simulation_dict["end_time"]
+        self.period_low = self.simulation_dict["period_low"]
+        self.period_high = self.simulation_dict["period_high"]
 
         # Inversion attributes
         self.inversion_root = self.info["inversion_path"]
-        self.lasif_root = self.info["lasif_project"]
+        self.lasif_root = self.info["lasif_root"]
         self.inversion_id = self.info["inversion_id"]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
         self.gradient_interpolation_mode = self.info[
@@ -100,7 +196,8 @@ class ProjectComponent(Component):
         self.site_name = self.info["site_name"]
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]
-        self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        if not first:
+            self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
 
         # Some useful paths
         self.paths = {}

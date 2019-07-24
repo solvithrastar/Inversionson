@@ -7,9 +7,6 @@ automatic Full-Waveform Inversion
 import numpy as np
 import time
 import os
-import pyasdf
-import multi_mesh.api as mapi
-from storyteller import Storyteller
 from inversionson import InversionsonError, InversionsonWarning
 
 
@@ -32,12 +29,10 @@ class autoinverter(object):
     I can regularly save the inversion_dict as a toml file and reload it
     """
 
-    def __init__(self, info_dict: dict, simulation_dict: dict,
-                 inversion_dict: dict):
+    def __init__(self, info_dict: dict):
         self.info = info_dict
         self.comm = self._find_project_comm()
-        self.storyteller = Storyteller()
-        self.iteration_dict = {}
+        self.run_inversion()
 
     def _find_project_comm(self):
         """
@@ -46,52 +41,6 @@ class autoinverter(object):
         from inversionson.components.project import ProjectComponent
 
         return ProjectComponent(self.info).get_communicator()
-
-    def _validate_inversion_project(self):
-        """
-        Make sure everything is correctly set up in order to perform inversion.
-
-        :param info_dict: Information needed
-        :type info_dict: dict
-        :param simulation_dict: Information regarding simulations
-        :type simulation_dict: dict
-        """
-        import pathlib
-
-        if "inversion_name" not in self.info.keys():
-            raise ValueError(
-                "The inversion needs a name")
-
-        # Salvus Opt
-        if "salvus_opt_dir" not in self.info.keys():
-            raise ValueError(
-                "Information on salvus_opt_dir is missing from information")
-        else:
-            folder = pathlib.Path(self.info["salvus_opt_dir"])
-            if not (folder / "inversion.toml").exists():
-                raise ValueError("Salvus opt inversion not initiated")
-
-        # Lasif
-        if "lasif_project" not in self.info.keys():
-            raise ValueError(
-                "Information on lasif_project is missing from information")
-        else:
-            folder = pathlib.Path(self.info["lasif_project"])
-            if not (folder / "lasif_config.toml").exists():
-                raise ValueError("Lasif project not initialized")
-
-        # Simulation parameters:
-        if "end_time_in_seconds" not in self.sim_info.keys():
-            raise ValueError(
-                "Information regarding end time of simulation missing")
-
-        if "time_step_in_seconds" not in self.sim_info.keys():
-            raise ValueError(
-                "Information regarding time step of simulation missing")
-
-        if "start_time_in_seconds" not in self.sim_info.keys():
-            raise ValueError(
-                "Information regarding start time of simulation missing")
 
     def initialize_inversion(self):
         """
@@ -103,7 +52,6 @@ class autoinverter(object):
         # Check status of inversion. If no task file or if task is closed,
         # run salvus opt. Otherwise just read task and start working.
         # Will do later.
-
         task = self.comm.salvus_opt.read_salvus_opt()
         if task == "no_task_toml":
             print("Salvus Opt has not been fully configured yet."
@@ -508,3 +456,29 @@ class autoinverter(object):
         task = self.comm.salvus_opt.read_salvus_opt()
 
         self.perform_task(task)
+
+
+def read_information_toml(info_toml_path: str):
+    """
+    Read a toml file with inversion information into a dictionary
+
+    :param info_toml_path: Path to the toml file
+    :type info_toml_path: str
+    """
+    import toml
+
+    return toml.load(info_toml_path)
+
+if __name__ == "__main__":
+    info_toml = input("Give me a path to your information_toml \n")
+    if not info_toml.startswith("/"):
+        import os
+        cwd = os.getcwd()
+        if info_toml.startswith("./"):
+            info_toml = os.path.join(cwd, info_toml[2:])
+        elif info_toml.startswith("."):
+            info_toml = os.path.join(cwd, info_toml[1:])
+        else:
+            info_toml = os.path.join(cwd, info_toml)
+    info = read_information_toml(info_toml)
+    invert = autoinverter(info)
