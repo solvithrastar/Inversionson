@@ -7,7 +7,7 @@ the inversion itself.
 
 import os
 import toml
-from inversionson import InversionsonError
+from inversionson import InversionsonError, InversionsonWarning
 
 from .communicator import Communicator
 from .component import Component
@@ -17,6 +17,7 @@ from .flow_comp import SalvusFlowComponent
 from .mesh_comp import SalvusMeshComponent
 from .opt_comp import SalvusOptComponent
 from .storyteller import StoryTellerComponent
+from .batch_comp import BatchComponent
 
 
 class ProjectComponent(Component):
@@ -126,6 +127,18 @@ class ProjectComponent(Component):
                 "run your simulations. Key: ranks"
             )
 
+        if "inversion_parameters" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on the parameters you want to invert for."
+                " Key: inversion_parameters"
+            )
+
+        if "modelling_parameters" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on the parameters you keep in your mesh "
+                "for forward modelling. Key: modelling_parameters"
+            )
+
         # Salvus Opt
         if "salvus_opt_dir" not in self.info.keys():
             raise InversionsonError(
@@ -171,6 +184,34 @@ class ProjectComponent(Component):
                             component_name="salvus_mesher")
         StoryTellerComponent(communicator=self.comm,
                              component_name="storyteller")
+        BatchComponent(communicator=self.comm, component_name="minibatch")
+
+    def _arrange_params(self, parameters: list) -> list:
+        """
+        Re-arrange list of parameters in order to have
+        them conveniently aranged when called upon. This can be an annoying
+        problem when working with hdf5 files.
+        This method can only handle a few cases. If it doesn't
+        recognize the case it will return an unmodified list.
+        
+        :param parameters: parameters to be arranged
+        :type parameters: list
+        """
+        case_tti_inv = set("VSV", "VSH", "VPV", "VPH", "RHO")
+        case_tti_mod = set("VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "ETA")
+        case_iso_inv = set("VP", "VS", "RHO")
+
+        if set(parameters) == case_tti_inv:
+            parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
+        elif set(parameters) == case_tti_mod:
+            parameters = ["VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "ETA"]
+        elif set(parameters) == case_iso_inv:
+            parameters = ["VP", "VS", "RHO"]
+        else:
+            raise InversionsonWarning(f"Parameter list {parameters} not "
+                                      f"a recognized set of parameters")
+        return parameters
+
 
     def get_inversion_attributes(self, first=False):
         """
@@ -198,6 +239,11 @@ class ProjectComponent(Component):
         self.wall_time = self.info["wall_time"]
         if not first:
             self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        self.inversion_params = self._arrange_params(
+            self.info["inversion_parameters"])
+        self.modelling_params = self._arrange_params(
+            self.info["modelling_parameters"]
+        )
 
         # Some useful paths
         self.paths = {}
@@ -317,13 +363,14 @@ class ProjectComponent(Component):
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
-    def get_iteration_attributes(self, iteration: str):
+    def get_iteration_attributes(self):
         """
         Save the attributes of the current iteration into memory
 
         :param iteration: Name of iteration
         :type iteration: str
         """
+        iteration = self.comm.salvus_opt.get_newest_iteration_name()
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml")
         if not os.path.exists(iteration_toml):
@@ -333,6 +380,7 @@ class ProjectComponent(Component):
         it_dict = toml.load(iteration_toml)
 
         self.iteration_name = it_dict["name"]
+        self.current_iteration = self.iteration_name
         self.events_in_iteration = it_dict["events"]
         self.old_control_group = it_dict["old_control_group"]
         self.new_control_group = it_dict["new_control_group"]

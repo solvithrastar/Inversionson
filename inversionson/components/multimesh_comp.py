@@ -23,21 +23,27 @@ class MultiMeshComponent(Component):
         """
         iteration = self.comm.project.current_iteration
         mode = self.comm.project.model_interpolation_mode
-        simulation_mesh = lapi.get_simulation_mesh(self.comm.lasif.lasif_comm, 
+        simulation_mesh = lapi.get_simulation_mesh(self.comm.lasif.lasif_comm,
                                                    event, iteration)
         if mode == "gll2gll":
             model = os.path.join(self.physical_models, iteration + ".h5")
             # There are many more knobs to tune but for now lets stick to
             # defaults.
-            mapi.gll2gll(
+            mapi.gll_2_gll(
                 from_gll=model,
                 to_gll=simulation_mesh,
-                nelem_to_search=5
+                nelem_to_search=50,
+                from_model_path="MODEL/data",
+                to_model_path="MODEL/data",
+                from_coordinates_path="MODEL/coordinates",
+                to_coordinates_path="MODEL/coordinates",
+                parameters=["VP", "VS", "RHO"]
             )
         elif mode == "ex2gll":
             model = os.path.join(self.physical_models, iteration + ".e")
             # This function can be further specified for different inputs.
             # For now, let's leave it at the default values.
+            # This part is not really maintained for now
             mapi.exodus2gll(
                 mesh=model,
                 gll_model=simulation_mesh
@@ -71,14 +77,12 @@ class MultiMeshComponent(Component):
             mapi.gll_2_gll(
                 from_gll=gradient,
                 to_gll=summed_gradient,
-                from_gll_order=4,
-                to_gll_order=2,
                 nelem_to_search=5,
                 parameters=["VS", "VP", "RHO"],
-                gradient=True,
-                first=first
+                gradient=True
                 )
         elif mode == "gll2exo":
+            # Not being maintained currently
             mapi.gll_2_exodus(
                 gll_model=gradient,
                 exodus_model=summed_gradient,

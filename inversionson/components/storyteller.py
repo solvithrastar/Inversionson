@@ -103,7 +103,6 @@ class StoryTellerComponent(Component):
         """
         To keep track of how often events are used.
         """
-        
         for event in self.comm.project.events_in_iteration:
             self.events_used[event] += 1
     

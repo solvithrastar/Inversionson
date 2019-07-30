@@ -19,6 +19,8 @@ info["gradient_interpolation_mode"] = "gll_2_gll"
 info["site_name"] = "daint"
 info["wall_time"] = 3600
 info["ranks"] = 1024
+info["inversion_parameters"] = ["VP", "VS", "RHO"]
+info["modelling_parameters"] = ["VP", "VS", "RHO"]
 
 filename = os.path.join(cwd, "inversion_info.toml")
 with open(filename, "w+") as fh:

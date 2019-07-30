@@ -52,22 +52,14 @@ class autoinverter(object):
         # Check status of inversion. If no task file or if task is closed,
         # run salvus opt. Otherwise just read task and start working.
         # Will do later.
-        task = self.comm.salvus_opt.read_salvus_opt()
-        if task == "no_task_toml":
-            print("Salvus Opt has not been fully configured yet."
-                  "Please supply it with an initial model and "
-                  "your parameter settings. Run the binary, and"
-                  " there should be a 'task.toml' file in the Opt "
-                  "directory. Do this and start Inversionson.")
-            # Do something regarding initializing inversion
-        else:
-            self.comm.project.get_inversion_attributes(
-                simulation_info=self.comm.project.simulation_dict
-            )
-            self.comm.project.create_control_group_toml()
-            self.perform_task(task)
+        task = self.comm.salvus_opt.read_salvus_opt_task()
+        self.comm.project.get_inversion_attributes(
+            simulation_info=self.comm.project.simulation_dict
+        )
+        self.comm.project.create_control_group_toml()
+        self.perform_task(task)
 
-    def prepare_iteration(self):
+    def prepare_iteration(self, first=False):
         """
         Prepare iteration.
         Get iteration name from salvus opt
@@ -86,7 +78,9 @@ class autoinverter(object):
             # not the iteration, we finish making the iteration
             if len(self.comm.project.events_in_iteration) != 0:
                 return
-        events = self.comm.lasif.get_minibatch(it_name)  # Sort this out.
+
+        events = self.comm.lasif.get_minibatch(it_name, first)
+        self.comm.project.events_used = events
         self.comm.lasif.set_up_iteration(it_name, events)
 
         for event in events:
@@ -96,7 +90,7 @@ class autoinverter(object):
             else:
                 self.comm.lasif.move_mesh(event, it_name)
 
-        self.comm.project.update_control_group_toml()
+        self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name, events)
         self.comm.project.get_iteration_attributes(it_name)
         # Storyteller
@@ -226,6 +220,16 @@ class autoinverter(object):
                 event=event
             )
 
+    def get_first_batch_of_events(self) -> list:
+        """
+        Get the initial batch of events to compute misfits and gradients for
+        
+        :return: list of events to use
+        :rtype: list
+        """
+        events = self.comm.lasif.get_minibatch(first=True)
+        self.comm.project.events_used = events
+
     def monitor_jobs(self, sim_type: str):
         """
         Takes events in iteration and monitors its job stati
@@ -345,8 +349,8 @@ class autoinverter(object):
         :type task: str
         """
         if task == "compute_misfit_and_gradient":
-            self.prepare_iteration()
-            # Figure out a way to do this on a per event basis.
+            self.prepare_iteration(first=True)
+            self.get_first_batch_of_events()
             for event in self.comm.project.events_used:
                 self.interpolate_model(event)
                 self.run_forward_simulation(event)
@@ -367,7 +371,7 @@ class autoinverter(object):
 
             self.wait_for_all_jobs_to_finish("forward")
             self.wait_for_all_jobs_to_finish("adjoint")
-            self.comm.salvus_opt.write_misfit_to_task_toml()
+            self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
             self.comm.salvus_opt.close_salvus_opt_task()
@@ -438,6 +442,15 @@ class autoinverter(object):
             task = self.comm.salvus_opt.read_salvus_opt()
             self.perform_task(task)
             # Possibly delete wavefields
+        
+        elif task == "select_control_batch":
+            iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            self.comm.project.current_iteration = iteration
+            self.comm.project.get_iteration_attributes(iteration)
+            # Need to implement these below
+            control_group = self.comm.lasif.select_control_group(dropout=True)
+            self.comm.salvus_opt.write_control_group_to_task_toml(
+                control_group=control_group)
 
         else:
             raise ValueError(f"Salvus Opt task {task} not known")
@@ -453,7 +466,7 @@ class autoinverter(object):
         # Always do this as a first thing, Might write a different function for checking status
         self.initialize_inversion()
 
-        task = self.comm.salvus_opt.read_salvus_opt()
+        task = self.comm.salvus_opt.read_salvus_opt_task()
 
         self.perform_task(task)
 
@@ -468,6 +481,7 @@ def read_information_toml(info_toml_path: str):
     import toml
 
     return toml.load(info_toml_path)
+
 
 if __name__ == "__main__":
     info_toml = input("Give me a path to your information_toml \n")

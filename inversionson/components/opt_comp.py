@@ -15,9 +15,6 @@ from inversionson import InversionsonError
 class SalvusOptComponent(Component):
     """
     Communications with Salvus Opt
-
-    :param infodict: Information related to inversion project
-    :type infodict: Dictionary
     """
 
     def __init__(self, communicator, component_name):
@@ -42,9 +39,22 @@ class SalvusOptComponent(Component):
         """
         if os.path.exists(os.path.join(self.path, "task.toml")):
             task = toml.load(os.path.join(self.path, "task.toml"))
+            return task
+        else:
+            raise InversionsonError("no_task_toml")
+    
+    def read_salvus_opt_task(self) -> str:
+        """
+        Read the task from salvus opt. See what to do next
+        
+        :return: task name
+        :rtype: str
+        """
+        if os.path.exists(os.path.join(self.path, "task.toml")):
+            task = toml.load(os.path.join(self.path, "task.toml"))
             return task["task"][0]["input"]["type"]
         else:
-            return "no_task_toml"
+            raise InversionsonError("no task toml")
 
     def close_salvus_opt_task(self):
         """
@@ -101,26 +111,68 @@ class SalvusOptComponent(Component):
         Report the correct misfit value to salvus opt.
         ** Still have to find a consistant place to read/write misfit **
         ** Maybe this should be done on an individual level aswell **
+        ** Needs to be done on an individual level actually **
         """
         iteration = self.comm.project.current_iteration
-        misfits = toml.load(os.path.join(self.comm.project.lasif_root, "something"))
-        misfit = misfits["blabla"][1]  # This needs to be fixed
+        events_used = self.comm.project.events_used
+        misfits = toml.load(os.path.join(self.comm.project.lasif_root,
+                                         f"ITERATION_{iteration}",
+                                         "misfits.toml"))
+        events_list = []
         task = self.read_salvus_opt()
-        task["task"][0]["output"]["misfit"] = float(misfit)
+
+        for event in events_used:
+            misfit = misfits["event_misfits"][event]
+            events_list.append({
+                "misfit": float(misfit),
+                "name": event
+            })
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
 
-    def write_gradient_path_to_task_toml(self):
+    def write_gradient_to_task_toml(self):
         """
         Give salvus opt the path to the iteration gradient.
         Currently only for a single summed gradient, might change.
         Make sure you move gradient to salvus opt directory first.
         """
         iteration = self.comm.project.current_iteration
-        grad_path = os.path.join(self.models, "gradient_", iteration + ".e")
+        events_used = self.comm.project.events_used
+        events_list = []
         task = self.read_salvus_opt()
-        task["task"][0]["output"]["gradient"] = grad_path
+        for event in events_used:
+            grads_path = os.path.join(self.comm.lasif.lasif_root, "GRADIENTS")
+            grad_path = os.path.join(grads_path, "ITERATION_" + iteration, event, "gradient.h5")
+            events_list.append({
+                "gradient": grad_path,
+                "name": event
+            })
+        task["task"][0]["output"]["event"] = events_list
+
+        with open(os.path.join(self.path, "task.toml"), "w") as fh:
+            toml.dump(task, fh)
+
+    def write_misfit_and_gradient_to_task_toml(self):
+        """
+        Write misfit and gradient to task toml
+        """
+        iteration = self.comm.project.current_iteration
+        events_used = self.comm.project.events_used
+        misfits = toml.load(os.path.join(self.comm.project.lasif_root,
+                                         f"ITERATION_{iteration}",
+                                         "misfits.toml"))
+        events_list = []
+        task = self.read_salvus_opt()
+        for event in events_used:
+            grads_path = os.path.join(self.comm.lasif.lasif_root, "GRADIENTS")
+            grad_path = os.path.join(grads_path, "ITERATION_" + iteration, event, "gradient.h5")
+            events_list.append({
+                "gradient": grad_path,
+                "misfit": float(misfits["event_misfits"][event]),
+                "name": event
+            })
+        task["task"][0]["output"]["event"] = events_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
@@ -169,23 +221,42 @@ class SalvusOptComponent(Component):
 
     def find_blocked_events(self):
         """
-        Events which are not in control group but were used in previous
-        iteration are blocked in the new one. This function finds these
-        events.
+        Initially, in order to use all events. Each event which has been used
+        once or more often is blocked until all events have been used.
+        After that stage, the only blocked events become the ones which have
+        been used in the previous iteration but were not in the control group.
+
+        :return: Gives two lists, blocked events, and events to use. The
+        suggested events to use is only given when there are fewer events
+        available than needed. Otherwise the second output is None
+        :rtype: list, list
         """
-        prev_iter = self.get_previous_iteration_name()
-
-        prev_it_toml = os.path.join(
-            self.comm.project.paths["iteration_tomls"],
-            prev_iter + ".toml"
-        )
-        prev_it_dict = toml.load(prev_it_toml)
         blocked_events = []
+        events_used = self.comm.storyteller.events_used
+        needed_events = int(round(self.get_batch_size / 2.0))
+        for key, val in events_used:
+            if val != 0:
+                blocked_events.append(key)
+        if abs(len(blocked_events) - len(events_used.keys()) >= needed_events):
+            use_these = None
+            return blocked_events, use_these
+        else:
+            prev_iter = self.get_previous_iteration_name()
+            prev_it_toml = os.path.join(
+                self.comm.project.paths["iteration_tomls"],
+                prev_iter + ".toml"
+            )
+            prev_it_dict = toml.load(prev_it_toml)
+        if len(blocked_events) == len(events_used.keys()):
+            use_these = None
+        else:
+            use_these = list(set(events_used.keys()) - set(blocked_events))
 
+        blocked_events = []
         for key in prev_it_dict["events"]:
             if key not in prev_it_dict["new_control_group"]:
                 blocked_events.append(key)
-        return blocked_events
+        return blocked_events, use_these
     
     def get_new_control_group(self):
         """
@@ -193,6 +264,7 @@ class SalvusOptComponent(Component):
         this with me.
         Remember to update this in all relevant parameters.
         """
+
 
     def _parse_model_files(self, models: list) -> dict:
         """

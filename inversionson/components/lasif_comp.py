@@ -40,24 +40,57 @@ class LasifComponent(Component):
         :param events: list of events used in iteration, defaults to []
         :type events: list, optional
         """
-        lapi.set_up_iteration(self.lasif_comm, name=name, events=events)
+        lapi.set_up_iteration(self.lasif_comm, iteration=name, events=events)
 
-    def get_minibatch(self) -> list:
+    def get_minibatch(self, first=False) -> list:
         """
         Get a batch of events to use in the coming iteration.
         This is still under development
 
+        :param first: First batch of inversion?
+        :type first: bool
         :return: A fresh batch of earthquakes
         :rtype: list
         """
-        blocked_events = self.comm.salvus_opt.find_blocked_events()
-        count = self.comm.salvus_opt.get_batch_size()
+        if first:
+            blocked_events = []
+            use_these = None
+            # TODO: There must be a better way of defining number of events.
+            count = self.comm.salvus_opt.read_salvus_opt()
+            count = count["task"][0]["input"]["num_events"]
+            events = self.list_events()
+            batch = lapi.get_subset(
+                self.lasif_comm,
+                count=count,
+                events=events,
+                existing_events=None
+            )
+            return batch
+        else:
+            blocked_events, use_these = self.comm.salvus_opt.find_blocked_events()
+            count = self.comm.salvus_opt.get_batch_size()
         events = self.list_events()
-        batch = lapi.get_subset_of_events(
+        prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
+        prev_iter_info = self.comm.project.get_old_iteration_info(prev_iter)
+        existing = prev_iter_info["new_control_group"]
+        count -= existing
+        if use_these:
+            count -= len(use_these)
+            batch = use_these + existing
+            avail_events = list(
+                set(events) - set(blocked_events) - set(use_these))
+            existing = list(set(existing + use_these))
+        else:
+            batch = existing
+            avail_events = list(set(events) - set(blocked_events))
+        # TODO: existing events should only be the control group.
+        # events should exclude the blocked events because that's what
+        # are the options to choose from. The existing go into the poisson disc
+        batch += lapi.get_subset(
             self.lasif_comm,
             count=count,
-            events=events,
-            existing_events=blocked_events
+            events=avail_events,
+            existing_events=existing
         )
         return batch
 
@@ -125,12 +158,12 @@ class LasifComponent(Component):
             return gradient
         else:
             raise ValueError(f"File: {gradient} does not exist.")
-    
+
     def plot_iteration_events(self) -> str:
         """
         Return the path to a file containing an illustration of
         event distribution for the current iteration
-        
+
         :return: Path to figure
         :rtype: str
         """
@@ -262,7 +295,7 @@ class LasifComponent(Component):
         processed_filename = "preprocessed_" + \
             str(int(low_period)) + "s_to_" + str(int(high_period)) + "s.h5"
         processed_data_folder = self.lasif_comm.project.paths["processed_data"]
-        
+
         return os.path.exists(os.path.join(
             processed_data_folder, "EARTHQUAKES", event, processed_filename
         ))
@@ -270,7 +303,7 @@ class LasifComponent(Component):
     def process_data(self, event: str):
         """
         Process the data for the periods specified in Lasif project.
-        
+
         :param event: Name of event to be processed
         :type event: str
         """
@@ -284,7 +317,7 @@ class LasifComponent(Component):
     def select_windows(self, window_set_name: str, event: str):
         """
         Select window for a certain event in an iteration.
-        
+
         :param window_set_name: Name of window set
         :type window_set_name: str
         :param event: Name of event to pick windows on
