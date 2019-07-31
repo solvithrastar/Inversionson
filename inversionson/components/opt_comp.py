@@ -52,7 +52,9 @@ class SalvusOptComponent(Component):
         """
         if os.path.exists(os.path.join(self.path, "task.toml")):
             task = toml.load(os.path.join(self.path, "task.toml"))
-            return task["task"][0]["input"]["type"]
+            task_type = task["task"][0]["type"]
+            verbose = task["task"][0]["_meta"]["verbose"]
+            return task_type, verbose
         else:
             raise InversionsonError("no task toml")
 
@@ -142,8 +144,10 @@ class SalvusOptComponent(Component):
         events_list = []
         task = self.read_salvus_opt()
         for event in events_used:
-            grads_path = os.path.join(self.comm.lasif.lasif_root, "GRADIENTS")
-            grad_path = os.path.join(grads_path, "ITERATION_" + iteration, event, "gradient.h5")
+            grad_path = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event
+            )
             events_list.append({
                 "gradient": grad_path,
                 "name": event
@@ -165,13 +169,40 @@ class SalvusOptComponent(Component):
         events_list = []
         task = self.read_salvus_opt()
         for event in events_used:
-            grads_path = os.path.join(self.comm.lasif.lasif_root, "GRADIENTS")
-            grad_path = os.path.join(grads_path, "ITERATION_" + iteration, event, "gradient.h5")
+            grad_path = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event
+            )
             events_list.append({
                 "gradient": grad_path,
                 "misfit": float(misfits["event_misfits"][event]),
                 "name": event
             })
+        task["task"][0]["output"]["event"] = events_list
+
+        with open(os.path.join(self.path, "task.toml"), "w") as fh:
+            toml.dump(task, fh)
+    
+    def write_control_group_to_task_toml(self, control_group: list):
+        """
+        Report the optimally selected control group to salvus opt
+        by writing it into the task toml
+        
+        :param control_group: List of events selected for control group
+        :type control_group: list
+        """
+        events_used = self.comm.project.events_used
+        task = self.read_salvus_opt()
+        
+        events_list = []
+        for event in events_used:
+            if event in control_group:
+                ctrl = True
+            events_list.append({
+                "control-group": ctrl,
+                "name": event
+            })
+            ctrl = False
         task["task"][0]["output"]["event"] = events_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
@@ -199,7 +230,7 @@ class SalvusOptComponent(Component):
 
         return self._create_iteration_name(new_it_number, new_it_tr_region)
     
-    def get_previous_iteration_name(self):
+    def get_previous_iteration_name(self, tr_region=False):
         """
         Get the name of the previous iteration in order to find
         information needed from previous iteration.
@@ -214,10 +245,39 @@ class SalvusOptComponent(Component):
             raise InversionsonError("Please initialize inversion in Salvus Opt")
         iterations = self._parse_model_files(models)
 
-        old_it_number = max(iterations) - 1
-        old_it_tr_region = min(iterations[old_it_number])
+        if not tr_region:
+            old_it_number = max(iterations) - 1
+            old_it_tr_region = min(iterations[old_it_number])
+            return self._create_iteration_name(old_it_number, old_it_tr_region)
+        else:
+            it_number = max(iterations)
+            # Currently I only use this to get old events, any old tr_region
+            # will work for that task
+            if len(iterations[it_number]) == 1:
+                msg = f"Only one trust region for iteration {it_number}"
+                raise InversionsonError(msg)
+            tr_region = max(iterations[it_number])
+            return self._create_iteration_name(it_number, tr_region)
 
-        return self._create_iteration_name(old_it_number, old_it_tr_region)
+    def first_trial_model_of_iteration(self) -> bool:
+        """
+        In order to distinguish between the first trust region test and the
+        coming ones, this function returns true if there is only one model
+        existing for the newest.
+        """
+        models = []
+        for r, d, f in os.walk(self.models):
+            for file in f:
+                if 'gradient' not in file:
+                    models.append(file)
+
+        if len(models) == 0:
+            raise InversionsonError("Please initialize inversion in Salvus Opt")
+        iterations = self._parse_model_files(models)
+        if len(iterations[max(iterations)]) == 1:
+            return True
+        else:
+            return False
 
     def find_blocked_events(self):
         """
@@ -257,14 +317,6 @@ class SalvusOptComponent(Component):
             if key not in prev_it_dict["new_control_group"]:
                 blocked_events.append(key)
         return blocked_events, use_these
-    
-    def get_new_control_group(self):
-        """
-        No idea how this works, need to know how Salvus opt communicates
-        this with me.
-        Remember to update this in all relevant parameters.
-        """
-
 
     def _parse_model_files(self, models: list) -> dict:
         """

@@ -152,9 +152,9 @@ class LasifComponent(Component):
         :rtype: str
         """
         gradients = self.lasif_comm.project.Project["gradients"]
-        gradient = os.path.join(gradients, "ITERATION_" +
-                                iteration, event, "gradient.h5")
-        if os.path.exist(gradient):
+        gradient = os.path.join(gradients, f"ITERATION_{iteration}",
+                                event, "gradient.h5")
+        if os.path.exists(gradient):
             return gradient
         else:
             raise ValueError(f"File: {gradient} does not exist.")

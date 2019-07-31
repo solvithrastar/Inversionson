@@ -212,7 +212,6 @@ class ProjectComponent(Component):
                                       f"a recognized set of parameters")
         return parameters
 
-
     def get_inversion_attributes(self, first=False):
         """
         Read crucial components into memory to keep them easily accessible.
@@ -375,13 +374,13 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml")
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
-                f"No toml file eists for iteration: {iteration}")
+                f"No toml file exists for iteration: {iteration}")
 
         it_dict = toml.load(iteration_toml)
 
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
-        self.events_in_iteration = it_dict["events"]
+        self.events_in_iteration = list(it_dict["events"].keys())
         self.old_control_group = it_dict["old_control_group"]
         self.new_control_group = it_dict["new_control_group"]
         self.misfits = {}

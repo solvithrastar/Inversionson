@@ -6,7 +6,7 @@ batches and control groups for coming iterations.
 from .component import Component
 import numpy as np
 import h5py
-
+import random
 
 class BatchComponent(Component):
     """
@@ -30,6 +30,11 @@ class BatchComponent(Component):
         :return: A list of events which have been dropped.
         :rtype: list
         """
+        dropout = []
+        for event in events:
+            if random.random() < self.comm.project.dropout_probability:
+                dropout.append(event)
+        return dropout
 
     def _assert_parameter_in_mesh(self, mesh: str):
         """
@@ -134,15 +139,11 @@ class BatchComponent(Component):
                     full_grad = grad
                 else:
                     full_grad += grad
-        # TODO: Monitor event quality
-        # TODO: Can I not just store the angle for all and remove like that?
-        #       We want to approximate the total gradient so that might
-        #       even be better right?
+
         full_grad_norm = np.linalg.norm(full_grad)
-        ctrl_group_grad = np.copy(full_grad)
-        ctrl_group_norm = np.linalg.norm(ctrl_group_grad)
 
         angular_changes = {}
+        event_quality = {}
         for event in events:
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
@@ -156,37 +157,43 @@ class BatchComponent(Component):
                 individual_gradient=individual_gradient
             )
             angular_changes[event] = angle
-        all_angular_changes = angular_changes 
+            event_quality[event] = 0.0
         batch_grad = np.copy(full_grad)
+        test_batch_grad = np.copy(batch_grad)
+
         while len(ctrl_group) >= min_ctrl or len(ctrl_group) > max_ctrl:
             redundant_gradient = min(angular_changes, key=angular_changes.get)
-
-            with h5py.File(redundant_gradient, "r") as f:
-                batch_grad -= f["MODEL/data"]
+            gradient = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=redundant_gradient
+            )
+            with h5py.File(gradient, "r") as f:
+                test_batch_grad -= f["MODEL/data"]
             angle = self._angle_between(full_grad, batch_grad)
 
             if angle >= self.comm.project.maximum_grad_divergence_angle:
-                #TODO: In this case I actually want the previous one.
                 break
-            
-        #TODO: Use all_angular_changes to score event quality
+            else:
+                batch_grad = np.copy(test_batch_grad)
+                del angular_changes[redundant_gradient]
+                event_quality[redundant_gradient] = 1/len(ctrl_group)
+                ctrl_group.remove(redundant_gradient)
+        
+        grads_dropped = self._dropout(ctrl_group)
+        tmp_event_qual = event_quality
+        best_non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
+        for grad in grads_dropped:
+            non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
+            event_quality[grad] = event_quality[best_non_ctrl_group_event]
+            ctrl_group.remove(grad)
+            ctrl_group.append(non_ctrl_group_event)
+            del tmp_event_qual[non_ctrl_group_event]
+            print(f"Event: {grad} randomly dropped from control group.\n")
+            print(f"Replaced by event: {non_ctrl_group_event} \n")
+        
+        # TODO: Store info regarding event quality in a toml file.
+        #       Not sure how to use it to select events later on though.
+        return ctrl_group
 
-        while len(ctrl_group) >= min_ctrl or len(ctrl_group) > max_ctrl:
-            min_angle = 180.0
-            for event in events:
-                gradient = self.comm.lasif.find_gradient(
-                    iteration=iteration,
-                    event=event
-                )
-                with h5py.File(gradient, "r") as f:
-                    individual_gradient = f["MODEL/data"]
-                angle = self._compute_angular_change(
-                    full_gradient=full_grad,
-                    full_norm=full_grad_norm,
-                    individual_gradient=individual_gradient
-                )
-                if angle < min_angle:
-                    min_angle = angle
-                    redundant_gradient = gradient
 
 

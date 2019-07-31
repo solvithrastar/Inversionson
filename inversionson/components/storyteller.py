@@ -1,6 +1,7 @@
 from .component import Component
 import os
 import shutil
+import toml
 
 from inversionson import InversionsonError
 
@@ -36,8 +37,19 @@ class StoryTellerComponent(Component):
         self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
+        self.events_used_toml = os.path.join(self.root, "events_used.toml")
+        self.events_quality_toml = os.path.join(
+            self.root, "events_quality.toml")
+        if os.path.exists(self.events_used_toml):
+            self.events_used = toml.load(self.events_used_toml)
+        else:
+            self._create_initial_events_used_toml()
+        if os.path.exists(self.events_quality_toml):
+            self.events_quality = toml.load(self.events_quality_toml)
+        else:
+            self._create_initial_events_quality_toml()
         self.markdown = MarkDown(self.story_file)
-    
+
     def _create_root_folder(self):
         """
         Initiate the folder structure if needed
@@ -49,6 +61,12 @@ class StoryTellerComponent(Component):
         if not os.path.exists(backup):
             os.mkdir(backup)
         return root, backup
+
+    def _backup_files(self):
+        """
+        Backup all information at the end of each iteration.
+        """
+        shutil.copytree(self.root, self.backup)
 
     def _backup_story_file(self):
         """
@@ -85,6 +103,28 @@ class StoryTellerComponent(Component):
         with open(self.all_events, "w+") as fh:
             fh.writelines(f"{event}\n" for event in all_events)
 
+    def _create_initial_events_used_toml(self):
+        """
+        Initialize the toml files which keeps track of usage of events
+        """
+        all_events = self.comm.lasif.list_events()
+        self.events_used = {}
+        for event in all_events:
+            self.events_used[event] = 0
+        with open(self.events_used_toml, "w+") as fh:
+            toml.dump(self.events_used, fh)
+
+    def _create_initial_events_quality_toml(self):
+        """
+        Initialize the toml files which keeps track of usage of events
+        """
+        all_events = self.comm.lasif.list_events()
+        self.events_quality = {}
+        for event in all_events:
+            self.events_quality[event] = 0.0
+        with open(self.events_quality_toml, "w+") as fh:
+            toml.dump(self.events_quality, fh)
+
     def _update_list_of_events(self):
         """
         In order to be able to add events to inversion we 
@@ -97,28 +137,47 @@ class StoryTellerComponent(Component):
             return
         else:
             for event in new:
+                self.events_quality[event] = 0.0
                 self.events_used[event] = 0
-    
+            with open(self.events_used_toml, "w") as fh:
+                toml.dump(self.events_used, fh)
+            with open(self.events_quality_toml, "w") as fh:
+                toml.dump(self.events_quality, fh)
+
     def _update_usage_of_events(self):
         """
         To keep track of how often events are used.
         """
         for event in self.comm.project.events_in_iteration:
             self.events_used[event] += 1
-    
+        with open(self.events_used_toml, "w") as fh:
+            toml.dump(self.events_used, fh)
+
+    def _update_event_quality(self):
+        """
+        Keep track of event quality, which is based on removal order of
+        batch gradients in control group selection.
+        """
+        for key, val in self.comm.project.event_quality:
+            self.events_quality[key] = val
+        with open(self.events_quality_toml, "w") as fh:
+            toml.dump(self.events_quality, fh)
+
     def _start_entry_for_iteration(self):
         """
         Start a new section in the story file
         """
+        iteration = self.comm.project.current_iteration
+        iteration_number = int(iteration.split("_")[0][2:].strip("0"))
         self.markdown.add_header(
             header_style=2,
-            text=self.comm.project.current_iteration
+            text=f"Iteration: {iteration_number}"
         )
         text = f"Here you can read all about what happened in iteration "
-        text += f"{self.comm.project.current_iteration}."
+        text += f"{iteration_number}."
 
         self.markdown.add_paragraph(text=text)
-    
+
     def _add_image_of_data_coverage(self):
         """
         Include an image of event distribution to story file.
@@ -135,13 +194,40 @@ class StoryTellerComponent(Component):
                         f"{self.comm.project.current_iteration}",
             alt_text="text"
         )
-    
+
+    def _report_acceptance_of_model(self):
+        """
+        When model gets accepted and we compute additional misfits,
+        we report it to story file.
+        """
+        iteration = self.comm.project.current_iteration
+        iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+        tr_region = float(iteration.split("_")[-1][:-2])
+        text = f"Model for Iteration {iteration_number} accepted for"
+        text += f" trust region: {tr_region}."
+
+        self.markdown.add_paragraph(text=text, textstyle='bold')
+
+    def _report_shrinking_of_trust_region(self):
+        """
+        When model gets accepted and we compute additional misfits,
+        we report it to story file.
+        """
+        iteration = self.comm.project.current_iteration
+        iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+        tr_region = float(iteration.split("_")[-1][:-2])
+        text = f"Model for Iteration {iteration_number} was rejected "
+        text += f"so now we shrink the trust region to: {tr_region} "
+        text += f"and try again."
+
+        self.markdown.add_paragraph(text=text)
+
     def _get_misfit_reduction(self):
         """
         Compute misfit reduction between previous two iterations
         """
         # We start with misfit of previous iteration
-        prev_iter = self.comm.salvus_opt.get_previous_iteration_name
+        prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
         prev_it_dict = self.comm.project.get_old_iteration_info(prev_iter)
 
         prev_total_misfit = 0.0
@@ -150,20 +236,21 @@ class StoryTellerComponent(Component):
             prev_total_misfit += prev_it_dict["events"][key]["misfit"]
             for key in prev_it_dict["new_control_group"]:
                 prev_cg_misfit += prev_it_dict["events"][key]["misfit"]
-        
+
         current_total_misfit = 0.0
         current_cg_misfit = 0.0
         for key, value in self.comm.project.misfits:
             current_total_misfit += value
             if key in self.comm.project.old_control_group:
                 current_cg_misfit += value
-        
-        tot_red = (prev_total_misfit - current_total_misfit) / prev_total_misfit
+
+        tot_red = (prev_total_misfit - current_total_misfit) / \
+            prev_total_misfit
         cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
 
         return tot_red, cg_red
 
-    def _add_table_of_events_and_misfits(self):
+    def _add_table_of_events_and_misfits(self, verbose=None):
         """
         Include a table of events and corresponding misfits to
         the story file.
@@ -172,8 +259,19 @@ class StoryTellerComponent(Component):
             header_style=3,
             text="Misfits"
         )
-        text = "The events used in the iteration along with their misfits"
-        text += " are displayed below:"
+        if not verbose:
+            text = "The events used in the iteration along with their misfits"
+            text += " are displayed below:"
+
+        if verbose and "additional" not in verbose:
+            text = "We have computed misfits for the control group events. "
+            text += "The misfits are displayed below. The additional events "
+            text += "are displayed with 0.0 misfit values."
+
+        if verbose and "additional" in verbose:
+            text = "We have now computed the misfits for all the events of "
+            text += "the iteration. These are displayed below."
+
         self.markdown.add_paragraph(text=text)
         iteration = self.comm.project.current_iteration
         self.comm.project.get_iteration_attributes(iteration)
@@ -181,21 +279,35 @@ class StoryTellerComponent(Component):
             data=self.comm.project.misfits,
             headers=["Events", "Misfits"]
         )
-        total_misfit = 0.0
-        old_control_group_misfit = 0.0
-        for key, value in self.comm.project.misfits:
-            total_misfit += value
-            if key in self.comm.project.old_control_group:
-                old_control_group_misfit += value
+        if verbose and "additional" in verbose:
+            total_misfit = 0.0
+            old_control_group_misfit = 0.0
+            for key, value in self.comm.project.misfits:
+                total_misfit += value
+                if key in self.comm.project.old_control_group:
+                    old_control_group_misfit += value
+
+            _, cg_red = self._get_misfit_reduction()
+
+            text = f"Total misfit for iteration: {total_misfit} \n"
+            text += f"Misfit for the old control group: "
+            text += f"{old_control_group_misfit}"
+            text += f"\n Misfit reduction between the iterations: {cg_red}"
         
-        _, cg_red = self._get_misfit_reduction()
-        
-        text = f"Total misfit for iteration: {total_misfit} \n"
-        text += f"Misfit for the old control group: {old_control_group_misfit}"
-        text += f"\n Misfit reduction between the control groups: {cg_red}"
+        if verbose and "additional" not in verbose:
+            old_control_group_misfit = 0.0
+            for key, value in self.comm.project.misfits:
+                if key in self.comm.project.old_control_group:
+                    old_control_group_misfit += value
+            
+            _, cg_red = self._get_misfit_reduction()
+
+            text = f"Misfit for the old control group: "
+            text += f"{old_control_group_misfit}"
+            text += f"\n Misfit reduction between the iterations: {cg_red}"
 
         self.markdown.add_paragraph(text=text)
-    
+
     def _report_control_group(self):
         """
         Report what the new control group is and what the current misfit is.
@@ -216,11 +328,33 @@ class StoryTellerComponent(Component):
         for key, value in self.comm.project.misfits:
             if key in self.comm.project.new_control_group:
                 cg_misfit += value
-        
+
         text = f"The current misfit for the control group is {cg_misfit}"
         self.markdown.add_paragraph(text=text)
 
-    def document_task(self, task: str):
+    def _report_number_of_used_events(self):
+        """
+        At the end of each iteration we report how many events have been
+        uses in inversion.
+        """
+        num_events = len(
+            [x for x in list(self.events_used.values()) if x != 0])
+        
+        text = f"We have now used {num_events} events during the inversion."
+
+        self.markdown.add_paragraph(text=text)
+
+    def _initiate_gradient_computation_task(self):
+        """
+        Write a quick paragraph reporting that we will now compute gradients
+        for the accepted trial model.
+        """
+        text = "Since model has been accepted, we will now compute "
+        text += "gradients for all batch events for the accepted model."
+
+        self.markdown.add_paragraph(text=text)
+
+    def document_task(self, task: str, verbose=None):
         """
         Depending on what kind of task it is, the function makes
         sure that there exists proper documentation of what happened
@@ -228,6 +362,8 @@ class StoryTellerComponent(Component):
 
         :param task: Type of task
         :type task: str
+        :param verbose: Additional information regarding task, optional.
+        :type verbose: str
         """
         if task == "compute_misfit_and_gradient":
             # The compute misfit and gradient task is always associated
@@ -236,17 +372,32 @@ class StoryTellerComponent(Component):
             # We need to create all necessary files
             self._create_story_file()
             self._write_list_of_all_events()
-            self.events_used = {}
-            for event in self.comm.lasif.list_events():
-                self.events_used[event] = 0
-        if task != "compute_gradient" or task != "finalize_iteration":
             self._update_usage_of_events()
-            self._start_entry_for_iteration()
             self._add_image_of_data_coverage()
             self._add_table_of_events_and_misfits()
-
-        elif task == "compute_gradient":
             self._report_control_group()
+            self._update_event_quality()
+        if task == "compute_misfit":
+            first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
+            if "additional" in verbose:
+                self._report_acceptance_of_model()
+                self._update_usage_of_events()
+            else:
+                if first_try:
+                    self._start_entry_for_iteration()
+                    self._add_image_of_data_coverage()
+                if not first_try:
+                    self._report_shrinking_of_trust_region()
+            self._add_table_of_events_and_misfits(verbose)
+
+        if task == "compute_gradient":
+            self._initiate_gradient_computation_task()
+            self._report_control_group()
+            self._update_event_quality()
+
+        if task == "finalize_iteration":
+            self._report_number_of_used_events()
+            self._backup_files()
 
 
 class MarkDown(StoryTellerComponent):
@@ -323,11 +474,11 @@ class MarkDown(StoryTellerComponent):
         string = string.replace('&', '&amp;')
         string = string.replace('<', '&lt;')
         self.stream = string
-    
+
     def add_paragraph(self, text: str, textstyle='normal'):
         """
         Add a brand new paragraph to the markdown file
-        
+
         :param text: Content of paragraph
         :type text: str
         :param textstyle: Style of text, defaults to 'normal'
@@ -335,7 +486,7 @@ class MarkDown(StoryTellerComponent):
         """
         if textstyle not in self.text_styles:
             raise ValueError(f"Text style {textstyle} is not available")
-        
+
         self.stream = text
         self._transform_special_characters()
 
@@ -349,11 +500,11 @@ class MarkDown(StoryTellerComponent):
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()
-    
+
     def add_image(self, image_url: str, image_title="", alt_text="text"):
         """
         Add an image to a markdown file
-        
+
         :param image_url: Location of an image, I think this can be a file
         when using a local markdown and not an online one.
         :type image_url: str
@@ -366,12 +517,12 @@ class MarkDown(StoryTellerComponent):
         self.stream += f"({image_url} \"{image_title}\")"
         self._add_line_break()
         self._append_to_file()
-    
+
     def add_table(self, data: dict, headers=["Events", "Misfits"]):
         """
         Add a table to a markdown file. Currently only for 2 column
         based data.
-        
+
         :param data: Data to display in table
         :type data: dict
         :param headers: Table headers, defaults to ["Events", "Misfits"]
@@ -380,18 +531,18 @@ class MarkDown(StoryTellerComponent):
         self.stream = ""
         self.stream += f"| {headers[0]} | {headers[1]} |\n"
         self.stream += "| --- | ---: | \n"
-        
+
         for key, value in data:
             self.stream += f"| {key} | {value} |\n"
-        
+
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()
-    
+
     def add_list(self, items: list):
         """
         Add an unordered list to a markdown file.
-        
+
         :param items: Items to be listed
         :type items: list
         """
@@ -399,7 +550,7 @@ class MarkDown(StoryTellerComponent):
 
         for item in items:
             self.stream += f"* {item} \n"
-        
+
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()

@@ -42,22 +42,22 @@ class autoinverter(object):
 
         return ProjectComponent(self.info).get_communicator()
 
-    def initialize_inversion(self):
-        """
-        Set up everything regarding the inversion. Make sure everything
-        is correct and that information is there.
-        Make this check status of salvus opt, the inversion does not have
-        to be new to call this method.
-        """
-        # Check status of inversion. If no task file or if task is closed,
-        # run salvus opt. Otherwise just read task and start working.
-        # Will do later.
-        task = self.comm.salvus_opt.read_salvus_opt_task()
-        self.comm.project.get_inversion_attributes(
-            simulation_info=self.comm.project.simulation_dict
-        )
-        self.comm.project.create_control_group_toml()
-        self.perform_task(task)
+    # def initialize_inversion(self):
+    #     """
+    #     Set up everything regarding the inversion. Make sure everything
+    #     is correct and that information is there.
+    #     Make this check status of salvus opt, the inversion does not have
+    #     to be new to call this method.
+    #     """
+    #     # Check status of inversion. If no task file or if task is closed,
+    #     # run salvus opt. Otherwise just read task and start working.
+    #     # Will do later.
+    #     task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+    #     self.comm.project.get_inversion_attributes(
+    #         simulation_info=self.comm.project.simulation_dict
+    #     )
+    #     self.comm.project.create_control_group_toml()
+    #     self.perform_task(task, verbose)
 
     def prepare_iteration(self, first=False):
         """
@@ -70,6 +70,7 @@ class autoinverter(object):
         Update information in iteration dictionary.
         """
         it_name = self.comm.salvus_opt.get_newest_iteration_name()
+        first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
         self.comm.project.current_iteration = it_name
         it_toml = os.path.join(self.comm.project.paths["iteration_tomls"], it_name + ".toml")
         if os.path.exists(it_toml):
@@ -78,9 +79,14 @@ class autoinverter(object):
             # not the iteration, we finish making the iteration
             if len(self.comm.project.events_in_iteration) != 0:
                 return
-
-        events = self.comm.lasif.get_minibatch(it_name, first)
-        self.comm.project.events_used = events
+        if first_try:
+            events = self.comm.lasif.get_minibatch(it_name, first)
+        else:
+            prev_try = self.comm.salvus_opt.get_previous_iteration_name(
+                tr_region=True)
+            prev_try = self.comm.project.get_old_iteration_info(prev_try)
+            events = list(prev_try["events"].keys())
+        self.comm.project.events_in_iteration = events
         self.comm.lasif.set_up_iteration(it_name, events)
 
         for event in events:
@@ -93,7 +99,6 @@ class autoinverter(object):
         self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name, events)
         self.comm.project.get_iteration_attributes(it_name)
-        # Storyteller
 
     def interpolate_model(self, event: str):
         """
@@ -341,12 +346,14 @@ class autoinverter(object):
         if not np.all(done):  # If not all done, keep monitoring
             self.wait_for_all_jobs_to_finish(sim_type)
 
-    def perform_task(self, task: str):
+    def perform_task(self, task: str, verbose: str):
         """
         Input a task and send to correct function
 
         :param task: task issued by salvus opt
         :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
         """
         if task == "compute_misfit_and_gradient":
             self.prepare_iteration(first=True)
@@ -371,17 +378,26 @@ class autoinverter(object):
 
             self.wait_for_all_jobs_to_finish("forward")
             self.wait_for_all_jobs_to_finish("adjoint")
+            
             self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.salvus_opt.run_salvus_opt()
-            task = self.comm.salvus_opt.read_salvus_opt()
-            self.perform_task(task)
+            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+            self.perform_task(task, verbose)
 
         elif task == "compute_misfit":
+            # TODO: Handle this depending on verbose info
+            # TODO: Make sure event usage is not updated if model was rejected
             self.prepare_iteration()
-            for event in self.comm.project.events_used:
+            if "compute misfit for" in verbose:
+                events_to_use = self.comm.project.old_control_group
+            else:
+                events_to_use = list(
+                    set(self.comm.project.events_in_iteration) - set(
+                        self.comm.project.old_control_group))
+            for event in events_to_use:
                 self.interpolate_model(event)
                 self.run_forward_simulation(event)
                 self.calculate_station_weights(event)
@@ -397,13 +413,13 @@ class autoinverter(object):
                         self.select_windows(event)
                         self.misfit_quantification(event)
 
-            self.comm.storyteller.document_task(task)
+            self.comm.storyteller.document_task(task, verbose)
             self.comm.salvus_opt.write_misfit_to_task_toml()
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.project.update_iteration_toml()
             self.comm.salvus_opt.run_salvus_opt()
-            task = self.comm.salvus_opt.read_salvus_opt()
-            self.perform_task(task)
+            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+            self.perform_task(task, verbose)
 
         elif task == "compute_gradient":
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
@@ -429,8 +445,8 @@ class autoinverter(object):
             self.comm.storyteller.document_task(task)
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.salvus_opt.run_salvus_opt()
-            task = self.comm.salvus_opt.read_salvus_opt()
-            self.perform_task(task)
+            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+            self.perform_task(task, verbose)
 
         elif task == "finalize_iteration":
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
@@ -439,18 +455,20 @@ class autoinverter(object):
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.project.update_iteration_toml()
             self.comm.salvus_opt.run_salvus_opt()
-            task = self.comm.salvus_opt.read_salvus_opt()
-            self.perform_task(task)
+            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+            self.perform_task(task, verbose)
             # Possibly delete wavefields
         
         elif task == "select_control_batch":
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
             self.comm.project.current_iteration = iteration
-            self.comm.project.get_iteration_attributes(iteration)
+            self.comm.project.get_iteration_attributes()
             # Need to implement these below
-            control_group = self.comm.lasif.select_control_group(dropout=True)
+            control_group = self.comm.minibatch.select_optimal_control_group()
             self.comm.salvus_opt.write_control_group_to_task_toml(
                 control_group=control_group)
+            self.comm.project.new_control_group = control_group
+            self.comm.project.update_control_group_toml(new=True)
 
         else:
             raise ValueError(f"Salvus Opt task {task} not known")
@@ -464,11 +482,11 @@ class autoinverter(object):
                 Close task, repeat.
         """
         # Always do this as a first thing, Might write a different function for checking status
-        self.initialize_inversion()
+        # self.initialize_inversion()
 
-        task = self.comm.salvus_opt.read_salvus_opt_task()
+        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
 
-        self.perform_task(task)
+        self.perform_task(task, verbose)
 
 
 def read_information_toml(info_toml_path: str):
