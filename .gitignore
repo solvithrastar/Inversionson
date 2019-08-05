@@ -105,4 +105,6 @@ venv.bak/
 
 .Reminders
 
-./vscode
+# vscode
+.vscode/
+
