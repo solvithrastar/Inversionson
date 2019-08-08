@@ -18,6 +18,7 @@ from .mesh_comp import SalvusMeshComponent
 from .opt_comp import SalvusOptComponent
 from .storyteller import StoryTellerComponent
 from .batch_comp import BatchComponent
+from .smooth_comp import SalvusSmoothComponent
 
 
 class ProjectComponent(Component):
@@ -139,6 +140,13 @@ class ProjectComponent(Component):
                 "for forward modelling. Key: modelling_parameters"
             )
 
+        if "n_random_events" not in self.info.keys():
+            raise InversionsonError(
+                "We need information regarding how many events should be "
+                "randomly picked when all events have been used. "
+                "Key: n_random_events"
+            )
+
         # Salvus Opt
         if "salvus_opt_dir" not in self.info.keys():
             raise InversionsonError(
@@ -147,6 +155,12 @@ class ProjectComponent(Component):
             folder = pathlib.Path(self.info["salvus_opt_dir"])
             if not (folder / "inversion.toml").exists():
                 raise InversionsonError("Salvus opt inversion not initiated")
+        
+        # Salvus Smoother
+        if "salvus_smoother" not in self.info.keys():
+            raise InversionsonError(
+                "We need information regarding location of your salvus "
+                "smoother binary. Key: salvus_smoother")
 
         # Lasif
         if "lasif_project" not in self.info.keys():
@@ -185,6 +199,8 @@ class ProjectComponent(Component):
         StoryTellerComponent(communicator=self.comm,
                              component_name="storyteller")
         BatchComponent(communicator=self.comm, component_name="minibatch")
+        SalvusSmoothComponent(communicator=self.comm,
+                              component_name="smoother")
 
     def _arrange_params(self, parameters: list) -> list:
         """
@@ -197,9 +213,9 @@ class ProjectComponent(Component):
         :param parameters: parameters to be arranged
         :type parameters: list
         """
-        case_tti_inv = set("VSV", "VSH", "VPV", "VPH", "RHO")
-        case_tti_mod = set("VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "ETA")
-        case_iso_inv = set("VP", "VS", "RHO")
+        case_tti_inv = set(["VSV", "VSH", "VPV", "VPH", "RHO"])
+        case_tti_mod = set(["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "ETA"])
+        case_iso_inv = set(["VP", "VS", "RHO"])
 
         if set(parameters) == case_tti_inv:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
@@ -236,6 +252,7 @@ class ProjectComponent(Component):
         self.site_name = self.info["site_name"]
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]
+        self.n_random_events_picked = self.info["n_random_events"]
         if not first:
             self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
         self.inversion_params = self._arrange_params(
@@ -264,6 +281,7 @@ class ProjectComponent(Component):
             self.paths["documentation"], "ITERATIONS")
         if not os.path.exists(self.paths["iteration_tomls"]):
             os.makedirs(self.paths["iteration_tomls"])
+        self.paths["salvus_smoother"] = self.info["salvus_smoother"]
 
         self.paths["control_group_toml"] = os.path.join(
             self.paths["documentation"], "control_groups.toml"

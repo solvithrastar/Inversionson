@@ -31,7 +31,9 @@ class autoinverter(object):
 
     def __init__(self, info_dict: dict):
         self.info = info_dict
+        print("Will make communicator now")
         self.comm = self._find_project_comm()
+        print("Now I want to start running the inversion")
         self.run_inversion()
 
     def _find_project_comm(self):
@@ -118,7 +120,8 @@ class autoinverter(object):
         :param first: First iteration gradient to be interolated?
         :type first: bool
         """
-        self.comm.multi_mesh.interpolate_gradient_to_model(event, first=first)
+        self.comm.multi_mesh.interpolate_gradient_to_model(event,
+                                                           smooth=True)
 
     def run_forward_simulation(self, event: str):
         """
@@ -234,6 +237,22 @@ class autoinverter(object):
         """
         events = self.comm.lasif.get_minibatch(first=True)
         self.comm.project.events_used = events
+
+    def smooth_gradient(self, event: str):
+        """
+        Send a gradient for an event to the Salvus smoother
+
+        :param event: name of event
+        :type event: str
+        """
+        iteration = self.comm.project.current_iteration
+        gradient = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=event,
+            smooth=False
+        )
+        self.comm.smoother.generate_input_toml(gradient)
+        self.comm.smoother.run_smoother(gradient)
 
     def monitor_jobs(self, sim_type: str):
         """
@@ -378,7 +397,10 @@ class autoinverter(object):
 
             self.wait_for_all_jobs_to_finish("forward")
             self.wait_for_all_jobs_to_finish("adjoint")
-            
+
+            for event in self.comm.project.events_used:
+                self.smooth_gradient(event)
+
             self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
@@ -437,6 +459,7 @@ class autoinverter(object):
                     break
                 else:
                     for event in events_retrieved:
+                        self.smooth_gradient(event)
                         self.interpolate_gradient(event, first)
                         first = False
             # Smooth gradients

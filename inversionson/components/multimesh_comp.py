@@ -51,45 +51,47 @@ class MultiMeshComponent(Component):
         else:
             raise ValueError(f"Mode: {mode} not supported")
 
-    def interpolate_gradient_to_model(self, event: str, first=False):
+    def interpolate_gradient_to_model(self, event: str, smooth=True):
         """
         Interpolate gradient parameters from simulation mesh to master
-        dicretisation
+        dicretisation. In minibatch approach gradients are not summed,
+        they are all interpolated to the same discretisation and salvus opt
+        deals with them individually.
         
         :param event: Name of event
         :type event: str
-        :param first: First gradient to be interpolated. If it should be
-        summed on top of an existing gradient, put False, defaults to False
-        :type first: bool, optional
+        :param smooth: Whether the smoothed gradient should be used
+        :type smooth: bool, optional
         """
         iteration = self.comm.project.current_iteration
         mode = self.comm.project.gradient_interpolation_mode
-        gradient = self.comm.lasif.find_gradient(iteration, event)
-        if first:
-            master_model = self.comm.lasif.get_master_model()
-            summed_gradient = self.comm.salvus_opt.get_model_path(
-                iteration, gradient=True)
-            shutil.copy(master_model, summed_gradient)
-        else:
-            summed_gradient = self.comm.salvus_opt.get_model_path(
-                iteration, gradient=True)
+        gradient = self.comm.lasif.find_gradient(iteration, event,
+                                                 smooth=smooth)
+
+        master_model = self.comm.lasif.get_master_model()
+        summed_gradient = self.comm.salvus_opt.get_model_path(
+            iteration, gradient=True)
+        seperator = "/"
+        master_disc_gradient = seperator.join(
+            gradient.split(seperator)[:-1]) + "/smooth_grad_master.h5"
+        shutil.copy(master_model, master_disc_gradient)
+
         if mode == "gll2gll":
             mapi.gll_2_gll(
                 from_gll=gradient,
-                to_gll=summed_gradient,
+                to_gll=master_disc_gradient,
                 nelem_to_search=5,
-                parameters=["VS", "VP", "RHO"],
-                gradient=True
+                parameters=self.comm.project.inversion_params,
+                gradient=False  # This is only true if added on top
                 )
-        elif mode == "gll2exo":
-            # Not being maintained currently
+        elif mode == "gll2exo":  # This will probably be removed soon
             mapi.gll_2_exodus(
                 gll_model=gradient,
                 exodus_model=summed_gradient,
                 nelem_to_search=5,
-                parameters=["VS", "VP", "RHO"],
+                parameters=self.comm.project.inversion_params,
                 gradient=True,
-                first=first
+                first=True
             )
         else:
             raise ValueError(f"Mode: {mode} not implemented")

@@ -82,16 +82,24 @@ class LasifComponent(Component):
             existing = list(set(existing + use_these))
         else:
             batch = existing
+            if len(blocked_events) == 0:
+                rand_batch = self.comm.salvus_opt.get_random_event(
+                    n=self.comm.project.n_random_events_picked,
+                    existing=existing
+                )
+                batch = list(set(batch) + set(rand_batch))
+                existing = batch
             avail_events = list(set(events) - set(blocked_events))
         # TODO: existing events should only be the control group.
         # events should exclude the blocked events because that's what
         # are the options to choose from. The existing go into the poisson disc
-        batch += lapi.get_subset(
+        add_batch = lapi.get_subset(
             self.lasif_comm,
             count=count,
             events=avail_events,
             existing_events=existing
         )
+        batch = list(set(batch) + set(add_batch))
         return batch
 
     def list_events(self):
@@ -140,7 +148,7 @@ class LasifComponent(Component):
                 f"Mesh for event: {event} has been moved to correct path for "
                 f"iteration: {iteration} and is ready for interpolation.")
 
-    def find_gradient(self, iteration: str, event: str) -> str:
+    def find_gradient(self, iteration: str, event: str, smooth=False) -> str:
         """
         Find the path to a gradient produced by an adjoint simulation.
 
@@ -148,12 +156,18 @@ class LasifComponent(Component):
         :type iteration: str
         :param event: Name of event
         :type event: str
+        :param smooth: Do you want the smoothed gradient, defaults to False
+        :type smooth: bool
         :return: Path to a gradient
         :rtype: str
         """
         gradients = self.lasif_comm.project.Project["gradients"]
-        gradient = os.path.join(gradients, f"ITERATION_{iteration}",
-                                event, "gradient.h5")
+        if smooth:
+            gradient = os.path.join(gradients, f"ITERATION_{iteration}",
+                                    event, "smooth_gradient.h5")
+        else:
+            gradient = os.path.join(gradients, f"ITERATION_{iteration}",
+                                    event, "gradient.h5")
         if os.path.exists(gradient):
             return gradient
         else:

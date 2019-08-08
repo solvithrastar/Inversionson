@@ -21,6 +21,8 @@ info["wall_time"] = 3600
 info["ranks"] = 1024
 info["inversion_parameters"] = ["VP", "VS", "RHO"]
 info["modelling_parameters"] = ["VP", "VS", "RHO"]
+info["n_random_events"] = 2
+info["salvus_smoother"] = os.path.join(cwd, "salvus_smoother")
 
 filename = os.path.join(cwd, "inversion_info.toml")
 with open(filename, "w+") as fh:
