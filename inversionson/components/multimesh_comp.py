@@ -95,5 +95,3 @@ class MultiMeshComponent(Component):
             )
         else:
             raise ValueError(f"Mode: {mode} not implemented")
-
-

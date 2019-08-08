@@ -255,6 +255,8 @@ class ProjectComponent(Component):
         self.n_random_events_picked = self.info["n_random_events"]
         if not first:
             self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            self.event_quality = toml.load(
+                self.comm.storyteller.event_quality_toml)
         self.inversion_params = self._arrange_params(
             self.info["inversion_parameters"])
         self.modelling_params = self._arrange_params(

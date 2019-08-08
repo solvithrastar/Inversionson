@@ -66,7 +66,7 @@ class BatchComponent(Component):
     def _angle_between(self, gradient_1, gradient_2) -> float:
         """
         Compute the angle between two gradients
-        
+
         :param gradient_1: numpy array with gradient info
         :type gradient_1: numpy array
         :param gradient_2: numpy array with gradient info
@@ -130,7 +130,8 @@ class BatchComponent(Component):
         for _i, event in enumerate(events):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
-                event=event
+                event=event,
+                smooth=True
             )
             gradient_paths.append(gradient)
             with h5py.File(gradient, "r") as f:
@@ -147,7 +148,8 @@ class BatchComponent(Component):
         for event in events:
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
-                event=event
+                event=event,
+                smooth=True
             )
             with h5py.File(gradient, "r") as f:
                 individual_gradient = f["MODEL/data"]
@@ -165,7 +167,8 @@ class BatchComponent(Component):
             redundant_gradient = min(angular_changes, key=angular_changes.get)
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
-                event=redundant_gradient
+                event=redundant_gradient,
+                smooth=True
             )
             with h5py.File(gradient, "r") as f:
                 test_batch_grad -= f["MODEL/data"]
@@ -190,10 +193,8 @@ class BatchComponent(Component):
             del tmp_event_qual[non_ctrl_group_event]
             print(f"Event: {grad} randomly dropped from control group.\n")
             print(f"Replaced by event: {non_ctrl_group_event} \n")
-        
-        # TODO: Store info regarding event quality in a toml file.
-        #       Not sure how to use it to select events later on though.
+
+        for key, val in event_quality:
+            self.comm.project.event_quality[key] = val
+
         return ctrl_group
-
-
-

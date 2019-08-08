@@ -10,7 +10,7 @@ import os
 from inversionson import InversionsonError, InversionsonWarning
 
 
-class autoinverter(object):
+class AutoInverter(object):
     """
     Ok lets do this.
     We need something that reads Salvus opt
@@ -117,7 +117,7 @@ class autoinverter(object):
 
         :param event: Name of event
         :type event: str
-        :param first: First iteration gradient to be interolated?
+        :param first: First iteration gradient to be interpolated?
         :type first: bool
         """
         self.comm.multi_mesh.interpolate_gradient_to_model(event,
@@ -375,13 +375,20 @@ class autoinverter(object):
         :type verbose: str
         """
         if task == "compute_misfit_and_gradient":
+            print("Will prepare iteration")
             self.prepare_iteration(first=True)
+            print("Iteration prepared")
+            print("Will select first event batch")
             self.get_first_batch_of_events()
+            print("Initial batch selected")
             for event in self.comm.project.events_used:
+                print(f"{event} interpolation")
                 self.interpolate_model(event)
+                print("Run forward simulation")
                 self.run_forward_simulation(event)
+                print("Calculate station weights")
                 self.calculate_station_weights(event)
-
+            print("Waiting for jobs")
             events_retrieved = []
             while events_retrieved != "All retrieved":
                 time.sleep(30)
@@ -390,6 +397,7 @@ class autoinverter(object):
                     break
                 else:
                     for event in events_retrieved:
+                        print(f"{event} retrieved")
                         self.process_data(event)
                         self.select_windows(event)
                         self.misfit_quantification(event)
@@ -410,8 +418,6 @@ class autoinverter(object):
             self.perform_task(task, verbose)
 
         elif task == "compute_misfit":
-            # TODO: Handle this depending on verbose info
-            # TODO: Make sure event usage is not updated if model was rejected
             self.prepare_iteration()
             if "compute misfit for" in verbose:
                 events_to_use = self.comm.project.old_control_group
@@ -504,7 +510,8 @@ class autoinverter(object):
                 Document it
                 Close task, repeat.
         """
-        # Always do this as a first thing, Might write a different function for checking status
+        # Always do this as a first thing, Might write a different function
+        # for checking status
         # self.initialize_inversion()
 
         task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
