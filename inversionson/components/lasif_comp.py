@@ -3,6 +3,8 @@ from __future__ import absolute_import
 from .component import Component
 import lasif.api as lapi
 import os
+from inversionson import InversionsonError, InversionsonWarning
+import warnings
 
 
 class LasifComponent(Component):
@@ -31,6 +33,21 @@ class LasifComponent(Component):
             folder = folder.parent
         raise ValueError(f"Path {self.lasif_root} is not a LASIF project")
 
+    def has_iteration(self, it_name: str) -> bool:
+        """
+        See if lasif project has the iteration already
+
+        :param it_name: name of iteration
+        :type name: str
+        :return: True if lasif has the iteration
+        """
+        iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        if isinstance(iterations, list):
+            if it_name in iterations:
+                return True
+        else:
+            return False
+
     def set_up_iteration(self, name: str, events=[]):
         """
         Create a new iteration in the lasif project
@@ -40,6 +57,12 @@ class LasifComponent(Component):
         :param events: list of events used in iteration, defaults to []
         :type events: list, optional
         """
+        iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        if isinstance(iterations, list):
+            if name in iterations:
+                warnings.warn(
+                    f"Iteration {name} already exists", InversionsonWarning)
+
         lapi.set_up_iteration(self.lasif_comm, iteration=name, events=events)
 
     def get_minibatch(self, first=False) -> list:
@@ -102,15 +125,16 @@ class LasifComponent(Component):
         batch = list(set(batch) + set(add_batch))
         return batch
 
-    def list_events(self):
+    def list_events(self, iteration=None):
         """
         Make lasif list events, supposed to be used when all events
-        are used per iteration.
+        are used per iteration. IF only for an iteration, pass 
+        an iteration value.
         """
         return lapi.list_events(
             self.lasif_comm,
             just_list=True,
-            iteration=None,
+            iteration=iteration,
             output=True)
 
     def has_mesh(self, event: str) -> bool:
@@ -245,7 +269,8 @@ class LasifComponent(Component):
         # Name weight set after event to know it
         weight_set_name = event
         # If set exists, we don't recalculate it
-        if self.lasif_comm.has_weight_set(weight_set_name):
+        if self.lasif_comm.weights.has_weight_set(weight_set_name):
+            print(f"Weight set already exists for event {event}")
             return
 
         lapi.compute_station_weights(

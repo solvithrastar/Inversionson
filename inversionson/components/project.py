@@ -7,6 +7,7 @@ the inversion itself.
 
 import os
 import toml
+import shutil
 from inversionson import InversionsonError, InversionsonWarning
 
 from .communicator import Communicator
@@ -61,7 +62,7 @@ class ProjectComponent(Component):
         return simulation_info
 
     def get_communicator(self):
-        return self.__comm()
+        return self.__comm
 
     def _validate_inversion_project(self):
         """
@@ -147,14 +148,24 @@ class ProjectComponent(Component):
                 "Key: n_random_events"
             )
 
-        # Salvus Opt
-        if "salvus_opt_dir" not in self.info.keys():
+        if "max_ctrl_group_size" not in self.info.keys():
             raise InversionsonError(
-                "Information on salvus_opt_dir is missing from information")
-        else:
-            folder = pathlib.Path(self.info["salvus_opt_dir"])
-            if not (folder / "inversion.toml").exists():
-                raise InversionsonError("Salvus opt inversion not initiated")
+                "We need information regarding maximum control group size."
+                " Key: max_ctrl_group_size")
+        
+        if "min_ctrl_group_size" not in self.info.keys():
+            raise InversionsonError(
+                "We need information regarding minimum control group size."
+                " Key: min_ctrl_group_size")
+
+        # # Salvus Opt
+        # if "salvus_opt_dir" not in self.info.keys():
+        #     raise InversionsonError(
+        #         "Information on salvus_opt_dir is missing from information")
+        # else:
+        #     folder = pathlib.Path(self.info["salvus_opt_dir"])
+        #     if not (folder / "inversion.toml").exists():
+        #         raise InversionsonError("Salvus opt inversion not initiated")
         
         # Salvus Smoother
         if "salvus_smoother" not in self.info.keys():
@@ -163,24 +174,25 @@ class ProjectComponent(Component):
                 "smoother binary. Key: salvus_smoother")
 
         # Lasif
-        if "lasif_project" not in self.info.keys():
+        if "lasif_root" not in self.info.keys():
             raise InversionsonError(
-                "Information on lasif_project is missing from information")
+                "Information on lasif_project is missing from information. "
+                "Key: lasif_root")
         else:
-            folder = pathlib.Path(self.info["lasif_project"])
+            folder = pathlib.Path(self.info["lasif_root"])
             if not (folder / "lasif_config.toml").exists():
                 raise InversionsonError("Lasif project not initialized")
 
         # Simulation parameters:
-        if "end_time_in_seconds" not in self.sim_info.keys():
+        if "end_time" not in self.simulation_dict.keys():
             raise InversionsonError(
                 "Information regarding end time of simulation missing")
 
-        if "time_step_in_seconds" not in self.sim_info.keys():
+        if "time_step" not in self.simulation_dict.keys():
             raise InversionsonError(
                 "Information regarding time step of simulation missing")
 
-        if "start_time_in_seconds" not in self.sim_info.keys():
+        if "start_time" not in self.simulation_dict.keys():
             raise InversionsonError(
                 "Information regarding start time of simulation missing")
 
@@ -214,15 +226,19 @@ class ProjectComponent(Component):
         :type parameters: list
         """
         case_tti_inv = set(["VSV", "VSH", "VPV", "VPH", "RHO"])
-        case_tti_mod = set(["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "ETA"])
-        case_iso_inv = set(["VP", "VS", "RHO"])
+        case_tti_mod = set(
+                ["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
+        case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
+        case_iso_inv = set(["VP", "VS"])
 
         if set(parameters) == case_tti_inv:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
         elif set(parameters) == case_tti_mod:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "ETA"]
         elif set(parameters) == case_iso_inv:
-            parameters = ["VP", "VS", "RHO"]
+            parameters = ["VP", "VS"]
+        elif set(parameters) == case_iso_mod:
+            parameters = ["QKAPPA", "QMU", "VP", "VS", "RHO"]
         else:
             raise InversionsonWarning(f"Parameter list {parameters} not "
                                       f"a recognized set of parameters")
@@ -253,10 +269,13 @@ class ProjectComponent(Component):
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]
         self.n_random_events_picked = self.info["n_random_events"]
+        self.max_ctrl_group_size = self.info["max_ctrl_group_size"]
+        self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
         if not first:
             self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            print(f"Current Iteration: {self.current_iteration}")
             self.event_quality = toml.load(
-                self.comm.storyteller.event_quality_toml)
+                self.comm.storyteller.events_quality_toml)
         self.inversion_params = self._arrange_params(
             self.info["inversion_parameters"])
         self.modelling_params = self._arrange_params(
@@ -300,17 +319,24 @@ class ProjectComponent(Component):
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml")
         if os.path.exists(iteration_toml):
-            raise InversionsonError(
-                f"Iteration toml for iteration: {iteration} already exists.")
+            warnings.warn(
+                f"Iteration toml for iteration: {iteration} already exists. backed it up",
+                InversionsonWarning)
+            backup = os.path.join(
+                    self.paths["iteration_tomls"], f"backup_{iteration}.toml")
+            os.copyfile(iteration_toml, backup)
 
         it_dict = {}
         it_dict["name"] = iteration
-        it_dict["events"] = self.comm.lasif.list_events(iteration=iteration)
+        it_dict["events"] = {}
+        for event in self.comm.lasif.list_events(iteration=iteration):
+            it_dict["events"][event] = {}
         # I need a way to figure out what the controlgroup is
         it_dict["last_control_group"] = []
         it_dict["new_control_group"] = []
         for event in it_dict["events"]:
             it_dict["events"][event]["misfit"] = 0.0
+            it_dict["events"][event]["jobs"] = {}
             it_dict["events"][event]["jobs"]["forward"] = {
                 "name": "",
                 "submitted": False,
@@ -325,6 +351,24 @@ class ProjectComponent(Component):
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
+    def change_attribute(self, attribute: str, new_value):
+        """
+        Not possible to change attributes from another class.
+        This method should take care of it
+
+        :param attribute: Name of attribute
+        :type attribute: str
+        :param new_value: The new value to assign to the attribute
+        :type new_value: whatever the attribure needs
+        """
+        if isinstance(new_value, str):
+            command = f"self.{attribute} = \"{new_value}\""
+        elif isinstance(new_value, list):
+            command = f"self.{attribute} = {new_value}"
+        else:
+            raise InversionsonError(f"Method not implemented for type {new_value.type}")
+        exec(command)
+
     def update_control_group_toml(self, new=False, first=False):
         """
         A toml file for monitoring which control group is used in each
@@ -336,7 +380,7 @@ class ProjectComponent(Component):
         :type first: bool, optional
         """
         iteration = self.current_iteration
-
+        print(f"Iteration: {iteration}")
         if first:
             cg_dict = {}
             cg_dict[iteration] = {"old": [], "new": []}
@@ -401,7 +445,7 @@ class ProjectComponent(Component):
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
         self.events_in_iteration = list(it_dict["events"].keys())
-        self.old_control_group = it_dict["old_control_group"]
+        self.old_control_group = it_dict["last_control_group"]
         self.new_control_group = it_dict["new_control_group"]
         self.misfits = {}
         self.forward_job = {}

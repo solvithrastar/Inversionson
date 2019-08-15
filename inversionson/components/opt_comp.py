@@ -9,6 +9,8 @@ import toml
 import os
 import subprocess
 import shutil
+import sys
+
 from inversionson import InversionsonError
 import numpy as np
 
@@ -28,8 +30,18 @@ class SalvusOptComponent(Component):
         """
         Run salvus opt to get next task. I think this should work well enough.
         """
-        path_to_run_script = os.path.join(self.path, "run_salvus_opt.sh")
-        subprocess.call([path_to_run_script])
+        run_script = os.path.join(self.path, "run_salvus_opt.sh")
+        if not os.path.exists(run_script):
+            raise InversionsonError("Please create a shell script to run "
+                                    "Salvus opt in your opt folder.")
+        run_script = f"sh {run_script}"
+        process = subprocess.Popen(
+            run_script, shell=True, stdout=subprocess.PIPE)
+        for line in iter(process.stdout.readline, b''):
+            sys.stdout.write(line)
+        process.wait()
+        print(process.returncode)
+        # subprocess.call([path_to_run_script])
 
     def read_salvus_opt(self) -> dict:
         """
@@ -362,17 +374,19 @@ class SalvusOptComponent(Component):
         iterations = {}
 
         for model in models:
-            if len(model) < 16:
-                # The first iteration is shorter
-                iteration = int(model[2:6])
-                tr_region = 9.999999
-                iterations[iteration] = [tr_region]
-            iteration = int(model[2:6])
-            tr_region = float(model[-10:-2])
-            if iteration in iterations:
-                iterations[iteration].append(tr_region)
-            else:
-                iterations[iteration] = [tr_region]
+            if not model[-4:] == "xdmf":
+                if len(model) < 17:
+                    # The first iteration is shorter
+                    iteration = int(model[2:6])
+                    tr_region = 9.999999
+                    iterations[iteration] = [tr_region]
+                else:
+                    iteration = int(model[2:6])
+                    tr_region = float(model[-10:-2])
+                    if iteration in iterations:
+                        iterations[iteration].append(tr_region)
+                    else:
+                        iterations[iteration] = [tr_region]
         
         return iterations
 

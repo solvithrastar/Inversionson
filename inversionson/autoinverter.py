@@ -7,7 +7,9 @@ automatic Full-Waveform Inversion
 import numpy as np
 import time
 import os
+import sys
 from inversionson import InversionsonError, InversionsonWarning
+import lasif.api
 
 
 class AutoInverter(object):
@@ -73,22 +75,32 @@ class AutoInverter(object):
         """
         it_name = self.comm.salvus_opt.get_newest_iteration_name()
         first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
-        self.comm.project.current_iteration = it_name
-        it_toml = os.path.join(self.comm.project.paths["iteration_tomls"], it_name + ".toml")
-        if os.path.exists(it_toml):
-            self.comm.project.get_iteration_attributes(it_name)
+        self.comm.project.change_attribute("current_iteration", it_name)
+        it_toml = os.path.join(
+            self.comm.project.paths["iteration_tomls"], it_name + ".toml")
+        if self.comm.lasif.has_iteration(it_name):
+            if not os.path.exists(it_toml):
+                self.comm.project.create_iteration_toml(it_name)
+            self.comm.project.get_iteration_attributes()
             # If the iteration toml was just created but
             # not the iteration, we finish making the iteration
+            # Should never happen though
             if len(self.comm.project.events_in_iteration) != 0:
+                for event in self.comm.project.events_in_iteration:
+                    if not self.comm.lasif.has_mesh(event):
+                        self.comm.salvus_mesher.create_mesh(event)
+                        self.comm.lasif.move_mesh(event, it_name)
+                    else:
+                        self.comm.lasif.move_mesh(event, it_name)
                 return
         if first_try:
-            events = self.comm.lasif.get_minibatch(it_name, first)
+            events = self.comm.lasif.get_minibatch(first)
         else:
             prev_try = self.comm.salvus_opt.get_previous_iteration_name(
                 tr_region=True)
             prev_try = self.comm.project.get_old_iteration_info(prev_try)
             events = list(prev_try["events"].keys())
-        self.comm.project.events_in_iteration = events
+        self.comm.project.change_attribute("current_iteration", it_name)
         self.comm.lasif.set_up_iteration(it_name, events)
 
         for event in events:
@@ -99,7 +111,7 @@ class AutoInverter(object):
                 self.comm.lasif.move_mesh(event, it_name)
 
         self.comm.project.update_control_group_toml(first=first)
-        self.comm.project.create_iteration_toml(it_name, events)
+        self.comm.project.create_iteration_toml(it_name)
         self.comm.project.get_iteration_attributes(it_name)
 
     def interpolate_model(self, event: str):
@@ -379,15 +391,18 @@ class AutoInverter(object):
             self.prepare_iteration(first=True)
             print("Iteration prepared")
             print("Will select first event batch")
-            self.get_first_batch_of_events()
+            # self.get_first_batch_of_events() Already have the batch from
+            # The iteration preparation
             print("Initial batch selected")
-            for event in self.comm.project.events_used:
+            for event in self.comm.project.events_in_iteration:
                 print(f"{event} interpolation")
                 self.interpolate_model(event)
                 print("Run forward simulation")
-                self.run_forward_simulation(event)
+                #self.run_forward_simulation(event)
                 print("Calculate station weights")
                 self.calculate_station_weights(event)
+            
+            sys.exit("Don't want to run simulations")
             print("Waiting for jobs")
             events_retrieved = []
             while events_retrieved != "All retrieved":
@@ -543,4 +558,4 @@ if __name__ == "__main__":
         else:
             info_toml = os.path.join(cwd, info_toml)
     info = read_information_toml(info_toml)
-    invert = autoinverter(info)
+    invert = AutoInverter(info)

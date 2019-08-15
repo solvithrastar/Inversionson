@@ -8,6 +8,7 @@ import numpy as np
 import h5py
 import random
 
+
 class BatchComponent(Component):
     """
     Computations that need to be done in order to do a mini batch inversion.

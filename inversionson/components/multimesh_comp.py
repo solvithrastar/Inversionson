@@ -25,7 +25,7 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.model_interpolation_mode
         simulation_mesh = lapi.get_simulation_mesh(self.comm.lasif.lasif_comm,
                                                    event, iteration)
-        if mode == "gll2gll":
+        if mode == "gll_2_gll":
             model = os.path.join(self.physical_models, iteration + ".h5")
             # There are many more knobs to tune but for now lets stick to
             # defaults.
@@ -37,9 +37,9 @@ class MultiMeshComponent(Component):
                 to_model_path="MODEL/data",
                 from_coordinates_path="MODEL/coordinates",
                 to_coordinates_path="MODEL/coordinates",
-                parameters=["VP", "VS", "RHO"]
+                parameters=self.comm.project.modelling_params
             )
-        elif mode == "ex2gll":
+        elif mode == "exodus_2_gll":
             model = os.path.join(self.physical_models, iteration + ".e")
             # This function can be further specified for different inputs.
             # For now, let's leave it at the default values.
