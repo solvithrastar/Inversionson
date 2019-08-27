@@ -7,10 +7,17 @@ automatic Full-Waveform Inversion
 import numpy as np
 import time
 import os
+import shutil
 import sys
+import warnings
 from inversionson import InversionsonError, InversionsonWarning
 import lasif.api
 
+from colorama import init
+init()
+
+from colorama import Fore, Style
+import emoji
 
 class AutoInverter(object):
     """
@@ -33,9 +40,10 @@ class AutoInverter(object):
 
     def __init__(self, info_dict: dict):
         self.info = info_dict
-        print("Will make communicator now")
+        print(Fore.RED + "Will make communicator now")
         self.comm = self._find_project_comm()
-        print("Now I want to start running the inversion")
+        print(Fore.GREEN + "Now I want to start running the inversion")
+        print(Style.RESET_ALL)
         self.run_inversion()
 
     def _find_project_comm(self):
@@ -142,6 +150,40 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
+        # Check status of simulation
+        job_info = self.comm.project.forward_job[event]
+        if job_info["submitted"]:
+            if job_info["retrieved"]:
+                print(f"Simulation for event {event} already done.")
+                print("If you want it redone, change its status in iteration toml")
+                return
+            else:
+                status = str(self.comm.salvus_flow.get_job_status(
+                        event=event,
+                        sim_type="forward"))
+                if status == "JobStatus.running":
+                    print(f"Forward job for event {event} is running ")
+                    print("Will not resubmit. ")
+                    print("You can work with jobs using salvus-flow")
+                    return
+                elif status == "JobStatus.unknown":
+                    print(f"Status of job for event {event} is unknown")
+                    print(f"Will resubmit")
+                elif status == "JobStatus.cancelled":
+                    print(f"Status of job for event {event} is cancelled")
+                    print(f"Will resubmit")
+                elif status == "JobStatus.finished":
+                    print(f"Status of job for event {event} is finished")
+                    print("Will retrieve and update toml")
+                    self.comm.project.change_attribute(
+                            attribute=f"forward_job[\"{event}\"][\"retrived\"]",
+                            new_value=True)
+                    self.comm.project.update_iteration_toml()
+                    return
+                else:
+                    print("Jobstatus unknown for event {event}")
+                    print("Will resubmit")
+
         receivers = self.comm.salvus_flow.get_receivers(event)
         source = self.comm.salvus_flow.get_source_object(event)
         w = self.comm.salvus_flow.construct_simulation(
@@ -212,6 +254,26 @@ class AutoInverter(object):
         """
         self.comm.lasif.process_data(event)
 
+    def retrieve_seismograms(self, event: str):
+        """
+        Move seismograms from salvus_flow folder to output folder
+
+        :param event: Name of event
+        :type event: str
+        """
+        job_paths = self.comm.salvus_flow.get_job_file_paths(
+                event=event,
+                sim_type="forward")
+        
+        seismograms = job_paths[('output', 'point-data', 'filename')]
+        lasif_seismograms = self.comm.lasif.find_seismograms(
+                event=event,
+                iteration=self.comm.project.current_iteration)
+        
+        shutil.copyfile(seismograms, lasif_seismograms)
+        print(f"Copied seismograms for event {event} to lasif folder")
+
+
     def select_windows(self, event: str):
         """
         Select windows for an event in this iteration.
@@ -225,7 +287,7 @@ class AutoInverter(object):
         window_set_name = iteration + "_" + event
 
         # If event is in control group, we look for newest window set for event
-        if event in self.comm.project.control_group:
+        if event in self.comm.project.old_control_group:
             import glob
             import shutil
             windows = self.comm.lasif.lasif_comm.project.paths["windows"]
@@ -235,6 +297,7 @@ class AutoInverter(object):
             shutil.copy(latest_windows, os.path.join(
                 windows, window_set_name + ".sqlite"))
         else:
+            print("I entered into the window selection in autoinverter")
             self.comm.lasif.select_windows(
                 window_set_name=window_set_name,
                 event=event
@@ -279,72 +342,84 @@ class AutoInverter(object):
         import time
         events_retrieved_now = []
         events_already_retrieved = []
-        for event in self.comm.project.events_used:
+        for event in self.comm.project.events_in_iteration:
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["retrieved"]:
+                    # Temporary
+                    self.retrieve_seismograms(event)
                     events_already_retrieved.append(event)
                     continue
                 else:
-                    time.sleep(30)
+                    time.sleep(2)
                     status = self.comm.salvus_flow.get_job_status(
                         event, sim_type)  # This thing might time out
+                    print(f"Status = {status}")
+                    status = str(status)
 
-                    if status == JobStatus.finished:
-                        self.comm.project.forward_job[event]["retrieved"] = True
+                    if status == "JobStatus.finished":
+                        # Temporary
+                        self.retrieve_seismograms(event)
+                        self.comm.project.change_attribute(
+                                attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
+                                new_value=True)
                         self.comm.project.update_iteration_toml()
                         events_retrieved_now.append(event)
-                    elif status == JobStatus.pending:
+                    elif status == "JobStatus.pending":
                         continue
-                    elif status == JobStatus.running:
+                    elif status == "JobStatus.running":
                         continue
-                    elif status == JobStatus.failed:
+                    elif status == "JobStatus.failed":
                         print("Job failed. Need to implement something here")
                         print("Probably resubmit or something like that")
-                    elif status == JobStatus.unknown:
+                    elif status == "JobStatus.unknown":
                         print("Job unknown. Need to implement something here")
-                    elif status == JobStatus.cancelled:
+                    elif status == "JobStatus.cancelled":
                         print("What to do here?")
                     else:
-                        raise InversionsonWarning(
+                        warnings.warn(
                             f"Inversionson does not recognise job status: "
-                            f"{status}")
+                            f"{status}", InversionsonWarning)
 
             elif sim_type == "adjoint":
                 if self.comm.project.forward_job[event]["retrieved"]:
                     events_already_retrieved.append(event)
                     continue
                 else:
-                    time.sleep(30)
+                    time.sleep(2)
                     status = self.comm.salvus_flow.get_job_status(
                         event, sim_type)  # This thing might time out
+                    status = str(status)
 
-                    if status == JobStatus.finished:
-                        self.comm.project.adjoint_job[event]["retrieved"] = True
+                    if status == "JobStatus.finished":
+                        self.comm.project.change_attribute(
+                                attribute=f"adjoint_job[\"{event}\"][\"retrieved\"]",
+                                new_value=True)
                         self.comm.project.update_iteration_toml()
                         events_retrieved_now.append(event)
-                    elif status == JobStatus.pending:
+                    elif status == "JobStatus.pending":
                         continue
-                    elif status == JobStatus.running:
+                    elif status == "JobStatus.running":
                         continue
-                    elif status == JobStatus.failed:
+                    elif status == "JobStatus.failed":
                         print("Job failed. Need to implement something here")
                         print("Probably resubmit or something like that")
-                    elif status == JobStatus.unknown:
+                    elif status == "JobStatus.unknown":
                         print("Job unknown. Need to implement something here")
-                    elif status == JobStatus.cancelled:
+                    elif status == "JobStatus.cancelled":
                         print("What to do here?")
                     else:
-                        raise InversionsonWarning(
+                        warnings.warn(
                             f"Inversionson does not recognise job status: "
-                            f"{status}")
+                            f"{status}", InversionsonWarning)
             else:
                 raise ValueError(f"Sim type {sim_type} not supported")
 
         # If no events have been retrieved, we call the function again.
-        if len(events_already_retrieved) == len(self.comm.project.events_used):
-            return "All retrieved"
         if len(events_retrieved_now) == 0:
-            self.monitor_jobs(sim_type)
+            if len(events_already_retrieved) == len(self.comm.project.events_in_iteration):
+                return "All retrieved"
+            else:
+                self.monitor_jobs(sim_type)
         return events_retrieved_now
 
     def wait_for_all_jobs_to_finish(self, sim_type: str):
@@ -359,19 +434,24 @@ class AutoInverter(object):
         elif sim_type == "adjoint":
             jobs = self.comm.project.adjoint_job
 
-        done = np.zeros(len(self.comm.project.events_used), dtype=bool)
-        for _i, event in enumerate(self.comm.project.events_used):
+        done = np.zeros(len(self.comm.project.events_in_iteration), dtype=bool)
+        for _i, event in enumerate(self.comm.project.events_in_iteration):
             if jobs[event]["retrieved"]:
                 done[_i] = True
             else:
-                status = self.comm.salvus_flow.get_job_status(event, sim_type)
-                if status == JobStatus.finished:
+                status = str(self.comm.salvus_flow.get_job_status(event, sim_type))
+                if status == "JobStatus.finished":
                     jobs[event]["retrieved"] = True
 
         if sim_type == "forward":
-            self.comm.project.forward_job = jobs
+            self.retrieve_seismograms(event) # Temporary
+            self.comm.project.change_attribute(
+                    attribute="forward_job",
+                    new_value=jobs)
         elif sim_type == "adjoint":
-            self.comm.project.adjoint_job = jobs
+            self.comm.project.change_attribute(
+                    attribute="adjoint_job",
+                    new_value=jobs)
         self.comm.project.update_iteration_toml()
 
         if not np.all(done):  # If not all done, keep monitoring
@@ -387,40 +467,56 @@ class AutoInverter(object):
         :type verbose: str
         """
         if task == "compute_misfit_and_gradient":
+            print(Fore.RED)
             print("Will prepare iteration")
             self.prepare_iteration(first=True)
-            print("Iteration prepared")
+            print(emoji.emojize('Iteration prepared :thumbsup:',
+                use_aliases=True))
             print("Will select first event batch")
             # self.get_first_batch_of_events() Already have the batch from
             # The iteration preparation
             print("Initial batch selected")
             for event in self.comm.project.events_in_iteration:
+                print(Fore.CYAN + "\n ============================= \n")
                 print(f"{event} interpolation")
-                self.interpolate_model(event)
-                print("Run forward simulation")
-                #self.run_forward_simulation(event)
+                #self.interpolate_model(event)
+                print(Fore.YELLOW + "\n ============================ \n")
+                print(emoji.emojize(':rocket: | Run forward simulation',
+                    use_aliases=True))
+                self.run_forward_simulation(event)
+                print(Fore.RED + "\n =========================== \n")
                 print("Calculate station weights")
                 self.calculate_station_weights(event)
             
-            sys.exit("Don't want to run simulations")
+            print(Fore.BLUE + "\n ========================= \n")
             print("Waiting for jobs")
             events_retrieved = []
+            i = 0
             while events_retrieved != "All retrieved":
-                time.sleep(30)
+                print("I'm waiting for events")
+                i += 1
+                time.sleep(2)
+                print("Entering the self.monitor_jobs method")
                 events_retrieved = self.monitor_jobs("forward")
-                if events_retrieved == "All retrieved":
+                if events_retrieved == "All retrieved" and i != 1:
                     break
                 else:
+                    if len(events_retrieved) == 0:
+                        print("No new events retrieved, lets wait")
+                        # Should not happen
+                    if events_retrieved == "All retrieved":
+                        events_retrieved = self.comm.project.events_in_iteration
                     for event in events_retrieved:
                         print(f"{event} retrieved")
                         self.process_data(event)
                         self.select_windows(event)
                         self.misfit_quantification(event)
-                        self.run_adjoint_simulation(event)
+                        #self.run_adjoint_simulation(event)
 
             self.wait_for_all_jobs_to_finish("forward")
-            self.wait_for_all_jobs_to_finish("adjoint")
 
+            sys.exit("Stopped before adjoint related stuff")
+            self.wait_for_all_jobs_to_finish("adjoint")
             for event in self.comm.project.events_used:
                 self.smooth_gradient(event)
 
@@ -547,6 +643,9 @@ def read_information_toml(info_toml_path: str):
 
 
 if __name__ == "__main__":
+    print(emoji.emojize(
+        '\n :flag_for_Iceland: | Welcome to Inversionson | :flag_for_Iceland: \n',
+        use_aliases=True))
     info_toml = input("Give me a path to your information_toml \n")
     if not info_toml.startswith("/"):
         import os

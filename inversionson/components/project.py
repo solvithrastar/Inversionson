@@ -9,6 +9,7 @@ import os
 import toml
 import shutil
 from inversionson import InversionsonError, InversionsonWarning
+import warnings
 
 from .communicator import Communicator
 from .component import Component
@@ -238,7 +239,7 @@ class ProjectComponent(Component):
         elif set(parameters) == case_iso_inv:
             parameters = ["VP", "VS"]
         elif set(parameters) == case_iso_mod:
-            parameters = ["QKAPPA", "QMU", "VP", "VS", "RHO"]
+            parameters = ["QKAPPA", "QMU", "RHO", "VP", "VS"]
         else:
             raise InversionsonWarning(f"Parameter list {parameters} not "
                                       f"a recognized set of parameters")
@@ -324,29 +325,27 @@ class ProjectComponent(Component):
                 InversionsonWarning)
             backup = os.path.join(
                     self.paths["iteration_tomls"], f"backup_{iteration}.toml")
-            os.copyfile(iteration_toml, backup)
+            shutil.copyfile(iteration_toml, backup)
 
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
-        for event in self.comm.lasif.list_events(iteration=iteration):
-            it_dict["events"][event] = {}
         # I need a way to figure out what the controlgroup is
         it_dict["last_control_group"] = []
         it_dict["new_control_group"] = []
-        for event in it_dict["events"]:
-            it_dict["events"][event]["misfit"] = 0.0
-            it_dict["events"][event]["jobs"] = {}
-            it_dict["events"][event]["jobs"]["forward"] = {
+        job_dict = {
                 "name": "",
                 "submitted": False,
                 "retrieved": False
-            }
-            it_dict["events"][event]["jobs"]["adjoint"] = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False
-            }
+                }
+        for event in self.comm.lasif.list_events(iteration=iteration):
+            it_dict["events"][event] = {
+                    "misfit": 0.0,
+                    "jobs": {
+                        "forward": job_dict,
+                        "adjoint": job_dict
+                        }
+                    }
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -364,6 +363,10 @@ class ProjectComponent(Component):
         if isinstance(new_value, str):
             command = f"self.{attribute} = \"{new_value}\""
         elif isinstance(new_value, list):
+            command = f"self.{attribute} = {new_value}"
+        elif isinstance(new_value, bool):
+            command = f"self.{attribute} = {new_value}"
+        elif isinstance(new_value, dict):
             command = f"self.{attribute} = {new_value}"
         else:
             raise InversionsonError(f"Method not implemented for type {new_value.type}")
@@ -413,15 +416,20 @@ class ProjectComponent(Component):
         control_group_dict = control_group_dict[iteration]
         it_dict = {}
         it_dict["name"] = iteration
-        it_dict["events"] = self.events_in_iteration
+        it_dict["events"] = {}
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
         it_dict["last_control_group"] = control_group_dict["old"]
         it_dict["new_control_group"] = control_group_dict["new"]
-        for event in it_dict["events"]:
-            it_dict["events"][event]["misfit"] = self.misfits[event]
-            it_dict["events"][event]["jobs"]["forward"] = self.forward_job
-            it_dict["events"][event]["jobs"]["adjoint"] = self.adjoint_job
+
+        for event in self.comm.lasif.list_events(iteration=iteration):
+            it_dict["events"][event] = {
+                    "misfit": self.misfits[event],
+                    "jobs": {
+                        "forward": self.forward_job[event],
+                        "adjoint": self.adjoint_job[event]
+                        }
+                    }
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)

@@ -1,6 +1,7 @@
 from .component import Component
 import salvus_flow.api as sapi
 from inversionson import InversionsonError
+import os
 
 
 class SalvusFlowComponent(Component):
@@ -75,19 +76,21 @@ class SalvusFlowComponent(Component):
         from salvus_flow.simple_config import stf
 
         src_info = self.comm.lasif.get_source(event_name)
+        if isinstance(src_info, list):
+            src_info = src_info[0]
 
         src = source.seismology.MomentTensorPoint3D(
             latitude=src_info["latitude"],
             longitude=src_info["longitude"],
             depth_in_m=src_info["depth_in_m"],
-            mrr=src_info["m_rr"],
-            mtt=src_info["m_tt"],
-            mpp=src_info["m_pp"],
-            mtp=src_info["m_tp"],
-            mrp=src_info["m_rp"],
-            mrt=src_info["m_rt"],
+            mrr=src_info["mrr"],
+            mtt=src_info["mtt"],
+            mpp=src_info["mpp"],
+            mtp=src_info["mtp"],
+            mrp=src_info["mrp"],
+            mrt=src_info["mrt"],
             source_time_function=stf.Custom(filename=src_info["stf_file"],
-                                            dataset_name=src_info["source"])
+                                            dataset_name=src_info["dataset"])
         )
 
         return src
@@ -131,8 +134,8 @@ class SalvusFlowComponent(Component):
         from salvus_flow.simple_config import receiver
 
         recs = self.comm.lasif.get_receivers(event)
-
-        receivers = [receiver.seismology.SideSetPoint3D(
+        # TODO: Find out how the smoothiesem side sets work.
+        receivers = [receiver.seismology.Point3D(
             latitude=rec["latitude"],
             longitude=rec["longitude"],
             network_code=rec["network-code"],
@@ -193,8 +196,8 @@ class SalvusFlowComponent(Component):
         mesh = self.comm.lasif.get_simulation_mesh(event)
 
         w = simulation.Waveform(mesh=mesh)
-        w.adjoint.forward_meta_json_filename = "blabla"
-        w.adjoint.gradient.parameterization = "rho-vp-vs"  # temporary
+        w.adjoint.forward_meta_json_filename = "meta.json"
+        w.adjoint.gradient.parameterization = "rho-vp-vs"
         w.adjoint.gradient.output_filename = "gradient.h5"
         w.adjoint.point_source = adj_src
 
@@ -222,18 +225,33 @@ class SalvusFlowComponent(Component):
         defaults to 1024
         :type ranks: int, optional
         """
-
+        iteration = self.comm.project.current_iteration
+        output_folder = os.path.join(
+        self.comm.lasif.lasif_root,
+                "SYNTHETICS",
+                "EARTHQUAKES",
+                f"ITERATION_{iteration}",
+                event)
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
-            ranks=ranks,
-            wall_time_in_seconds=wall_time,
+            ranks=ranks
+            #wall_time_in_seconds=wall_time
+            #output_folder=output_folder
         )
+        #sapi.run(
+        #        site_name=site,
+        #        input_file=simulation,
+        #        output_folder=output_folder,
+        #        ranks=8,
+        #        overwrite=True)
         if sim_type == "forward":
-            self.comm.project.forward_job[event]["name"] = job.name
+            self.comm.project.change_attribute(f"forward_job[\"{event}\"][\"name\"]", job.job_name)
+            self.comm.project.change_attribute(f"forward_job[\"{event}\"][\"submitted\"]", True)
 
         elif sim_type == "adjoint":
-            self.comm.project.adjoint_job[event]["name"] = job.name
+            self.comm.project.change_attribute(f"adjoint_job[\"{event}\"][\"name\"]", job.job_name)
+            self.comm.project.change_attribute(f"adjoint_job[\"{event}\"][\"submitted\"]", True)
         self.comm.project.update_iteration_toml()
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
@@ -271,3 +289,25 @@ class SalvusFlowComponent(Component):
             site_name=self.comm.project.site_name)
 
         return job.update_status()
+
+    def get_job_file_paths(self, event: str, sim_type: str) -> dict:
+        """
+        Get the output folder for an event
+
+        :param event: Name of event
+        :type event: str
+        :param sim_type: Forward or adjoint simulation
+        :type sim_type: str
+        """
+        if sim_type == "forward":
+            job_name = self.comm.project.forward_job[event]["name"]
+        elif sim_type == "adjoint":
+            job_name = self.comm.project.adjoint_job[event]["name"]
+        else:
+            raise InversionsonError(f"Don't recognise sim_type {sim_type}")
+
+        job = sapi.get_job(
+                job_name=job_name,
+                site_name=self.comm.project.site_name)
+
+        return job.get_output_files()

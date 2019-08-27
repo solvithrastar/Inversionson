@@ -329,14 +329,14 @@ class LasifComponent(Component):
         :return: True/False regarding the alreadyness of the processed data.
         :rtype: bool
         """
-        low_period = self.comm.project.low_period
-        high_period = self.comm.project.high_period
+        low_period = self.comm.project.period_low
+        high_period = self.comm.project.period_high
         processed_filename = "preprocessed_" + \
             str(int(low_period)) + "s_to_" + str(int(high_period)) + "s.h5"
-        processed_data_folder = self.lasif_comm.project.paths["processed_data"]
+        processed_data_folder = self.lasif_comm.project.paths["preproc_eq_data"]
 
         return os.path.exists(os.path.join(
-            processed_data_folder, "EARTHQUAKES", event, processed_filename
+            processed_data_folder, event, processed_filename
         ))
 
     def process_data(self, event: str):
@@ -362,9 +362,34 @@ class LasifComponent(Component):
         :param event: Name of event to pick windows on
         :type event: str
         """
+        print("I'm in the window selection function now")
         lapi.select_windows(
             self.lasif_comm,
             iteration=self.comm.project.current_iteration,
             window_set=window_set_name,
             events=[event]
         )
+
+    def find_seismograms(self, event: str, iteration: str) -> str:
+        """
+        Find path to seismograms
+
+        :param event: Name of event
+        :type event: str
+        :param iteration: Name of iteration
+        :type iteration: str
+        :return: str
+        """
+        if not iteration.startswith("ITERATION_"):
+            iteration = f"ITERATION_{iteration}"
+
+        event_folder = os.path.join(
+                self.lasif_root,
+                "SYNTHETICS",
+                "EARTHQUAKES",
+                iteration,
+                event)
+        if not os.path.exists(event_folder):
+            os.mkdir(event_folder)
+
+        return  os.path.join(event_folder, "receivers.h5")
