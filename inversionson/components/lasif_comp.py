@@ -5,7 +5,8 @@ import lasif.api as lapi
 import os
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
-
+import subprocess
+import sys
 
 class LasifComponent(Component):
     """
@@ -279,24 +280,41 @@ class LasifComponent(Component):
             events=[event]
         )
 
-    def misfit_quantification(self, event: str):
+    def misfit_quantification(self, event: str, mpi=True, n=6):
         """
         Quantify misfit and calculate adjoint sources.
 
         :param event: Name of event
         :type event: str
+        :param mpi: If you want to run with MPI, default True
+        :type mpi: bool
+        :param n: How many ranks to run on
+        :type n: int
         """
         iteration = self.comm.project.current_iteration
         window_set = iteration + "_" + event
-        # Not sure how to keep track of the window set yet.
-        lapi.calculate_adjoint_sources(
-            self.lasif_comm,
-            iteration=iteration,
-            window_set=window_set,
-            weight_set=event,
-            events=[event])
+        if mpi:
+            os.chdir(self.comm.project.lasif_root)
+            command = f"mpirun -n {n} lasif calculate_adjoint_sources "
+            command += f"{iteration} "
+            command += f"{window_set} {event}"
+            process = subprocess.Popen(
+                    command, shell=True, stdout=subprocess.PIPE, bufsize=1)
+            for line in process.stdout:
+                print(line, end="\n", flush=True)
+            process.wait()
+            print(process.returncode)
+            os.chdir(self.comm.project.inversion_root)
 
-        misfit = self.lasif_comm.adjoint_sources.get_misfit_for_event(
+        else:
+            lapi.calculate_adjoint_sources(
+                self.lasif_comm,
+                iteration=iteration,
+                window_set=window_set,
+                weight_set=event,
+                events=[event])
+
+        misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
             event=event,
             iteration=iteration,
             weight_set_name=event
@@ -315,10 +333,10 @@ class LasifComponent(Component):
         :return: Path to adjoint source file
         :rtype: str
         """
-        adjoint_filename = "ADJ_SRC_" + event + ".h5"
+        adjoint_filename = "adjoint_source.h5"
         adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
-        return os.path.join(adj_sources, it_name, adjoint_filename)
+        return os.path.join(adj_sources, it_name, event, adjoint_filename)
 
     def _already_processed(self, event: str) -> bool:
         """
@@ -353,7 +371,7 @@ class LasifComponent(Component):
             self.lasif_comm,
             events=[event])
 
-    def select_windows(self, window_set_name: str, event: str):
+    def select_windows(self, window_set_name: str, event: str, mpi=True, n=6):
         """
         Select window for a certain event in an iteration.
 
@@ -361,14 +379,41 @@ class LasifComponent(Component):
         :type window_set_name: str
         :param event: Name of event to pick windows on
         :type event: str
+        :param mpi: Switch on/off for running with MPI
+        :type mpi: bool
+        :param n: How many ranks to use
+        :type n: int
         """
-        print("I'm in the window selection function now")
-        lapi.select_windows(
-            self.lasif_comm,
-            iteration=self.comm.project.current_iteration,
-            window_set=window_set_name,
-            events=[event]
-        )
+        # Check if window set exists:
+        path = os.path.join(
+                self.lasif_root,
+                "SETS",
+                "WINDOWS",
+                f"{window_set_name}.sqlite")
+        if os.path.exists(path):
+            print(f"Window set for event {event} exists.")
+            return
+        
+        if mpi:
+            os.chdir(self.comm.project.lasif_root)
+            command = f"mpirun -n 6 lasif select_windows "
+            command += f"{self.comm.project.current_iteration} "
+            command += f"{window_set_name} {event}"
+            process = subprocess.Popen(
+                    command, shell=True, stdout=subprocess.PIPE,
+                    bufsize=1)
+            for line in process.stdout:
+                print(line, end=' \n', flush=True)
+            process.wait()
+            print(process.returncode)
+            os.chdir(self.comm.project.inversion_root)
+        else:
+            lapi.select_windows(
+                self.lasif_comm,
+                iteration=self.comm.project.current_iteration,
+                window_set=window_set_name,
+                events=[event]
+            )
 
     def find_seismograms(self, event: str, iteration: str) -> str:
         """

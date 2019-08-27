@@ -114,11 +114,13 @@ class SalvusSmoothComponent(Component):
         # Add something to make it run on more cores.
         command = f"{self.salvus_smoother} --input {input_toml}"
 
-        process = subprocess.Popen(command, stdout=subprocess.PIPE)
+        process = subprocess.Popen(
+                command, shell=True, stdout=subprocess.PIPE, bufsize=1)
         print("Smoother is running")
         # This is to print out to command line, what salvus smooth prints
-        for line in iter(process.stdout.readline, b''):
-            sys.stdout.write(line)
+        for line in process.stdout:
+            print(line, end="\n", flush=True)
+            #sys.stdout.write(line)
 
         process.wait()
         print("Smoother is done")

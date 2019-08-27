@@ -36,9 +36,10 @@ class SalvusOptComponent(Component):
                                     "Salvus opt in your opt folder.")
         run_script = f"sh {run_script}"
         process = subprocess.Popen(
-            run_script, shell=True, stdout=subprocess.PIPE)
-        for line in iter(process.stdout.readline, b''):
-            sys.stdout.write(line)
+            run_script, shell=True, stdout=subprocess.PIPE, bufsize=1)
+        for line in process.stdout.readline):
+            print(line, end="/", flush=True)
+            #sys.stdout.write(line)
         process.wait()
         print(process.returncode)
         # subprocess.call([path_to_run_script])
