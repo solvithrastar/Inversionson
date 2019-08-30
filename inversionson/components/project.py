@@ -368,6 +368,10 @@ class ProjectComponent(Component):
             command = f"self.{attribute} = {new_value}"
         elif isinstance(new_value, dict):
             command = f"self.{attribute} = {new_value}"
+        elif isinstance(new_value, float):
+            command = f"self.{attribute} = {new_value}"
+        elif isinstance(new_value, int):
+            command = f"self.{attribute} = {new_value}"
         else:
             raise InversionsonError(f"Method not implemented for type {new_value.type}")
         exec(command)

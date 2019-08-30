@@ -37,7 +37,7 @@ class SalvusOptComponent(Component):
         run_script = f"sh {run_script}"
         process = subprocess.Popen(
             run_script, shell=True, stdout=subprocess.PIPE, bufsize=1)
-        for line in process.stdout.readline):
+        for line in process.stdout:
             print(line, end="/", flush=True)
             #sys.stdout.write(line)
         process.wait()

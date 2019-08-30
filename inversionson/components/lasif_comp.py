@@ -293,7 +293,19 @@ class LasifComponent(Component):
         """
         iteration = self.comm.project.current_iteration
         window_set = iteration + "_" + event
-        if mpi:
+        # Check if adjoint sources exist:
+        adjoint_path = os.path.join(
+                self.lasif_root,
+                "ADJOINT_SOURCES",
+                f"ITERATION_{iteration}",
+                event,
+                "stf.h5")
+        if os.path.exists(adjoint_path):   
+            print(f"Adjoint source exists for event: {event} ")
+            print("Will not be recalculated. If you want them "
+                    f"calculated, delete file: {adjoint_path}")
+        elif mpi:
+            print("==============HEY HEY HO===================")
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif calculate_adjoint_sources "
             command += f"{iteration} "
@@ -305,6 +317,7 @@ class LasifComponent(Component):
             process.wait()
             print(process.returncode)
             os.chdir(self.comm.project.inversion_root)
+            print("===============YOYOYO================")
 
         else:
             lapi.calculate_adjoint_sources(
@@ -320,7 +333,6 @@ class LasifComponent(Component):
             weight_set_name=event
         )
         return misfit
-        # Somehow write misfit into a file and such.
 
     def get_adjoint_source_file(self, event: str, iteration: str) -> str:
         """
@@ -333,7 +345,7 @@ class LasifComponent(Component):
         :return: Path to adjoint source file
         :rtype: str
         """
-        adjoint_filename = "adjoint_source.h5"
+        adjoint_filename = "stf.h5"
         adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)

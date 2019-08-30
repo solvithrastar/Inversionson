@@ -218,6 +218,9 @@ class AutoInverter(object):
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src)
+        #print(f"Adjoint Source: {adj_src}")
+        #print(f"Simulation: {w_adjoint}")
+        #sys.exit("Fer ekki fet")
 
         self.comm.salvus_flow.submit_job(
             event=event,
@@ -237,8 +240,16 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
-        misfit = self.comm.lasif.misfit_quantification(event)
-        self.comm.project.misfits[event] = misfit
+        mpi = True
+        if self.comm.project.site_name == "swp":
+            mpi = False
+        misfit = self.comm.lasif.misfit_quantification(event, mpi=mpi)
+        #TODO: store misfit properly
+        #TODO: Check if adjoint source exists. Never recompute but send a message.
+        self.comm.project.change_attribute(
+                attribute=f"misfits[\"{event}\"]",
+                new_value=misfit)
+        #self.comm.project.misfits[event] = misfit
         self.comm.project.update_iteration_toml()
 
     def process_data(self, event: str):
@@ -345,19 +356,16 @@ class AutoInverter(object):
         for event in self.comm.project.events_in_iteration:
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["retrieved"]:
-                    # Temporary
-                    self.retrieve_seismograms(event)
                     events_already_retrieved.append(event)
                     continue
                 else:
-                    time.sleep(2)
+                    time.sleep(1)
                     status = self.comm.salvus_flow.get_job_status(
                         event, sim_type)  # This thing might time out
                     print(f"Status = {status}")
                     status = str(status)
 
                     if status == "JobStatus.finished":
-                        # Temporary
                         self.retrieve_seismograms(event)
                         self.comm.project.change_attribute(
                                 attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
@@ -385,7 +393,7 @@ class AutoInverter(object):
                     events_already_retrieved.append(event)
                     continue
                 else:
-                    time.sleep(2)
+                    time.sleep(30)
                     status = self.comm.salvus_flow.get_job_status(
                         event, sim_type)  # This thing might time out
                     status = str(status)
@@ -442,9 +450,9 @@ class AutoInverter(object):
                 status = str(self.comm.salvus_flow.get_job_status(event, sim_type))
                 if status == "JobStatus.finished":
                     jobs[event]["retrieved"] = True
+                    self.retrieve_seismograms(event)
 
         if sim_type == "forward":
-            self.retrieve_seismograms(event) # Temporary
             self.comm.project.change_attribute(
                     attribute="forward_job",
                     new_value=jobs)
@@ -479,7 +487,7 @@ class AutoInverter(object):
             for event in self.comm.project.events_in_iteration:
                 print(Fore.CYAN + "\n ============================= \n")
                 print(f"{event} interpolation")
-                #self.interpolate_model(event)
+                self.interpolate_model(event)
                 print(Fore.YELLOW + "\n ============================ \n")
                 print(emoji.emojize(':rocket: | Run forward simulation',
                     use_aliases=True))
@@ -493,7 +501,7 @@ class AutoInverter(object):
             events_retrieved = []
             i = 0
             while events_retrieved != "All retrieved":
-                print("I'm waiting for events")
+                print(Fore.BLUE + "I'm waiting for events")
                 i += 1
                 time.sleep(2)
                 print("Entering the self.monitor_jobs method")
@@ -503,26 +511,34 @@ class AutoInverter(object):
                 else:
                     if len(events_retrieved) == 0:
                         print("No new events retrieved, lets wait")
+                        continue
                         # Should not happen
                     if events_retrieved == "All retrieved":
                         events_retrieved = self.comm.project.events_in_iteration
                     for event in events_retrieved:
                         print(f"{event} retrieved")
+                        print(Fore.GREEN + "\n ===================== \n")
                         self.process_data(event)
+                        print(Fore.WHITE + "\n ===================== \n")
                         self.select_windows(event)
+                        print(Fore.MAGENTA + "\n ==================== \n")
                         self.misfit_quantification(event)
-                        #self.run_adjoint_simulation(event)
+                        print(Fore.YELLOW + "\n ==================== \n")
+                        print(emoji.emojize(':rocket: | Run adjoint simulation',
+                            use_aliases=True))
+                        self.run_adjoint_simulation(event)
 
             self.wait_for_all_jobs_to_finish("forward")
-
-            sys.exit("Stopped before adjoint related stuff")
             self.wait_for_all_jobs_to_finish("adjoint")
-            for event in self.comm.project.events_used:
+            sys.exit("Stopped before smoothing gradients")
+            for event in self.comm.project.events_in_iteration:
                 self.smooth_gradient(event)
 
             self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
+            # Find control group
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
+            # Try to make ray-density plot work
             self.comm.salvus_opt.close_salvus_opt_task()
             self.comm.salvus_opt.run_salvus_opt()
             task, verbose = self.comm.salvus_opt.read_salvus_opt_task()

@@ -2,6 +2,7 @@ from .component import Component
 import salvus_flow.api as sapi
 from inversionson import InversionsonError
 import os
+import numpy as np
 
 
 class SalvusFlowComponent(Component):
@@ -104,22 +105,49 @@ class SalvusFlowComponent(Component):
         :return: Adjoint source object for salvus
         :rtype: object
         """
+        import h5py
         from salvus_flow.simple_config import source
         from salvus_flow.simple_config import stf
         iteration = self.comm.project.current_iteration
-        receivers = self.get_receivers(event)
+        receivers = self.comm.lasif.get_receivers(event_name)
         adjoint_filename = self.comm.lasif.get_adjoint_source_file(
             event=event_name,
             iteration=iteration
-        )
+            )
+        # A workaround needed for a current salvus bug:
+        stf_forward = os.path.join(
+                self.comm.project.lasif_root,
+                "SALVUS_INPUT_FILES",
+                f"ITERATION_{iteration}",
+                "stf.h5")
+        f = h5py.File(stf_forward)
+        stf_source = f['source'][()]
+        p = h5py.File(adjoint_filename)
+        if 'source' in p.keys():
+            del p['source']
+        adjoint_recs = list(p.keys())
+        p.create_dataset(name='source', data=stf_source)
+        p["source"].attrs["sampling_rate_in_hertz"] = 1 / self.comm.project.time_step
+        p["source"].attrs["spatial-type"] = np.string_("moment_tensor")
+        p["source"].attrs["start_time_in_seconds"] = -self.comm.project.time_step * 1.0e9
+        f.close()
+        #rec = receivers[0]
+        #Need to make sure I only take receivers with an adjoint source
+        adjoint_sources = []
+        for rec in receivers:
+            if rec["network-code"] + "_" + rec["station-code"] in adjoint_recs:
+                adjoint_sources.append(rec)
 
+        p.close()
         adj_src = [source.seismology.VectorPoint3D(
             latitude=rec["latitude"],
             longitude=rec["longitude"],
+            fr=1.0,
+            ft=1.0,
+            fp=1.0,
             source_time_function=stf.Custom(
                 filename=adjoint_filename,
-                dataset_name="auxiliary_data/AdjointSources/" +
-                rec["network-code"] + "_" + rec["station-code"])) for rec in receivers]
+                dataset_name= "/" + rec["network-code"] + "_" + rec["station-code"])) for rec in adjoint_sources]
 
         return adj_src
 
@@ -194,14 +222,29 @@ class SalvusFlowComponent(Component):
         from salvus_flow.simple_config import simulation
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
+        forward_job_name = self.comm.project.forward_job[event]["name"]
+        forward_job_path = sapi.get_job(
+                site_name=self.comm.project.site_name,
+                job_name=forward_job_name).output_path
+        meta = os.path.join(forward_job_path, "meta.json")
+        print(forward_job_path)
+
+        gradient = os.path.join(
+                self.comm.lasif.lasif_root,
+                "GRADIENTS",
+                f"ITERATION_{self.comm.project.current_iteration}",
+                event,
+                "gradient.h5")
 
         w = simulation.Waveform(mesh=mesh)
-        w.adjoint.forward_meta_json_filename = "meta.json"
+        w.adjoint.forward_meta_json_filename = meta
         w.adjoint.gradient.parameterization = "rho-vp-vs"
-        w.adjoint.gradient.output_filename = "gradient.h5"
+        w.adjoint.gradient.output_filename = gradient
         w.adjoint.point_source = adj_src
 
         w.validate()
+
+        return w
 
     def submit_job(self, event: str, simulation: object,
                    sim_type: str, site="daint", wall_time=3600, ranks=1024):
