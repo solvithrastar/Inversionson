@@ -402,14 +402,15 @@ class AutoInverter(object):
         :param event: name of event
         :type event: str
         """
-        iteration = self.comm.project.current_iteration
-        gradient = self.comm.lasif.find_gradient(
-            iteration=iteration,
-            event=event,
-            smooth=False
-        )
-        self.comm.smoother.generate_input_toml(gradient)
-        self.comm.smoother.run_smoother(gradient)
+        # iteration = self.comm.project.current_iteration
+        # gradient = self.comm.lasif.find_gradient(
+        #     iteration=iteration,
+        #     event=event,
+        #     smooth=False
+        # )
+        self.comm.salvus_flow.submit_smoothing_job(event)
+        # self.comm.smoother.generate_input_toml(gradient)
+        # self.comm.smoother.run_smoother(gradient)
 
     def monitor_jobs(self, sim_type: str):
         """

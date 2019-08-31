@@ -354,3 +354,28 @@ class SalvusFlowComponent(Component):
                 site_name=self.comm.project.site_name)
 
         return job.get_output_files()
+
+    def submit_smoothing_job(self, event: str, simulation: object):
+        """
+        Submit the salvus diffusion equation smoothing job
+
+        :param event: name of event
+        :type event: str
+        :param simulation: Simulation object required by salvus flow
+        :type simulation: object
+        """
+        gradient = self.comm.lasif.find_gradient(event)
+        sim = self.comm.smoother.generate_diffusion_opject(gradient=gradient)
+        output_folder = os.path.join(
+            self.comm.lasif_root,
+            "GRADIENTS",
+            f"ITERATION_{self.comm.project.current_iteration}",
+            event,
+            "smoother_output"
+        )
+        sapi.run(
+               site_name=self.comm.project.site_name,
+               input_file=sim,
+               output_folder=output_folder,
+               ranks=8,
+               get_all=True)

@@ -19,6 +19,39 @@ class SalvusSmoothComponent(Component):
         super(SalvusSmoothComponent, self).__init__(
             communicator, component_name)
         self.smoother_path = self.comm.project.paths["salvus_smoother"]
+    
+    def generate_diffusion_opject(self, gradient: str, movie=False) -> object:
+        """
+        Generate the input object that the smoother requires
+        
+        :param gradient: Path to the gradient file to be smoothed
+        :type gradient: str
+        :param movie: If a movie should be saved, defaults to False
+        :type movie: bool
+        """
+        import salvus_flow.simple_config as sc
+        seperator = "/"
+
+        sim = sc.simulation.Diffusion(mesh="./AcousticRegular2DLinear.h5")
+        output_file = seperator.join(gradient.split(seperator)[:-1])
+        movie_file = output_file + "/smoothing_movie.h5"
+        output_file += "/smooth_gradient.h5"
+
+        sim.physics.diffusion_equation.time_step_in_seconds = 1e-3
+        sim.physics.diffusion_equation.initial_values.filename = gradient
+        sim.physics.diffusion_equation.initial_values.format = "hdf5"
+        sim.physics.diffusion_equation.initial_values.field = self.comm.project.inversion_params
+
+        sim.physics.diffusion_equation.final_values.filename = output_file
+        if movie:
+            sim.output.volume_data.filename = movie_file
+            sim.output.volume_data.format = "hdf5"
+            sim.output.volume_data.fields = ["VS"]
+            sim.output.volume_data.sampling_interval_in_time_steps = 10
+
+        sim.validate()
+
+        return sim
 
     def generate_input_toml(self, gradient: str, movie=False):
         """
