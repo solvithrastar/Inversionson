@@ -186,7 +186,7 @@ class LasifComponent(Component):
         :return: Path to a gradient
         :rtype: str
         """
-        gradients = self.lasif_comm.project.Project["gradients"]
+        gradients = self.lasif_comm.project.paths["gradients"]
         if smooth:
             gradient = os.path.join(gradients, f"ITERATION_{iteration}",
                                     event, "smooth_gradient.h5")
@@ -212,13 +212,32 @@ class LasifComponent(Component):
             iteration=self.comm.project.current_iteration,
             save=True
         )
-        file = os.path.join(
+        filename = os.path.join(
             self.lasif_root,
             "OUTPUT",
             "event_plots",
             "events",
             f"events_{self.comm.project.current_iteration}.png")
-        return file
+        return filename
+
+    def plot_iteration_raydensity(self) -> str:
+        """
+        Return the path to a file containing an illustration of
+        event distribution for the current iteration
+
+        :return: Path to figure
+        :rtype: str
+        """
+        lapi.plot_raydensity(
+                self.lasif_comm,
+                iteration=self.comm.project.current_iteration)
+        filename = os.path.join(
+                self.lasif_root,
+                "OUTPUT",
+                "raydensity_plots",
+                f"ITERATION_{iteration}",
+                "raydensity.png")
+        return filename
 
     def get_source(self, event_name: str) -> dict:
         """

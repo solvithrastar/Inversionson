@@ -337,6 +337,8 @@ class AutoInverter(object):
             f"ITERATION_{self.comm.project.current_iteration}",
             event
         )
+        if not os.path.exists(lasif_gradient):
+            os.makedirs(lasif_gradient)
         shutil.copyfile(gradient, os.path.join(
             lasif_gradient, "gradient.h5"))
         shutil.copyfile(gradient, os.path.join(
@@ -569,7 +571,7 @@ class AutoInverter(object):
                     use_aliases=True))
                 print(f"{event} interpolation")
 
-                self.interpolate_model(event)
+                #self.interpolate_model(event)
 
                 print(Fore.YELLOW + "\n ============================ \n")
                 print(emoji.emojize(':rocket: | Run forward simulation',
@@ -646,10 +648,12 @@ class AutoInverter(object):
 
                 self.prepare_gradient_for_smoothing(event)
                 self.smooth_gradient(event)
+                #self.interpolate_gradient_to_inversion_grid(event)
             
             print(Fore.RED + "\n =================== \n")
             print(emoji.emojize(':relaxed: | Finalizing iteration '
                                 'documentation', use_aliases=True))
+            sys.exit("Stopped after smoothing")
 
             self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
             self.comm.project.update_iteration_toml()

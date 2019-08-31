@@ -112,7 +112,7 @@ class SalvusSmoothComponent(Component):
             self.generate_input_toml(gradient)
 
         # Add something to make it run on more cores.
-        command = f"{self.salvus_smoother} --input {input_toml}"
+        command = f"{self.smoother_path} --input {input_toml}"
 
         process = subprocess.Popen(
                 command, shell=True, stdout=subprocess.PIPE, bufsize=1)

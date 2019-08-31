@@ -194,6 +194,14 @@ class StoryTellerComponent(Component):
                         f"{self.comm.project.current_iteration}",
             alt_text="text"
         )
+        ray_file = self.comm.lasif.plot_iteration_raydensity()
+        self.markdown.add_image(
+            image_url=ray_file,
+            image_title=f"Ray density plotn for "
+                        f"{self.comm.project.current_iteration}",
+            alt_text="text"
+        )
+
 
     def _report_acceptance_of_model(self):
         """

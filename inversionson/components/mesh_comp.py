@@ -52,8 +52,8 @@ class SalvusMeshComponent(Component):
         M0 = np.ones(mesh.npoint) * 2 * np.sqrt(smoothing_length)
         M1 = np.copy(M0)
 
-        mesh.attach_field(name="M0", M0)
-        mesh.attach_field(name="M1", M1)
+        mesh.attach_field("M0", M0)
+        mesh.attach_field("M1", M1)
         mesh.map_nodal_fields_to_element_nodal()
         mesh.write_h5_tensorized_model(gradient)
         print(f"Smoothing fields M0 and M1 added to gradient for "
