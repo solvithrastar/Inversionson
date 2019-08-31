@@ -120,7 +120,7 @@ class SalvusSmoothComponent(Component):
         # This is to print out to command line, what salvus smooth prints
         for line in process.stdout:
             print(line, end="\n", flush=True)
-            #sys.stdout.write(line)
+            # sys.stdout.write(line)
 
         process.wait()
         print("Smoother is done")

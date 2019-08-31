@@ -305,7 +305,6 @@ class LasifComponent(Component):
             print("Will not be recalculated. If you want them "
                     f"calculated, delete file: {adjoint_path}")
         elif mpi:
-            print("==============HEY HEY HO===================")
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif calculate_adjoint_sources "
             command += f"{iteration} "
@@ -317,7 +316,6 @@ class LasifComponent(Component):
             process.wait()
             print(process.returncode)
             os.chdir(self.comm.project.inversion_root)
-            print("===============YOYOYO================")
 
         else:
             lapi.calculate_adjoint_sources(
@@ -326,12 +324,18 @@ class LasifComponent(Component):
                 window_set=window_set,
                 weight_set=event,
                 events=[event])
-
-        misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
-            event=event,
-            iteration=iteration,
-            weight_set_name=event
-        )
+        # See if misfit has already been written into iteration toml
+        if self.comm.project.misfits[event] == 0.0:
+            misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
+                event=event,
+                iteration=iteration,
+                weight_set_name=event
+            )
+        else:
+            misfit = self.comm.project.misfits[event]
+            print(f"Misfit for {event} has already been computed. ")
+            print("If you want it recomputed, change it to 0.0 in iteration "
+                  "toml file")
         return misfit
 
     def get_adjoint_source_file(self, event: str, iteration: str) -> str:

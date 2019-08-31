@@ -1,5 +1,6 @@
 from __future__ import absolute_import
 from .component import Component
+import numpy as np
 
 
 class SalvusMeshComponent(Component):
@@ -28,3 +29,32 @@ class SalvusMeshComponent(Component):
         # Put it into the correct directory.
         # I need to import something from a private code.
         # How do I do that?
+
+    def add_smoothing_fields(self, event: str):
+        """
+        The diffusion equation smoothing needs certain parameters for 
+        smoothing. These parameters need to be appended to the mesh as fields.
+        Currently we only use constant smoothing lengths but that will change.
+        
+        :param event: name of event
+        :type event: str
+        """
+        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        iteration = self.comm.project.current_iteration
+        gradient = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=event,
+            smooth=False)
+        
+        smoothing_length = 5000.0 * 1000.0  # Hardcoded for now
+        mesh = UnstructuredMesh.from_h5(gradient)
+
+        M0 = np.ones(mesh.npoint) * 2 * np.sqrt(smoothing_length)
+        M1 = np.copy(M0)
+
+        mesh.attach_field(name="M0", M0)
+        mesh.attach_field(name="M1", M1)
+        mesh.map_nodal_fields_to_element_nodal()
+        mesh.write_h5_tensorized_model(gradient)
+        print(f"Smoothing fields M0 and M1 added to gradient for "
+              f"event {event}")

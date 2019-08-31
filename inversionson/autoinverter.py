@@ -215,6 +215,38 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
+        job_info = self.comm.project.adjoint_job[event]
+        if job_info["submitted"]:
+            if job_info["retrieved"]:
+                print(f"Simulation for event {event} already done.")
+                print("If you want it redone, change its status in iteration toml")
+                return
+            else:
+                status = str(self.comm.salvus_flow.get_job_status(
+                        event=event,
+                        sim_type="adjoint"))
+                if status == "JobStatus.running":
+                    print(f"Adjoint job for event {event} is running ")
+                    print("Will not resubmit. ")
+                    print("You can work with jobs using salvus-flow")
+                    return
+                elif status == "JobStatus.unknown":
+                    print(f"Status of job for event {event} is unknown")
+                    print(f"Will resubmit")
+                elif status == "JobStatus.cancelled":
+                    print(f"Status of job for event {event} is cancelled")
+                    print(f"Will resubmit")
+                elif status == "JobStatus.finished":
+                    print(f"Status of job for event {event} is finished")
+                    print("Will retrieve and update toml")
+                    self.comm.project.change_attribute(
+                            attribute=f"adjoint_job[\"{event}\"][\"retrived\"]",
+                            new_value=True)
+                    self.comm.project.update_iteration_toml()
+                    return
+                else:
+                    print("Jobstatus unknown for event {event}")
+                    print("Will resubmit")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src)
@@ -230,7 +262,9 @@ class AutoInverter(object):
             wall_time=self.comm.project.wall_time,
             ranks=self.comm.project.ranks
         )
-        self.comm.project.adjoint_job[event]["submitted"] = True
+        self.comm.project.change_attribute(
+                            attribute=f"adjoint_job[\"{event}\"][\"submitted\"]",
+                            new_value=True)
         self.comm.project.update_iteration_toml()
 
     def misfit_quantification(self, event: str):
@@ -244,8 +278,6 @@ class AutoInverter(object):
         if self.comm.project.site_name == "swp":
             mpi = False
         misfit = self.comm.lasif.misfit_quantification(event, mpi=mpi)
-        #TODO: store misfit properly
-        #TODO: Check if adjoint source exists. Never recompute but send a message.
         self.comm.project.change_attribute(
                 attribute=f"misfits[\"{event}\"]",
                 new_value=misfit)
@@ -283,6 +315,34 @@ class AutoInverter(object):
         
         shutil.copyfile(seismograms, lasif_seismograms)
         print(f"Copied seismograms for event {event} to lasif folder")
+
+    def retrieve_gradient(self, event: str):
+        """
+        Move gradient from salvus_flow folder to lasif folder
+        
+        :param event: Name of event
+        :type event: str
+        """
+        job_paths = self.comm.salvus_flow.get_job_file_paths(
+                event=event,
+                sim_type="adjoint")
+        
+        gradient = job_paths[('adjoint', 'gradient', 'output-filename')]
+        grad_vis = job_paths[(
+            'adjoint', 'gradient', 'output-filename', 'gradient.xdmf')]
+        
+        lasif_gradient = os.path.join(
+            self.comm.project.lasif_root,
+            "GRADIENTS",
+            f"ITERATION_{self.comm.project.current_iteration}",
+            event
+        )
+        shutil.copyfile(gradient, os.path.join(
+            lasif_gradient, "gradient.h5"))
+        shutil.copyfile(gradient, os.path.join(
+            lasif_gradient, "gradient.xdmf"))
+
+        print(f"Gradient for event {event} has been retrieved.")
 
 
     def select_windows(self, event: str):
@@ -324,6 +384,15 @@ class AutoInverter(object):
         events = self.comm.lasif.get_minibatch(first=True)
         self.comm.project.events_used = events
 
+    def prepare_gradient_for_smoothing(self, event):
+        """
+        Add smoothing fields to the relevant mesh.
+        
+        :param event: Name of event
+        :type event: str
+        """
+        self.comm.salvus_mesher.add_smoothing_fields(event)
+
     def smooth_gradient(self, event: str):
         """
         Send a gradient for an event to the Salvus smoother
@@ -359,7 +428,6 @@ class AutoInverter(object):
                     events_already_retrieved.append(event)
                     continue
                 else:
-                    time.sleep(1)
                     status = self.comm.salvus_flow.get_job_status(
                         event, sim_type)  # This thing might time out
                     print(f"Status = {status}")
@@ -387,18 +455,18 @@ class AutoInverter(object):
                         warnings.warn(
                             f"Inversionson does not recognise job status: "
                             f"{status}", InversionsonWarning)
+                    time.sleep(30)
 
             elif sim_type == "adjoint":
                 if self.comm.project.forward_job[event]["retrieved"]:
                     events_already_retrieved.append(event)
                     continue
                 else:
-                    time.sleep(30)
-                    status = self.comm.salvus_flow.get_job_status(
-                        event, sim_type)  # This thing might time out
-                    status = str(status)
+                    status = str(self.comm.salvus_flow.get_job_status(
+                        event, sim_type))  # This thing might time out
 
                     if status == "JobStatus.finished":
+                        self.comm.retrieve_gradient(event)
                         self.comm.project.change_attribute(
                                 attribute=f"adjoint_job[\"{event}\"][\"retrieved\"]",
                                 new_value=True)
@@ -419,6 +487,7 @@ class AutoInverter(object):
                         warnings.warn(
                             f"Inversionson does not recognise job status: "
                             f"{status}", InversionsonWarning)
+                    time.sleep(30)
             else:
                 raise ValueError(f"Sim type {sim_type} not supported")
 
@@ -449,8 +518,11 @@ class AutoInverter(object):
             else:
                 status = str(self.comm.salvus_flow.get_job_status(event, sim_type))
                 if status == "JobStatus.finished":
+                    if sim_type == "forward":
+                        self.retrieve_seismograms(event)
+                    else:
+                        self.retrieve_gradient(event)
                     jobs[event]["retrieved"] = True
-                    self.retrieve_seismograms(event)
 
         if sim_type == "forward":
             self.comm.project.change_attribute(
@@ -475,36 +547,54 @@ class AutoInverter(object):
         :type verbose: str
         """
         if task == "compute_misfit_and_gradient":
-            print(Fore.RED)
+
+            print(Fore.RED + "\n =================== \n")
             print("Will prepare iteration")
+
             self.prepare_iteration(first=True)
-            print(emoji.emojize('Iteration prepared :thumbsup:',
+
+            print(emoji.emojize('Iteration prepared | :thumbsup:',
                 use_aliases=True))
+
             print("Will select first event batch")
             # self.get_first_batch_of_events() Already have the batch from
             # The iteration preparation
             print("Initial batch selected")
+
             for event in self.comm.project.events_in_iteration:
                 print(Fore.CYAN + "\n ============================= \n")
+                print(emoji.emojize(
+                    ':globe_with_meridians: :point_right: '
+                    ':globe_with_meridians: | Interpolation Stage',
+                    use_aliases=True))
                 print(f"{event} interpolation")
+
                 self.interpolate_model(event)
+
                 print(Fore.YELLOW + "\n ============================ \n")
                 print(emoji.emojize(':rocket: | Run forward simulation',
-                    use_aliases=True))
+                      use_aliases=True))
+
                 self.run_forward_simulation(event)
+
                 print(Fore.RED + "\n =========================== \n")
-                print("Calculate station weights")
+                print(emoji.emojize(':trident: | Calculate station weights',
+                      use_aliases=True))
+
                 self.calculate_station_weights(event)
             
             print(Fore.BLUE + "\n ========================= \n")
-            print("Waiting for jobs")
+            print(emoji.emojize(':hourglass: | Waiting for jobs',
+                  use_aliases=True))
+
             events_retrieved = []
             i = 0
             while events_retrieved != "All retrieved":
-                print(Fore.BLUE + "I'm waiting for events")
+                print(Fore.BLUE)
+                print(emoji.emojize(':hourglass: | Waiting for jobs',
+                  use_aliases=True))
                 i += 1
                 time.sleep(2)
-                print("Entering the self.monitor_jobs method")
                 events_retrieved = self.monitor_jobs("forward")
                 if events_retrieved == "All retrieved" and i != 1:
                     break
@@ -518,28 +608,60 @@ class AutoInverter(object):
                     for event in events_retrieved:
                         print(f"{event} retrieved")
                         print(Fore.GREEN + "\n ===================== \n")
+                        print(emoji.emojize(':floppy_disk: | Process data if '
+                                            'needed', use_aliases=True))
+
                         self.process_data(event)
+
                         print(Fore.WHITE + "\n ===================== \n")
+                        print(emoji.emojize(':foggy: | Select windows',
+                              use_aliases=True))
+
                         self.select_windows(event)
+
                         print(Fore.MAGENTA + "\n ==================== \n")
+                        print(emoji.emojize(':neckbeard: | Quantify Misfit',
+                              use_aliases=True))
+
                         self.misfit_quantification(event)
+
                         print(Fore.YELLOW + "\n ==================== \n")
                         print(emoji.emojize(':rocket: | Run adjoint simulation',
-                            use_aliases=True))
+                              use_aliases=True))
+
                         self.run_adjoint_simulation(event)
+
+            print(Fore.BLUE + "\n ========================= \n")
+            print(emoji.emojize(':hourglass: | Waiting for jobs',
+                  use_aliases=True))
 
             self.wait_for_all_jobs_to_finish("forward")
             self.wait_for_all_jobs_to_finish("adjoint")
-            sys.exit("Stopped before smoothing gradients")
+
             for event in self.comm.project.events_in_iteration:
+                print(Fore.YELLOW + "\n ==================== \n")
+                print(emoji.emojize(':rocket: | Run Diffusion equation',
+                      use_aliases=True))
+                print(f"Event: {event} gradient will be smoothed")
+
+                self.prepare_gradient_for_smoothing(event)
                 self.smooth_gradient(event)
+            
+            print(Fore.RED + "\n =================== \n")
+            print(emoji.emojize(':relaxed: | Finalizing iteration '
+                                'documentation', use_aliases=True))
 
             self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
-            # Find control group
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
             # Try to make ray-density plot work
             self.comm.salvus_opt.close_salvus_opt_task()
+
+            print(Fore.RED + "\n =================== \n")
+            print(emoji.emojize(f':bowtie: | Iteration '
+                                f'{self.comm.current_iteration} done',
+                                use_aliases=True))
+
             self.comm.salvus_opt.run_salvus_opt()
             task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
             self.perform_task(task, verbose)
@@ -578,9 +700,13 @@ class AutoInverter(object):
 
         elif task == "compute_gradient":
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
-            self.comm.project.current_iteration = iteration
+            self.comm.project.change_attribute(
+                attribute="current_iteration",
+                new_value=iteration
+            )
             self.comm.project.get_iteration_attributes(iteration)
             for event in self.comm.project.events_used:
+                self.prepare_gradient_for_smoothing(event)
                 self.run_adjoint_simulation(event)
             # Cut sources and receivers?
             events_retrieved = []
