@@ -168,7 +168,10 @@ class StoryTellerComponent(Component):
         Start a new section in the story file
         """
         iteration = self.comm.project.current_iteration
-        iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+        if iteration == "it0000_model":
+            iteration_number = 0
+        else:
+            iteration_number = int(iteration.split("_")[0][2:].strip("0"))
         self.markdown.add_header(
             header_style=2,
             text=f"Iteration: {iteration_number}"
@@ -181,7 +184,6 @@ class StoryTellerComponent(Component):
     def _add_image_of_data_coverage(self):
         """
         Include an image of event distribution to story file.
-        TODO: Include raydensity plot.
         """
         self.markdown.add_header(
             header_style=3,
@@ -258,7 +260,7 @@ class StoryTellerComponent(Component):
 
         return tot_red, cg_red
 
-    def _add_table_of_events_and_misfits(self, verbose=None):
+    def _add_table_of_events_and_misfits(self, verbose=None, task=None):
         """
         Include a table of events and corresponding misfits to
         the story file.
@@ -281,16 +283,24 @@ class StoryTellerComponent(Component):
             text += "the iteration. These are displayed below."
 
         self.markdown.add_paragraph(text=text)
-        iteration = self.comm.project.current_iteration
-        self.comm.project.get_iteration_attributes(iteration)
+        # iteration = self.comm.project.current_iteration
+        self.comm.project.get_iteration_attributes()
         self.markdown.add_table(
             data=self.comm.project.misfits,
             headers=["Events", "Misfits"]
         )
+        if task == "compute_misfit_and_gradient":
+            total_misfit = 0.0
+            for key in self.comm.project.misfits.keys():
+                total_misfit += self.comm.project.misfits[key]
+            text = f"Total misfit for iteration: {total_misfit} \n"
+            self.markdown.add_paragraph(text=text)
+            return
+
         if verbose and "additional" in verbose:
             total_misfit = 0.0
             old_control_group_misfit = 0.0
-            for key, value in self.comm.project.misfits:
+            for key, value in self.comm.project.misfits.items():
                 total_misfit += value
                 if key in self.comm.project.old_control_group:
                     old_control_group_misfit += value
@@ -304,7 +314,7 @@ class StoryTellerComponent(Component):
         
         if verbose and "additional" not in verbose:
             old_control_group_misfit = 0.0
-            for key, value in self.comm.project.misfits:
+            for key, value in self.comm.project.misfits.items():
                 if key in self.comm.project.old_control_group:
                     old_control_group_misfit += value
             
@@ -379,12 +389,13 @@ class StoryTellerComponent(Component):
             # This is the absolute first iteration
             # We need to create all necessary files
             self._create_story_file()
+            self._start_entry_for_iteration()
             self._write_list_of_all_events()
             self._update_usage_of_events()
             self._add_image_of_data_coverage()
-            self._add_table_of_events_and_misfits()
-            self._report_control_group()
-            self._update_event_quality()
+            self._add_table_of_events_and_misfits(task=task)
+            # self._report_control_group()
+            # self._update_event_quality()
         if task == "compute_misfit":
             first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
             if "additional" in verbose:
@@ -449,9 +460,9 @@ class MarkDown(StoryTellerComponent):
         if header_style < 1 or header_style > 6:
             raise ValueError(
                 "Header style must be an integer between 1 and 6")
-
-        self.stream = "#"*int(header_style) + " "
-        self.stream += text
+        self.stream = text
+        self._transform_special_characters()
+        self.stream = "#"*int(header_style) + " " + self.stream
         self._add_line_break()
         self._add_line_break()
 
@@ -540,8 +551,8 @@ class MarkDown(StoryTellerComponent):
         self.stream += f"| {headers[0]} | {headers[1]} |\n"
         self.stream += "| --- | ---: | \n"
 
-        for key, value in data:
-            self.stream += f"| {key} | {value} |\n"
+        for key in data.keys():
+            self.stream += f"| {key} | {data[key]} |\n"
 
         self._add_line_break()
         self._add_line_break()

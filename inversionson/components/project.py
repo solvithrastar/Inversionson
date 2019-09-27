@@ -333,17 +333,23 @@ class ProjectComponent(Component):
         # I need a way to figure out what the controlgroup is
         it_dict["last_control_group"] = []
         it_dict["new_control_group"] = []
-        job_dict = {
+        f_job_dict = {
                 "name": "",
                 "submitted": False,
                 "retrieved": False
                 }
+        a_job_dict = {
+            "name": "",
+            "submitted": False,
+            "retrieved": False,
+            "gradient_smoothed": False
+        }
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {
                     "misfit": 0.0,
                     "jobs": {
-                        "forward": job_dict,
-                        "adjoint": job_dict
+                        "forward": f_job_dict,
+                        "adjoint": a_job_dict
                         }
                     }
 

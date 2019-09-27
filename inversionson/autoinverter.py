@@ -19,23 +19,9 @@ init()
 from colorama import Fore, Style
 import emoji
 
+
 class AutoInverter(object):
     """
-    Ok lets do this.
-    We need something that reads Salvus opt
-    Something that talks to salvus flow
-    Something that creates meshes
-    Something that talks to lasif
-    Something that talks to multimesh
-    Something interacting with dp-s random selection (No need now)
-    Something talking to the smoother.
-    So let's create a few files:
-    salvus_opt communicator
-    salvus_flow communicator
-    salvus_mesher (not necessary now)
-    lasif communicator
-    multimesh communicator
-    I can regularly save the inversion_dict as a toml file and reload it
     """
 
     def __init__(self, info_dict: dict):
@@ -129,16 +115,18 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
+        if self.comm.project.forward_job[event]["submitted"]:
+            print(f"Event {event} has already been submitted. "
+                  "Will not do interpolation.")
+            return
         self.comm.multi_mesh.interpolate_to_simulation_mesh(event)
 
-    def interpolate_gradient(self, event: str, first: bool):
+    def interpolate_gradient(self, event: str):
         """
         Interpolate gradient to master mesh
 
         :param event: Name of event
         :type event: str
-        :param first: First iteration gradient to be interpolated?
-        :type first: bool
         """
         self.comm.multi_mesh.interpolate_gradient_to_model(event,
                                                            smooth=True)
@@ -176,7 +164,7 @@ class AutoInverter(object):
                     print(f"Status of job for event {event} is finished")
                     print("Will retrieve and update toml")
                     self.comm.project.change_attribute(
-                            attribute=f"forward_job[\"{event}\"][\"retrived\"]",
+                            attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
                             new_value=True)
                     self.comm.project.update_iteration_toml()
                     return
@@ -239,8 +227,9 @@ class AutoInverter(object):
                 elif status == "JobStatus.finished":
                     print(f"Status of job for event {event} is finished")
                     print("Will retrieve and update toml")
+                    self.retrieve_gradient(event)
                     self.comm.project.change_attribute(
-                            attribute=f"adjoint_job[\"{event}\"][\"retrived\"]",
+                            attribute=f"adjoint_job[\"{event}\"][\"retrieved\"]",
                             new_value=True)
                     self.comm.project.update_iteration_toml()
                     return
@@ -341,7 +330,7 @@ class AutoInverter(object):
             os.makedirs(lasif_gradient)
         shutil.copyfile(gradient, os.path.join(
             lasif_gradient, "gradient.h5"))
-        shutil.copyfile(gradient, os.path.join(
+        shutil.copyfile(grad_vis, os.path.join(
             lasif_gradient, "gradient.xdmf"))
 
         print(f"Gradient for event {event} has been retrieved.")
@@ -358,6 +347,9 @@ class AutoInverter(object):
         """
         iteration = self.comm.project.current_iteration
         window_set_name = iteration + "_" + event
+        mpi = True
+        if self.comm.project.site_name == "swp":
+            mpi = False
 
         # If event is in control group, we look for newest window set for event
         if event in self.comm.project.old_control_group:
@@ -373,7 +365,8 @@ class AutoInverter(object):
             print("I entered into the window selection in autoinverter")
             self.comm.lasif.select_windows(
                 window_set_name=window_set_name,
-                event=event
+                event=event,
+                mpi=mpi
             )
 
     def get_first_batch_of_events(self) -> list:
@@ -386,14 +379,14 @@ class AutoInverter(object):
         events = self.comm.lasif.get_minibatch(first=True)
         self.comm.project.events_used = events
 
-    def prepare_gradient_for_smoothing(self, event):
+    def prepare_gradient_for_smoothing(self, event) -> object:
         """
         Add smoothing fields to the relevant mesh.
         
         :param event: Name of event
         :type event: str
         """
-        self.comm.salvus_mesher.add_smoothing_fields(event)
+        return self.comm.salvus_mesher.add_smoothing_fields(event)
 
     def smooth_gradient(self, event: str):
         """
@@ -402,13 +395,33 @@ class AutoInverter(object):
         :param event: name of event
         :type event: str
         """
-        # iteration = self.comm.project.current_iteration
-        # gradient = self.comm.lasif.find_gradient(
-        #     iteration=iteration,
-        #     event=event,
-        #     smooth=False
-        # )
-        self.comm.salvus_flow.submit_smoothing_job(event)
+        job = self.comm.project.adjoint_job
+        if job[event]["gradient_smoothed"]:
+            print(f"Gradient for event {event} already smooth."
+                  f" Will not repeat. Change its status in iteration toml "
+                  f"if you want to smooth gradient again")
+            return
+        iteration = self.comm.project.current_iteration
+        gradient = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=event,
+            smooth=False
+        )
+        mesh = self.prepare_gradient_for_smoothing(event)
+        smoothed_gradient = mesh.copy()
+        simulations = {}
+        # TODO: Make a list of simulation objects and implement the loop in submit job
+        for par in ["VS", "VP", "RHO"]:
+            simulation = self.comm.smoother.generate_diffusion_object(
+                    gradient=gradient, par=par, mesh=mesh)
+            simulations[par] = simulation
+        self.comm.salvus_flow.submit_smoothing_job(event, simulation,
+                                                    smoothed_gradient,
+                                                    simulations)
+        self.comm.project.change_attribute(
+            attribute=f"adjoint_job[\"{event}\"][\"gradient_smoothed\"]",
+            new_value=True
+        )
         # self.comm.smoother.generate_input_toml(gradient)
         # self.comm.smoother.run_smoother(gradient)
 
@@ -433,7 +446,7 @@ class AutoInverter(object):
                 else:
                     status = self.comm.salvus_flow.get_job_status(
                         event, sim_type)  # This thing might time out
-                    print(f"Status = {status}")
+                    # print(f"Status = {status}")
                     status = str(status)
 
                     if status == "JobStatus.finished":
@@ -444,9 +457,9 @@ class AutoInverter(object):
                         self.comm.project.update_iteration_toml()
                         events_retrieved_now.append(event)
                     elif status == "JobStatus.pending":
-                        continue
+                        print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.running":
-                        continue
+                        print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.failed":
                         print("Job failed. Need to implement something here")
                         print("Probably resubmit or something like that")
@@ -476,9 +489,9 @@ class AutoInverter(object):
                         self.comm.project.update_iteration_toml()
                         events_retrieved_now.append(event)
                     elif status == "JobStatus.pending":
-                        continue
+                        print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.running":
-                        continue
+                        print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.failed":
                         print("Job failed. Need to implement something here")
                         print("Probably resubmit or something like that")
@@ -572,7 +585,7 @@ class AutoInverter(object):
                     use_aliases=True))
                 print(f"{event} interpolation")
 
-                #self.interpolate_model(event)
+                self.interpolate_model(event)
 
                 print(Fore.YELLOW + "\n ============================ \n")
                 print(emoji.emojize(':rocket: | Run forward simulation',
@@ -597,7 +610,7 @@ class AutoInverter(object):
                 print(emoji.emojize(':hourglass: | Waiting for jobs',
                   use_aliases=True))
                 i += 1
-                time.sleep(2)
+                time.sleep(5)
                 events_retrieved = self.monitor_jobs("forward")
                 if events_retrieved == "All retrieved" and i != 1:
                     break
@@ -623,7 +636,7 @@ class AutoInverter(object):
                         self.select_windows(event)
 
                         print(Fore.MAGENTA + "\n ==================== \n")
-                        print(emoji.emojize(':neckbeard: | Quantify Misfit',
+                        print(emoji.emojize(':zap: | Quantify Misfit',
                               use_aliases=True))
 
                         self.misfit_quantification(event)
@@ -631,30 +644,42 @@ class AutoInverter(object):
                         print(Fore.YELLOW + "\n ==================== \n")
                         print(emoji.emojize(':rocket: | Run adjoint simulation',
                               use_aliases=True))
-
+                        # if "NEAR" in event:
                         self.run_adjoint_simulation(event)
-
+                        # elif "REYKJANES" in event:
+                        # self.run_adjoint_simulation(event)
+                            
             print(Fore.BLUE + "\n ========================= \n")
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                   use_aliases=True))
 
             self.wait_for_all_jobs_to_finish("forward")
             self.wait_for_all_jobs_to_finish("adjoint")
-
+            self.comm.lasif.write_misfit()
             for event in self.comm.project.events_in_iteration:
+
                 print(Fore.YELLOW + "\n ==================== \n")
                 print(emoji.emojize(':rocket: | Run Diffusion equation',
                       use_aliases=True))
                 print(f"Event: {event} gradient will be smoothed")
 
-                self.prepare_gradient_for_smoothing(event)
-                self.smooth_gradient(event)
-                #self.interpolate_gradient_to_inversion_grid(event)
+                # self.prepare_gradient_for_smoothing(event)
+                # TODO:Change this to smooth as soon as an adjoint job is done
+                self.smooth_gradient(event) 
+
+                print(Fore.CYAN + "\n ============================= \n")
+                print(emoji.emojize(
+                    ':globe_with_meridians: :point_right: '
+                    ':globe_with_meridians: | Interpolation Stage',
+                    use_aliases=True))
+                print(f"{event} interpolation")
+
+                # self.interpolate_gradient(event)
             
             print(Fore.RED + "\n =================== \n")
-            print(emoji.emojize(':relaxed: | Finalizing iteration '
+            print(emoji.emojize(':love_letter: | Finalizing iteration '
                                 'documentation', use_aliases=True))
-            sys.exit("Stopped after smoothing")
+            # sys.exit("Stopped after smoothing")
 
             self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
             self.comm.project.update_iteration_toml()
@@ -663,12 +688,14 @@ class AutoInverter(object):
             self.comm.salvus_opt.close_salvus_opt_task()
 
             print(Fore.RED + "\n =================== \n")
-            print(emoji.emojize(f':bowtie: | Iteration '
-                                f'{self.comm.current_iteration} done',
+            print(emoji.emojize(f':grinning: | Iteration '
+                                f'{self.comm.project.current_iteration} done',
                                 use_aliases=True))
-
+            
             self.comm.salvus_opt.run_salvus_opt()
             task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+            print(f"Next salvus opt task is: {task}")
+            sys.exit("Have a nice weekend")
             self.perform_task(task, verbose)
 
         elif task == "compute_misfit":

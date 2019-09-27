@@ -168,12 +168,18 @@ class LasifComponent(Component):
         else:
             event_iteration_mesh = lapi.get_simulation_mesh(
                 self.lasif_comm, event, iteration)
-            shutil.copy(event_mesh, event_iteration_mesh)
-            print(
-                f"Mesh for event: {event} has been moved to correct path for "
-                f"iteration: {iteration} and is ready for interpolation.")
+            if not os.path.exists(event_iteration_mesh):
+                shutil.copy(event_mesh, event_iteration_mesh)
+                print(
+                    f"Mesh for event: {event} has been moved to correct path for "
+                    f"iteration: {iteration} and is ready for interpolation.")
+            else:
+                print(f"Mesh for event: {event} already exists in the "
+                      f"correct path for iteration {iteration}. "
+                      f"Will not move new one.")
 
-    def find_gradient(self, iteration: str, event: str, smooth=False) -> str:
+    def find_gradient(self, iteration: str, event: str, smooth=False,
+                      inversion_grid=False) -> str:
         """
         Find the path to a gradient produced by an adjoint simulation.
 
@@ -183,6 +189,9 @@ class LasifComponent(Component):
         :type event: str
         :param smooth: Do you want the smoothed gradient, defaults to False
         :type smooth: bool
+        :param inversion_grid: Do you want the gradient on inversion 
+        discretization?, defaults to False
+        :type inversion_grid: bool
         :return: Path to a gradient
         :rtype: str
         """
@@ -190,6 +199,9 @@ class LasifComponent(Component):
         if smooth:
             gradient = os.path.join(gradients, f"ITERATION_{iteration}",
                                     event, "smooth_gradient.h5")
+            if inversion_grid:
+                gradient = os.path.join(gradients, f"ITERATION_{iteration}",
+                                    event, "smooth_grad_master.h5")
         else:
             gradient = os.path.join(gradients, f"ITERATION_{iteration}",
                                     event, "gradient.h5")
@@ -230,14 +242,29 @@ class LasifComponent(Component):
         """
         lapi.plot_raydensity(
                 self.lasif_comm,
-                iteration=self.comm.project.current_iteration)
+                iteration=self.comm.project.current_iteration,
+                plot_stations=True)
         filename = os.path.join(
                 self.lasif_root,
                 "OUTPUT",
                 "raydensity_plots",
-                f"ITERATION_{iteration}",
+                f"ITERATION_{self.comm.project.current_iteration}",
                 "raydensity.png")
         return filename
+
+    def get_master_model(self) -> str:
+        """
+        Get the path to the inversion grid used in inversion
+        
+        :return: Path to inversion grid
+        :rtype: str
+        """
+        path = os.path.join(
+            self.lasif_root,
+            "MODELS",
+            "Globe3D_csem_100.h5" #TODO: Hardcoded for now but needs fixing
+        )
+        return path
 
     def get_source(self, event_name: str) -> dict:
         """
@@ -372,6 +399,23 @@ class LasifComponent(Component):
         adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
+
+    def write_misfit(self):
+        """
+        Write the iteration's misfit into a toml file.
+        TODO: I might want to add this to make it do more statistics
+        """
+        print("Writing Misfit")
+        iteration = self.comm.project.current_iteration
+        misfit_path = os.path.join(self.lasif_root,
+                                    "ITERATIONS",
+                                    f"ITERATION_{iteration}",
+                                    "misfits.toml")
+        if os.path.exists(misfit_path):
+            print("Misfit already exists. If you want it rewritten, "
+                  "delete the misfit toml in the lasif_project")
+            return
+        lapi.write_misfit(self.lasif_comm, iteration=iteration)
 
     def _already_processed(self, event: str) -> bool:
         """

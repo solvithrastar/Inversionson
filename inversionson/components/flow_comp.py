@@ -129,7 +129,7 @@ class SalvusFlowComponent(Component):
         p.create_dataset(name='source', data=stf_source)
         p["source"].attrs["sampling_rate_in_hertz"] = 1 / self.comm.project.time_step
         p["source"].attrs["spatial-type"] = np.string_("moment_tensor")
-        p["source"].attrs["start_time_in_seconds"] = -self.comm.project.time_step * 1.0e9
+        p["source"].attrs["start_time_in_seconds"] = -self.comm.project.time_step
         f.close()
         #rec = receivers[0]
         #Need to make sure I only take receivers with an adjoint source
@@ -139,15 +139,15 @@ class SalvusFlowComponent(Component):
                 adjoint_sources.append(rec)
 
         p.close()
-        adj_src = [source.seismology.VectorPoint3D(
+        adj_src = [source.seismology.VectorPoint3DZNE(
             latitude=rec["latitude"],
             longitude=rec["longitude"],
-            fr=1.0,
-            ft=1.0,
-            fp=1.0,
+            fz=1.0,
+            fn=1.0,
+            fe=1.0,
             source_time_function=stf.Custom(
                 filename=adjoint_filename,
-                dataset_name= "/" + rec["network-code"] + "_" + rec["station-code"])) for rec in adjoint_sources]
+                dataset_name="/" + rec["network-code"] + "_" + rec["station-code"])) for rec in adjoint_sources]
 
         return adj_src
 
@@ -355,7 +355,7 @@ class SalvusFlowComponent(Component):
 
         return job.get_output_files()
 
-    def submit_smoothing_job(self, event: str, simulation: object):
+    def submit_smoothing_job(self, event: str, simulation: object, smooth, simulations):
         """
         Submit the salvus diffusion equation smoothing job
 
@@ -364,18 +364,30 @@ class SalvusFlowComponent(Component):
         :param simulation: Simulation object required by salvus flow
         :type simulation: object
         """
-        gradient = self.comm.lasif.find_gradient(event)
-        sim = self.comm.smoother.generate_diffusion_opject(gradient=gradient)
         output_folder = os.path.join(
-            self.comm.lasif_root,
+            self.comm.lasif.lasif_root,
             "GRADIENTS",
             f"ITERATION_{self.comm.project.current_iteration}",
             event,
             "smoother_output"
         )
-        sapi.run(
-               site_name=self.comm.project.site_name,
-               input_file=sim,
-               output_folder=output_folder,
-               ranks=8,
-               get_all=True)
+        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        for par in simulations.keys():
+            sapi.run(
+                #site_name="swp_smooth",
+                site_name=self.comm.project.site_name,
+                input_file=simulations[par],
+                output_folder=output_folder,
+                overwrite=True,
+                ranks=8,
+                get_all=True)
+            
+            smoothed = UnstructuredMesh.from_h5(os.path.join(output_folder, "smooth_gradient.h5"))
+            smooth.attach_field(par, smoothed.elemental_fields[par])
+        output_folder = os.path.join(
+            self.comm.lasif.lasif_root,
+            "GRADIENTS",
+            f"ITERATION_{self.comm.project.current_iteration}",
+            event
+        )
+        smooth.write_h5(os.path.join(output_folder, "smooth_gradient.h5"))

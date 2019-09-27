@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from .component import Component
 import numpy as np
+# import os
 
 
 class SalvusMeshComponent(Component):
@@ -30,7 +31,7 @@ class SalvusMeshComponent(Component):
         # I need to import something from a private code.
         # How do I do that?
 
-    def add_smoothing_fields(self, event: str):
+    def add_smoothing_fields(self, event: str) -> object:
         """
         The diffusion equation smoothing needs certain parameters for 
         smoothing. These parameters need to be appended to the mesh as fields.
@@ -39,6 +40,10 @@ class SalvusMeshComponent(Component):
         :param event: name of event
         :type event: str
         """
+        import shutil
+        import os
+        import h5py
+        # TODO: Make the smoothing fields be a different mesh.
         from salvus_mesh.unstructured_mesh import UnstructuredMesh
         iteration = self.comm.project.current_iteration
         gradient = self.comm.lasif.find_gradient(
@@ -46,15 +51,34 @@ class SalvusMeshComponent(Component):
             event=event,
             smooth=False)
         
-        smoothing_length = 5000.0 * 1000.0  # Hardcoded for now
+        # grad_folder, _ = os.path.split(gradient)
+        # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
+        
+        # shutil.copyfile(gradient, smoothing_fields_mesh)
+        smoothing_length = 500.0 * 1000.0  # Hardcoded for now
+        # dimstr = '[ ' + ' | '.join(["M0", "M1"]) + ' ]'
+        
+        # with h5py.File(smoothing_fields_mesh, "r+") as fh:
+        #     if "MODEL/data" in fh:
+        #         M0 = np.ones(shape=(fh["MODEL/data"].shape[0], 1, fh["MODEL/data"].shape[2]))
+        #         # M0 = fh["MODEL/data"][:, 0, :]
+        #         # M0 = np.ones(M0.shape)
+        #         M1 = np.copy(M0) * 2 * np.sqrt(smoothing_length)
+        #         smoothing = np.concatenate((M0, M1), axis=1)
+        #         print(f"Smoothing shape: {smoothing.shape}")
+        #         del fh["MODEL/data"]
+        #         fh.create_dataset("MODEL/data", data=smoothing)
+        #         fh['MODEL/data'].dims[0].label = 'element'
+        #         fh['MODEL/data'].dims[1].label = dimstr
+        #         fh['MODEL/data'].dims[2].label = 'point'
+                
+
         mesh = UnstructuredMesh.from_h5(gradient)
+        mesh.elemental_fields = {}
+        mesh.attach_field('M0', np.ones_like(mesh.get_element_nodes()[:, :, 0]))
+        mesh.attach_field('M1', 0.5 * smoothing_length ** 2 * np.ones_like(mesh.get_element_nodes()[:, :, 0]))
+        mesh.attach_field('fluid', np.ones(mesh.nelem))
 
-        M0 = np.ones(mesh.npoint) * 2 * np.sqrt(smoothing_length)
-        M1 = np.copy(M0)
-
-        mesh.attach_field("M0", M0)
-        mesh.attach_field("M1", M1)
-        mesh.map_nodal_fields_to_element_nodal()
-        mesh.write_h5_tensorized_model(gradient)
         print(f"Smoothing fields M0 and M1 added to gradient for "
               f"event {event}")
+        return mesh

@@ -34,14 +34,16 @@ class SalvusOptComponent(Component):
         if not os.path.exists(run_script):
             raise InversionsonError("Please create a shell script to run "
                                     "Salvus opt in your opt folder.")
+        os.chdir(self.path)
         run_script = f"sh {run_script}"
         process = subprocess.Popen(
             run_script, shell=True, stdout=subprocess.PIPE, bufsize=1)
         for line in process.stdout:
-            print(line, end="/", flush=True)
+            print(line, end="\n", flush=True)
             #sys.stdout.write(line)
         process.wait()
         print(process.returncode)
+        os.chdir(self.comm.project.inversion_root)
         # subprocess.call([path_to_run_script])
 
     def read_salvus_opt(self) -> dict:
@@ -177,8 +179,9 @@ class SalvusOptComponent(Component):
         Write misfit and gradient to task toml
         """
         iteration = self.comm.project.current_iteration
-        events_used = self.comm.project.events_used
+        events_used = self.comm.project.events_in_iteration
         misfits = toml.load(os.path.join(self.comm.project.lasif_root,
+                                         "ITERATIONS",
                                          f"ITERATION_{iteration}",
                                          "misfits.toml"))
         events_list = []
@@ -187,8 +190,10 @@ class SalvusOptComponent(Component):
             grad_path = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
-                smooth=True
+                smooth=True,
+                inversion_grid=True
             )
+
             events_list.append({
                 "gradient": grad_path,
                 "misfit": float(misfits["event_misfits"][event]),

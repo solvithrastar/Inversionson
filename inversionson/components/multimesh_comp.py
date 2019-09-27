@@ -69,18 +69,18 @@ class MultiMeshComponent(Component):
                                                  smooth=smooth)
 
         master_model = self.comm.lasif.get_master_model()
-        summed_gradient = self.comm.salvus_opt.get_model_path(
-            iteration, gradient=True)
+        # summed_gradient = self.comm.salvus_opt.get_model_path(
+        #     iteration, gradient=True)
         seperator = "/"
         master_disc_gradient = seperator.join(
             gradient.split(seperator)[:-1]) + "/smooth_grad_master.h5"
         shutil.copy(master_model, master_disc_gradient)
 
-        if mode == "gll2gll":
+        if mode == "gll_2_gll":
             mapi.gll_2_gll(
                 from_gll=gradient,
                 to_gll=master_disc_gradient,
-                nelem_to_search=5,
+                nelem_to_search=10,
                 parameters=self.comm.project.inversion_params,
                 gradient=False  # This is only true if added on top
                 )
