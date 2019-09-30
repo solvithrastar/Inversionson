@@ -336,13 +336,15 @@ class ProjectComponent(Component):
         f_job_dict = {
                 "name": "",
                 "submitted": False,
-                "retrieved": False
+                "retrieved": False,
+                "interpolated": False
                 }
         a_job_dict = {
             "name": "",
             "submitted": False,
             "retrieved": False,
-            "gradient_smoothed": False
+            "gradient_smoothed": False,
+            "interpolated": False
         }
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {

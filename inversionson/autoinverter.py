@@ -119,7 +119,15 @@ class AutoInverter(object):
             print(f"Event {event} has already been submitted. "
                   "Will not do interpolation.")
             return
+        if self.comm.project.forward_job[event]["interpolated"]:
+            print(f"Mesh for {event} has already been interpolated. "
+                  "Will not do interpolation.")
+            return
         self.comm.multi_mesh.interpolate_to_simulation_mesh(event)
+        self.comm.project.change_attribute(
+                            attribute=f"forward_job[\"{event}\"][\"interpolated\"]",
+                            new_value=True)
+        self.comm.project.update_iteration_toml()
 
     def interpolate_gradient(self, event: str):
         """
@@ -128,8 +136,16 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
+        if self.comm.project.adjoint_job[event]["interpolated"]:
+            print(f"Gradient for {event} has already been interpolated. "
+                  f"Will not do interpolation.")
+            return
         self.comm.multi_mesh.interpolate_gradient_to_model(event,
                                                            smooth=True)
+        self.comm.project.change_attribute(
+                            attribute=f"adjoint_job[\"{event}\"][\"interpolated\"]",
+                            new_value=True)
+        self.comm.project.update_iteration_toml()
 
     def run_forward_simulation(self, event: str):
         """
@@ -312,6 +328,10 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
+        if self.comm.project.adjoint_job["retrieved"]:
+            print(f"Gradient for event {event} has already been retrieved. "
+                  f"Will not retrieve it again.")
+            return
         job_paths = self.comm.salvus_flow.get_job_file_paths(
                 event=event,
                 sim_type="adjoint")
@@ -482,7 +502,7 @@ class AutoInverter(object):
                         event, sim_type))  # This thing might time out
 
                     if status == "JobStatus.finished":
-                        self.comm.retrieve_gradient(event)
+                        self.retrieve_gradient(event)
                         self.comm.project.change_attribute(
                                 attribute=f"adjoint_job[\"{event}\"][\"retrieved\"]",
                                 new_value=True)
@@ -533,6 +553,7 @@ class AutoInverter(object):
                 done[_i] = True
             else:
                 status = str(self.comm.salvus_flow.get_job_status(event, sim_type))
+                print(f"Status = {status}, event: {event}, sim_type: {sim_type}")
                 if status == "JobStatus.finished":
                     if sim_type == "forward":
                         self.retrieve_seismograms(event)
@@ -551,11 +572,12 @@ class AutoInverter(object):
         self.comm.project.update_iteration_toml()
 
         if not np.all(done):  # If not all done, keep monitoring
+            time.sleep(20)
             self.wait_for_all_jobs_to_finish(sim_type)
 
     def perform_task(self, task: str, verbose: str):
         """
-        Input a task and send to correct function
+        Input a salvus opt task and send to correct function
 
         :param task: task issued by salvus opt
         :type task: str
@@ -674,7 +696,7 @@ class AutoInverter(object):
                     use_aliases=True))
                 print(f"{event} interpolation")
 
-                # self.interpolate_gradient(event)
+                self.interpolate_gradient(event)
             
             print(Fore.RED + "\n =================== \n")
             print(emoji.emojize(':love_letter: | Finalizing iteration '
@@ -695,7 +717,6 @@ class AutoInverter(object):
             self.comm.salvus_opt.run_salvus_opt()
             task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
             print(f"Next salvus opt task is: {task}")
-            sys.exit("Have a nice weekend")
             self.perform_task(task, verbose)
 
         elif task == "compute_misfit":
@@ -820,7 +841,7 @@ if __name__ == "__main__":
     print(emoji.emojize(
         '\n :flag_for_Iceland: | Welcome to Inversionson | :flag_for_Iceland: \n',
         use_aliases=True))
-    info_toml = input("Give me a path to your information_toml \n")
+    info_toml = input("Give me a path to your information_toml \n\n")
     if not info_toml.startswith("/"):
         import os
         cwd = os.getcwd()
