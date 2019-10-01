@@ -212,7 +212,7 @@ class SalvusOptComponent(Component):
         :param control_group: List of events selected for control group
         :type control_group: list
         """
-        events_used = self.comm.project.events_used
+        events_used = self.comm.project.events_in_iteration
         task = self.read_salvus_opt()
         
         events_list = []

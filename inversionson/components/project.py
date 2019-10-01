@@ -11,6 +11,7 @@ import shutil
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
 
+
 from .communicator import Communicator
 from .component import Component
 from .lasif_comp import LasifComponent
@@ -272,6 +273,8 @@ class ProjectComponent(Component):
         self.n_random_events_picked = self.info["n_random_events"]
         self.max_ctrl_group_size = self.info["max_ctrl_group_size"]
         self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
+        self.maximum_grad_divergence_angle = self.info["max_angular_change"]
+        self.dropout_probability = self.info["dropout_probability"]
         if not first:
             self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
             print(f"Current Iteration: {self.current_iteration}")
@@ -408,7 +411,11 @@ class ProjectComponent(Component):
                 cg_dict[iteration] = {}
                 cg_dict[iteration]["old"] = cg_dict[prev_iter]["new"]
             if new:
+                cg_dict[iteration] = {}
                 cg_dict[iteration]["new"] = self.new_control_group
+        
+        with open(self.paths["control_group_toml"], "w") as fh:
+            toml.dump(cg_dict, fh)
 
     def update_iteration_toml(self, iteration="current"):
         """

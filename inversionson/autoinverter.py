@@ -12,6 +12,7 @@ import sys
 import warnings
 from inversionson import InversionsonError, InversionsonWarning
 import lasif.api
+import toml
 
 from colorama import init
 init()
@@ -107,6 +108,13 @@ class AutoInverter(object):
         self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name)
         self.comm.project.get_iteration_attributes(it_name)
+        # mixa inn control group fra gamalli vinkonu
+        # Get control group info into iteration attributes
+        ctrl_groups = toml.load(
+            self.comm.project.paths["control_group_toml"])
+        if it_name in ctrl_groups.keys():
+            self.comm.project.change_attribute(
+                "old_control_group", ctrl_groups[it_name]["old"])
 
     def interpolate_model(self, event: str):
         """
@@ -255,9 +263,6 @@ class AutoInverter(object):
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src)
-        #print(f"Adjoint Source: {adj_src}")
-        #print(f"Simulation: {w_adjoint}")
-        #sys.exit("Fer ekki fet")
 
         self.comm.salvus_flow.submit_job(
             event=event,
@@ -354,7 +359,6 @@ class AutoInverter(object):
             lasif_gradient, "gradient.xdmf"))
 
         print(f"Gradient for event {event} has been retrieved.")
-
 
     def select_windows(self, event: str):
         """
@@ -575,7 +579,317 @@ class AutoInverter(object):
             time.sleep(20)
             self.wait_for_all_jobs_to_finish(sim_type)
 
-    def perform_task(self, task: str, verbose: str):
+    def compute_misfit_and_gradient(self, task: str, verbose: str):
+        """
+        A task associated with the initial iteration of FWI
+        
+        :param task: Task issued by salvus opt
+        :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
+        """
+        print(Fore.RED + "\n =================== \n")
+        print("Will prepare iteration")
+
+        self.prepare_iteration(first=True)
+
+        print(emoji.emojize('Iteration prepared | :thumbsup:',
+            use_aliases=True))
+
+        print("Will select first event batch")
+        # self.get_first_batch_of_events() Already have the batch from
+        # The iteration preparation
+        print("Initial batch selected")
+
+        for event in self.comm.project.events_in_iteration:
+            print(Fore.CYAN + "\n ============================= \n")
+            print(emoji.emojize(
+                ':globe_with_meridians: :point_right: '
+                ':globe_with_meridians: | Interpolation Stage',
+                use_aliases=True))
+            print(f"{event} interpolation")
+
+            self.interpolate_model(event)
+
+            print(Fore.YELLOW + "\n ============================ \n")
+            print(emoji.emojize(':rocket: | Run forward simulation',
+                    use_aliases=True))
+
+            self.run_forward_simulation(event)
+
+            print(Fore.RED + "\n =========================== \n")
+            print(emoji.emojize(':trident: | Calculate station weights',
+                    use_aliases=True))
+
+            self.calculate_station_weights(event)
+        
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Waiting for jobs',
+                use_aliases=True))
+
+        events_retrieved = []
+        i = 0
+        while events_retrieved != "All retrieved":
+            print(Fore.BLUE)
+            print(emoji.emojize(':hourglass: | Waiting for jobs',
+                use_aliases=True))
+            i += 1
+            time.sleep(5)
+            events_retrieved = self.monitor_jobs("forward")
+            if events_retrieved == "All retrieved" and i != 1:
+                break
+            else:
+                if len(events_retrieved) == 0:
+                    print("No new events retrieved, lets wait")
+                    continue
+                    # Should not happen
+                if events_retrieved == "All retrieved":
+                    events_retrieved = self.comm.project.events_in_iteration
+                for event in events_retrieved:
+                    print(f"{event} retrieved")
+                    print(Fore.GREEN + "\n ===================== \n")
+                    print(emoji.emojize(':floppy_disk: | Process data if '
+                                        'needed', use_aliases=True))
+
+                    self.process_data(event)
+
+                    print(Fore.WHITE + "\n ===================== \n")
+                    print(emoji.emojize(':foggy: | Select windows',
+                            use_aliases=True))
+
+                    self.select_windows(event)
+
+                    print(Fore.MAGENTA + "\n ==================== \n")
+                    print(emoji.emojize(':zap: | Quantify Misfit',
+                            use_aliases=True))
+
+                    self.misfit_quantification(event)
+
+                    print(Fore.YELLOW + "\n ==================== \n")
+                    print(emoji.emojize(':rocket: | Run adjoint simulation',
+                            use_aliases=True))
+                    # if "NEAR" in event:
+                    self.run_adjoint_simulation(event)
+                    # elif "REYKJANES" in event:
+                    # self.run_adjoint_simulation(event)
+                        
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Waiting for jobs',
+                use_aliases=True))
+
+        self.wait_for_all_jobs_to_finish("forward")
+        self.comm.lasif.write_misfit()
+
+        events_retrieved_adjoint = []
+        i = 0
+        while events_retrieved_adjoint != "All retrieved":
+            print(Fore.BLUE)
+            print(emoji.emojize(':hourglass: | Waiting for jobs',
+                    use_aliases=True))
+            i += 1
+            time.sleep(15)
+            events_retrieved_adjoint = self.monitor_jobs("adjoint")
+            if events_retrieved_adjoint == "All retrieved" and i != 1:
+                break
+            else:
+                if len(events_retrieved_adjoint) == 0:
+                    print("No new events retrieved, lets wait")
+                    continue
+                    # Should not happen
+                if events_retrieved_adjoint == "All retrieved":
+                    events_retrieved_adjoint = self.comm.project.events_in_iteration
+                for event in events_retrieved_adjoint:
+                    print(f"{event} retrieved")
+
+                    print(Fore.YELLOW + "\n ==================== \n")
+                    print(emoji.emojize(':rocket: | Run Diffusion equation',
+                        use_aliases=True))
+                    print(f"Event: {event} gradient will be smoothed")
+
+                    self.smooth_gradient(event)
+
+                    print(Fore.CYAN + "\n ============================= \n")
+                    print(emoji.emojize(
+                        ':globe_with_meridians: :point_right: '
+                        ':globe_with_meridians: | Interpolation Stage',
+                        use_aliases=True))
+                    print(f"{event} interpolation")
+
+                    self.interpolate_gradient(event)
+
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Making sure all jobs are done',
+                use_aliases=True))
+        self.wait_for_all_jobs_to_finish("adjoint")
+        
+        print(Fore.RED + "\n =================== \n")
+        print(emoji.emojize(':love_letter: | Finalizing iteration '
+                            'documentation', use_aliases=True))
+        # sys.exit("Stopped after smoothing")
+
+        self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
+        self.comm.project.update_iteration_toml()
+        self.comm.storyteller.document_task(task)
+        # Try to make ray-density plot work
+        self.comm.salvus_opt.close_salvus_opt_task()
+
+        print(Fore.RED + "\n =================== \n")
+        print(emoji.emojize(f':grinning: | Iteration '
+                            f'{self.comm.project.current_iteration} done',
+                            use_aliases=True))
+        
+        self.comm.salvus_opt.run_salvus_opt()
+        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+        print(f"Next salvus opt task is: {task}")
+        self.assign_task_to_function(task, verbose)
+
+    def compute_misfit(self, task: str, verbose: str):
+        """
+        Compute misfit for a test model
+
+        :param task: task issued by salvus opt
+        :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
+        """
+        self.prepare_iteration()
+        if "compute misfit for" in verbose:
+            events_to_use = self.comm.project.old_control_group
+        else:
+            events_to_use = list(
+                set(self.comm.project.events_in_iteration) - set(
+                    self.comm.project.old_control_group))
+        for event in events_to_use:
+
+            print(Fore.CYAN + "\n ============================= \n")
+            print(emoji.emojize(
+                ':globe_with_meridians: :point_right: '
+                ':globe_with_meridians: | Interpolation Stage',
+                use_aliases=True))
+            print(f"{event} interpolation")
+
+            self.interpolate_model(event)
+
+            print(Fore.YELLOW + "\n ============================ \n")
+            print(emoji.emojize(':rocket: | Run forward simulation',
+                    use_aliases=True))
+
+            self.run_forward_simulation(event)
+
+            print(Fore.RED + "\n =========================== \n")
+            print(emoji.emojize(':trident: | Calculate station weights',
+                    use_aliases=True))
+
+            self.calculate_station_weights(event)
+        events_retrieved = []
+        while events_retrieved != "All retrieved":
+            time.sleep(30)
+            events_retrieved = self.monitor_jobs("forward")
+            if events_retrieved == "All retrieved":
+                break
+            else:
+                for event in events_retrieved:
+                    self.process_data(event)
+                    self.select_windows(event)
+                    self.misfit_quantification(event)
+
+        self.comm.storyteller.document_task(task, verbose)
+        self.comm.salvus_opt.write_misfit_to_task_toml()
+        self.comm.salvus_opt.close_salvus_opt_task()
+        self.comm.project.update_iteration_toml()
+        self.comm.salvus_opt.run_salvus_opt()
+        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+        self.assign_task_to_function(task, verbose)
+
+    def compute_gradient(self, task: str, verbose: str):
+        """
+        Compute gradient for accepted trial model
+
+        :param task: task issued by salvus opt
+        :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
+        """
+        iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        self.comm.project.change_attribute(
+            attribute="current_iteration",
+            new_value=iteration
+        )
+        self.comm.project.get_iteration_attributes(iteration)
+        for event in self.comm.project.events_used:
+            self.prepare_gradient_for_smoothing(event)
+            self.run_adjoint_simulation(event)
+        # Cut sources and receivers?
+        events_retrieved = []
+        first = True  # Maybe this will not be needed later.
+        while events_retrieved != "All retrieved":
+            time.sleep(30)
+            events_retrieved = self.monitor_jobs("adjoint")
+            if events_retrieved == "All retrieved":
+                break
+            else:
+                for event in events_retrieved:
+                    self.smooth_gradient(event)
+                    self.interpolate_gradient(event, first)
+                    first = False
+        # Smooth gradients
+        self.comm.salvus_opt.move_gradient_to_salvus_opt_folder(event)
+        self.comm.salvus_opt.get_new_control_group()
+        self.comm.storyteller.document_task(task)
+        self.comm.salvus_opt.close_salvus_opt_task()
+        self.comm.salvus_opt.run_salvus_opt()
+        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+        self.assign_task_to_function(task, verbose)
+
+    def select_control_batch(self, task, verbose):
+        """
+        Select events that will carry on to the next iteration
+
+        :param task: task issued by salvus opt
+        :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
+        """
+        print("Selection of Dynamic Mini-Batch Control Group:")
+        iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        self.comm.project.get_iteration_attributes()
+        self.comm.minibatch.print_dp()
+        for event in self.comm.project.events_in_iteration:
+            self.interpolate_gradient(event)
+        
+        # Need to implement these below
+        control_group = self.comm.minibatch.select_optimal_control_group()
+        self.comm.salvus_opt.write_control_group_to_task_toml(
+            control_group=control_group)
+        self.comm.project.change_attribute(
+                attribute="new_control_group",
+                new_value=control_group)
+        self.comm.project.update_control_group_toml(new=True)
+        # self.comm.salvus_opt.close_salvus_opt_task()
+        # self.comm.project.update_iteration_toml()
+        # self.comm.salvus_opt.run_salvus_opt()
+        # task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+        # self.assign_task_to_function(task, verbose)
+
+    def finalize_iteration(self, task, verbose):
+        """
+        Wrap up loose ends and get on to next iteration.
+
+        :param task: task issued by salvus opt
+        :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
+        """
+        iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        self.comm.project.current_iteration = iteration
+        self.comm.project.get_iteration_attributes(iteration)
+        self.comm.salvus_opt.close_salvus_opt_task()
+        self.comm.project.update_iteration_toml()
+        self.comm.salvus_opt.run_salvus_opt()
+        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+        self.assign_task_to_function(task, verbose)
+
+    def assign_task_to_function(self, task: str, verbose: str):
         """
         Input a salvus opt task and send to correct function
 
@@ -585,228 +899,17 @@ class AutoInverter(object):
         :type verbose: str
         """
         if task == "compute_misfit_and_gradient":
-
-            print(Fore.RED + "\n =================== \n")
-            print("Will prepare iteration")
-
-            self.prepare_iteration(first=True)
-
-            print(emoji.emojize('Iteration prepared | :thumbsup:',
-                use_aliases=True))
-
-            print("Will select first event batch")
-            # self.get_first_batch_of_events() Already have the batch from
-            # The iteration preparation
-            print("Initial batch selected")
-
-            for event in self.comm.project.events_in_iteration:
-                print(Fore.CYAN + "\n ============================= \n")
-                print(emoji.emojize(
-                    ':globe_with_meridians: :point_right: '
-                    ':globe_with_meridians: | Interpolation Stage',
-                    use_aliases=True))
-                print(f"{event} interpolation")
-
-                self.interpolate_model(event)
-
-                print(Fore.YELLOW + "\n ============================ \n")
-                print(emoji.emojize(':rocket: | Run forward simulation',
-                      use_aliases=True))
-
-                self.run_forward_simulation(event)
-
-                print(Fore.RED + "\n =========================== \n")
-                print(emoji.emojize(':trident: | Calculate station weights',
-                      use_aliases=True))
-
-                self.calculate_station_weights(event)
-            
-            print(Fore.BLUE + "\n ========================= \n")
-            print(emoji.emojize(':hourglass: | Waiting for jobs',
-                  use_aliases=True))
-
-            events_retrieved = []
-            i = 0
-            while events_retrieved != "All retrieved":
-                print(Fore.BLUE)
-                print(emoji.emojize(':hourglass: | Waiting for jobs',
-                  use_aliases=True))
-                i += 1
-                time.sleep(5)
-                events_retrieved = self.monitor_jobs("forward")
-                if events_retrieved == "All retrieved" and i != 1:
-                    break
-                else:
-                    if len(events_retrieved) == 0:
-                        print("No new events retrieved, lets wait")
-                        continue
-                        # Should not happen
-                    if events_retrieved == "All retrieved":
-                        events_retrieved = self.comm.project.events_in_iteration
-                    for event in events_retrieved:
-                        print(f"{event} retrieved")
-                        print(Fore.GREEN + "\n ===================== \n")
-                        print(emoji.emojize(':floppy_disk: | Process data if '
-                                            'needed', use_aliases=True))
-
-                        self.process_data(event)
-
-                        print(Fore.WHITE + "\n ===================== \n")
-                        print(emoji.emojize(':foggy: | Select windows',
-                              use_aliases=True))
-
-                        self.select_windows(event)
-
-                        print(Fore.MAGENTA + "\n ==================== \n")
-                        print(emoji.emojize(':zap: | Quantify Misfit',
-                              use_aliases=True))
-
-                        self.misfit_quantification(event)
-
-                        print(Fore.YELLOW + "\n ==================== \n")
-                        print(emoji.emojize(':rocket: | Run adjoint simulation',
-                              use_aliases=True))
-                        # if "NEAR" in event:
-                        self.run_adjoint_simulation(event)
-                        # elif "REYKJANES" in event:
-                        # self.run_adjoint_simulation(event)
-                            
-            print(Fore.BLUE + "\n ========================= \n")
-            print(emoji.emojize(':hourglass: | Waiting for jobs',
-                  use_aliases=True))
-
-            self.wait_for_all_jobs_to_finish("forward")
-            self.wait_for_all_jobs_to_finish("adjoint")
-            self.comm.lasif.write_misfit()
-            for event in self.comm.project.events_in_iteration:
-
-                print(Fore.YELLOW + "\n ==================== \n")
-                print(emoji.emojize(':rocket: | Run Diffusion equation',
-                      use_aliases=True))
-                print(f"Event: {event} gradient will be smoothed")
-
-                # self.prepare_gradient_for_smoothing(event)
-                # TODO:Change this to smooth as soon as an adjoint job is done
-                self.smooth_gradient(event) 
-
-                print(Fore.CYAN + "\n ============================= \n")
-                print(emoji.emojize(
-                    ':globe_with_meridians: :point_right: '
-                    ':globe_with_meridians: | Interpolation Stage',
-                    use_aliases=True))
-                print(f"{event} interpolation")
-
-                self.interpolate_gradient(event)
-            
-            print(Fore.RED + "\n =================== \n")
-            print(emoji.emojize(':love_letter: | Finalizing iteration '
-                                'documentation', use_aliases=True))
-            # sys.exit("Stopped after smoothing")
-
-            self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
-            self.comm.project.update_iteration_toml()
-            self.comm.storyteller.document_task(task)
-            # Try to make ray-density plot work
-            self.comm.salvus_opt.close_salvus_opt_task()
-
-            print(Fore.RED + "\n =================== \n")
-            print(emoji.emojize(f':grinning: | Iteration '
-                                f'{self.comm.project.current_iteration} done',
-                                use_aliases=True))
-            
-            self.comm.salvus_opt.run_salvus_opt()
-            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-            print(f"Next salvus opt task is: {task}")
-            self.perform_task(task, verbose)
-
+            self.compute_misfit_and_gradient(task, verbose)
         elif task == "compute_misfit":
-            self.prepare_iteration()
-            if "compute misfit for" in verbose:
-                events_to_use = self.comm.project.old_control_group
-            else:
-                events_to_use = list(
-                    set(self.comm.project.events_in_iteration) - set(
-                        self.comm.project.old_control_group))
-            for event in events_to_use:
-                self.interpolate_model(event)
-                self.run_forward_simulation(event)
-                self.calculate_station_weights(event)
-            events_retrieved = []
-            while events_retrieved != "All retrieved":
-                time.sleep(30)
-                events_retrieved = self.monitor_jobs("forward")
-                if events_retrieved == "All retrieved":
-                    break
-                else:
-                    for event in events_retrieved:
-                        self.process_data(event)
-                        self.select_windows(event)
-                        self.misfit_quantification(event)
-
-            self.comm.storyteller.document_task(task, verbose)
-            self.comm.salvus_opt.write_misfit_to_task_toml()
-            self.comm.salvus_opt.close_salvus_opt_task()
-            self.comm.project.update_iteration_toml()
-            self.comm.salvus_opt.run_salvus_opt()
-            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-            self.perform_task(task, verbose)
-
+            self.compute_misfit(task, verbose)
         elif task == "compute_gradient":
-            iteration = self.comm.salvus_opt.get_newest_iteration_name()
-            self.comm.project.change_attribute(
-                attribute="current_iteration",
-                new_value=iteration
-            )
-            self.comm.project.get_iteration_attributes(iteration)
-            for event in self.comm.project.events_used:
-                self.prepare_gradient_for_smoothing(event)
-                self.run_adjoint_simulation(event)
-            # Cut sources and receivers?
-            events_retrieved = []
-            first = True  # Maybe this will not be needed later.
-            while events_retrieved != "All retrieved":
-                time.sleep(30)
-                events_retrieved = self.monitor_jobs("adjoint")
-                if events_retrieved == "All retrieved":
-                    break
-                else:
-                    for event in events_retrieved:
-                        self.smooth_gradient(event)
-                        self.interpolate_gradient(event, first)
-                        first = False
-            # Smooth gradients
-            self.comm.salvus_opt.move_gradient_to_salvus_opt_folder(event)
-            self.comm.salvus_opt.get_new_control_group()
-            self.comm.storyteller.document_task(task)
-            self.comm.salvus_opt.close_salvus_opt_task()
-            self.comm.salvus_opt.run_salvus_opt()
-            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-            self.perform_task(task, verbose)
-
-        elif task == "finalize_iteration":
-            iteration = self.comm.salvus_opt.get_newest_iteration_name()
-            self.comm.project.current_iteration = iteration
-            self.comm.project.get_iteration_attributes(iteration)
-            self.comm.salvus_opt.close_salvus_opt_task()
-            self.comm.project.update_iteration_toml()
-            self.comm.salvus_opt.run_salvus_opt()
-            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-            self.perform_task(task, verbose)
-            # Possibly delete wavefields
-        
+            self.compute_gradient(task, verbose)
         elif task == "select_control_batch":
-            iteration = self.comm.salvus_opt.get_newest_iteration_name()
-            self.comm.project.current_iteration = iteration
-            self.comm.project.get_iteration_attributes()
-            # Need to implement these below
-            control_group = self.comm.minibatch.select_optimal_control_group()
-            self.comm.salvus_opt.write_control_group_to_task_toml(
-                control_group=control_group)
-            self.comm.project.new_control_group = control_group
-            self.comm.project.update_control_group_toml(new=True)
-
+            self.select_control_batch(task, verbose)
+        elif task == "finalize_iteration":
+            self.finalize_iteration(task, verbose)
         else:
-            raise ValueError(f"Salvus Opt task {task} not known")
+            raise InversionsonError(f"Don't know task: {task}")
 
     def run_inversion(self):
         """
@@ -822,7 +925,7 @@ class AutoInverter(object):
 
         task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
 
-        self.perform_task(task, verbose)
+        self.assign_task_to_function(task, verbose)
 
 
 def read_information_toml(info_toml_path: str):

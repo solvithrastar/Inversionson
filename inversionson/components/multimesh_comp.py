@@ -82,7 +82,7 @@ class MultiMeshComponent(Component):
                 to_gll=master_disc_gradient,
                 nelem_to_search=10,
                 parameters=self.comm.project.inversion_params,
-                gradient=False  # This is only true if added on top
+                gradient=True  # This is only true if added on top
                 )
         elif mode == "gll2exo":  # This will probably be removed soon
             mapi.gll_2_exodus(

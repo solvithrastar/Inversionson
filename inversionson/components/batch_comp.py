@@ -7,6 +7,9 @@ from .component import Component
 import numpy as np
 import h5py
 import random
+from colorama import Fore, Back, Style
+import sys
+import time
 
 
 class BatchComponent(Component):
@@ -106,6 +109,55 @@ class BatchComponent(Component):
         )
         return angle
 
+    def _sum_relevant_values(self, grad, parameters: list):
+        """
+        Take the gradient, find inverted parameters and sum them together.
+        Reduces a 3D array to a 2D array.
+        
+        :param grad: Numpy array with gradient values
+        :type grad: numpy.ndarray
+        :param parameters: A list of dimension labels in gradient
+        :return: list
+        :rtype: numpy.ndarray
+        """
+        inversion_params = self.comm.project.inversion_params
+        indices = []
+        for param in inversion_params:
+            indices.append(parameters.index(param))
+        print(f"Indices: {indices}")
+        summed_grad = np.zeros(shape=(grad.shape[0]))
+        
+        for i in indices:
+            summed_grad += grad[:, i]
+        print(f"Total summed grad: {np.sum(summed_grad)}")
+        return summed_grad
+
+    def _get_vector_of_values(self, gradient,
+                              unique,
+                              parameters: list):
+        """
+        Take a full gradient, find it's unique values and relevant parameters,
+        manipulate all of these into a vector of summed parameter values.
+        
+        :param gradient: Array of gradient values
+        :type gradient: numpy.ndarray
+        :param unique: Array of unique indices spatially
+        :type unique: numpy.ndarray
+        :param parameters: A list of dimension labels in gradient
+        :return: list
+        :return: 1D vector with gradient values
+        :rtype: numpy.ndarray
+        """
+        gradient = np.swapaxes(a=gradient, axis1=1, axis2=2)
+        gradient = np.reshape(a=gradient,
+                              newshape=(gradient.shape[0]*gradient.shape[1],
+                                        gradient.shape[2]))
+        gradient = gradient[unique]
+        gradient = self._sum_relevant_values(
+            grad=gradient,
+            parameters=parameters)
+        return gradient
+
     def select_optimal_control_group(self) -> list:
         """
         Takes the computed gradients, figures out which are the most
@@ -122,7 +174,7 @@ class BatchComponent(Component):
         # look for event to remove until a certain total angle
         # is reached or minimum control group is reached.
         # We just use the bulk norm of the gradients it seems
-        events = self.comm.project.events_used
+        events = self.comm.project.events_in_iteration
         ctrl_group = events
         max_ctrl = self.comm.project.max_ctrl_group_size
         min_ctrl = self.comm.project.min_ctrl_group_size
@@ -132,15 +184,33 @@ class BatchComponent(Component):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
-                smooth=True
+                smooth=True,
+                inversion_grid=True
             )
             gradient_paths.append(gradient)
             with h5py.File(gradient, "r") as f:
                 grad = f["MODEL/data"]
                 if _i == 0:
-                    full_grad = grad
-                else:
-                    full_grad += grad
+                    parameters = grad.attrs.get("DIMENSION_LABELS")[1].decode()
+                    parameters = parameters[2:-2].replace(" ", "").replace("grad", "").split("|")
+                    coordinates = f["MODEL/coordinates"][()]
+                    init_shape = coordinates.shape
+                    coordinates = np.reshape(a=coordinates,
+                        newshape=(init_shape[0] * init_shape[1], init_shape[2]))
+                    _, unique_indices = np.unique(
+                        ar=coordinates,
+                        return_index=True,
+                        axis=0)
+                if _i == 0:
+                    full_grad = np.zeros_like(grad)
+                # else:
+                full_grad += grad[()]
+        # Select only the relevant parameters and sum them together.
+        # We also need to make sure we don't use points more often than ones.
+        full_grad = self._get_vector_of_values(
+            gradient=full_grad,
+            unique=unique_indices,
+            parameters=parameters)
 
         full_grad_norm = np.linalg.norm(full_grad)
 
@@ -150,10 +220,17 @@ class BatchComponent(Component):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
-                smooth=True
+                smooth=True,
+                inversion_grid=True
             )
             with h5py.File(gradient, "r") as f:
-                individual_gradient = f["MODEL/data"]
+                individual_gradient = f["MODEL/data"][()]
+                individual_gradient = self._get_vector_of_values(
+                    gradient=individual_gradient,
+                    unique=unique_indices,
+                    parameters=parameters
+                )
+
             angle = self._compute_angular_change(
                 full_gradient=full_grad,
                 full_norm=full_grad_norm,
@@ -169,10 +246,15 @@ class BatchComponent(Component):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=redundant_gradient,
-                smooth=True
+                smooth=True,
+                inversion_grid=True
             )
             with h5py.File(gradient, "r") as f:
-                test_batch_grad -= f["MODEL/data"]
+                removal_grad = self._get_vector_of_values(
+                    gradient=f["MODEL/data"][()],
+                    unique=unique_indices,
+                    parameters=parameters)
+                test_batch_grad -= removal_grad
             angle = self._angle_between(full_grad, batch_grad)
 
             if angle >= self.comm.project.maximum_grad_divergence_angle:
@@ -195,7 +277,108 @@ class BatchComponent(Component):
             print(f"Event: {grad} randomly dropped from control group.\n")
             print(f"Replaced by event: {non_ctrl_group_event} \n")
 
-        for key, val in event_quality:
+        for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val
 
         return ctrl_group
+
+    def print_dp(self):
+        """
+        Print DP's face. Important to give proper credit.
+        """
+
+        string = """
+                                `. .:oydhy/..`        `.`                                           
+                          `-+osdMNNMMMMNMMMmNNh+//osh+osdmdo-                                       
+                       `.-yNMMMMMMMMNMNmNhNNMMMNNNddso+-/ysNhs:.+//                                 
+                     .`.-sMMMMMMMMMMMMNMMMMMMMMMMMMms+syyyyNNdNmh:h`                                
+                   `-`--omMMMMMMMMMMMMMMMMMMMMMMMMMMNNMMMMMMMmMNNNd:-`./syo+/-`                     
+                  .ssyyhmMMMMMMMMMMMMMMMMMMNMMMMMMMMMMMMMMMMMMMMMMMmdNNmNMMMNNms:                   
+                .odsymmMMMMMMMMMMMMMMMMMMMMNMMMMMMMMMMMMMMMMMMMMMMMMMMMdddMMMMmdo/                  
+              `.y+hdmNNNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMdMMMMNMdy.                 
+              //ysmdymMNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMmMMMMNMhm- `               
+              sdhdmmmNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNMMMMMNm/.-               
+             :hdmNNNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNmho``             
+           `/ymdNNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNNMNMNh/`            
+           -symNNMMMMMMMMMMMMMMMMMMMMMNNNMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMNNh+-`           
+           .+hNMMMMMMMMMMMMMNNmmmdddddddddmmmmmmddddmmmmmmmmmmmmmNNMMMMMMMMMMMMMMMMMNNdso+-`        
+         ...syMMMMMMMMMNmdhyyssooooooosssssssssoooooooossssooooosydmmmmmMMMMMMMMMMMMMNNh+/:.        
+         s:+ddMMMMMMNmhysoo+++++////////::::---::/:::::///+////+oyhyhyddddmMMMMMMMMMMMMNmdho`       
+        -osdNMMMNddhso++++////:::-----------.--::::::::::::::://oysyyymhssydmNMMMMMMMMMMMMMMy-      
+       .+hmNMMNy+++///////////:::------.....-------::-::--:::///+ossyshhsssosyhdmNMMMMMMMNmmdh-     
+       /NNNNMd+::-::///::::::::::::------..-----..---:---:::::///+++ossssso++++osymMMMMMMMMMNNh.    
+      /mNmMMd/:-::::///::::/::::--------.--..-.-.--.--------::://///++++++///////+sdMMMMMMMMMMN:    
+     :mMNMMd/:::::://:::::::::-------..................--------::::///////////////+sdMMMMNMMMNNy`   
+    -dNmMMm+::::////::::::----.........````.....``..........---:::::::::///////////+yNNMMMMMMMNd/   
+    .smNNmy/:://////::::::----..........``.................---------:::::://////////+dNMMMMMMMMNo   
+    :hmNddo/://////////::-------..```....````.........-------------:::::::://///////+ymNMMMMMMMMm.  
+  `ydmmmdyo////////////:::::-----........```````.....-------::::::::/://:://///////+oymmNNNMMMMMMs  
+  :hhmdhyys+///////////::::::-----------............-----:::::::::////////////////++ohmNmmNMMMMNMN- 
+  hhdhdddhs+///////////::::::::------------........-------::::::://///////////////++shmNmNMMMMMmMM+ 
+ -dmNNNmmdy+/////+////::------------------..........-----..-----::::::///////////++oshdNNNNMMMMNmNh 
+ yNmNNNNmds+////////::--...............---...--....--.-..``......-----::://///++/++osydmNNmMNNNNNds 
+:hmmmMMNdy+/////+//:::-.....``````````.......-........``````````......--://///++++++oyhmNNNMNNNNNN- 
+-hmdNMNds+////++///:::----....``````````````````.```````````````..------://///++++++osyhNMNMMNNMNm- 
+ sNmMMms////++++ooo++++++++////::...``````````````````````..-::::://////+++o+++++++++ooydMMMMNMNNd` 
+ :NNMMs////+++oydddddddmNNNNNNNmdh+/:/:-.``````````.-:-//oydmmmmmmmdddhyshhhys++++o+++++smMMMMNNMm. 
+  dNMNo////+oydmNNNNNMMMMMMMMMMMMNmhyoo/:-.`````..-:/+oyddNMMMMMMMMMMMMNNNmmhdhso+++++/++hMMMMNNMN- 
+ `+MMN+////+ydmmNMMMMMNNmmNNNNNNNNNmdys+/:--.....-:/+syhddNNNNNNNNNNNMMMMMMMNmddhs+o+///+yMMMMMNNs` 
+ `+NMN+::/+ohmmNNmmmmhso+/++oossyyhhhhso++:--...-:/+osyhyyyyssoo++++osyyhdmNmmmmdho+++//+yMMMMMNN.  
+  -hMM+::/+syhhhhyso+/:::--://+++oossyyys+/-.``.-/+syyyyso++///::-...-:/+osyhdddddso+///+hMMNMMMy   
+ `-hMMo:://+oooooo++//++oossyyyssoo+oosyyo/:-...-+syysso+oossyyyyysso++++++ossyyyhyo+///+hMMMMMd.   
+ -smMM+::://////+oyhdmmNMMNNNNNdhhhyo++syyo+//::+oyys//+shhdhyhMNmmNMMNNmdhysooosoo++///+dMMMMNo.   
+ /+omN+:::///+oshmNNmo:yMMNNNMN/-oyhy+-/yyso+//+osyso--oyyss:`oMNmmNMMdhmNNmdyso++++////+mMMMMmy+-  
+ :o/dN+::://+ossyyhyys+/hNNNNmhossyso++syys+++++osyysoo//osss+odNNNNNhoyhhddhyyso+++////omMMMMhyyo  
+ .::sN+:-::/++++oo++++ooosooooosssooosyyys++++++osyyyss++ooooo++oooss+oooooosooo+++/////omMMMNyos/  
+ .-:+d/--://++++++++//////+++ooo++++syyysooo++++osyyyyso+//++oo+++//::///++++++++++////+smMMNd+++`  
+  .::d/--:///////+///+++///////::-:+syyssoo+++ooosssyyyo+:::://++ooooooooo++/+++++++///+oNMMdo///   
+  .:+d/--:///////////////////:::://osysoooo++++osssssyys+/:-:::://++++///+//////+++/////oNMd+/::.   
+  .-+h/--:::/::::::::://///:::::/+osssoooo++///oosssyyyyo+:----:::////::::::::///++////+oNNs+/:-    
+  `-+ds:-:::::::::::::::::::::://++ossoooo+////+oossyyyso+//-..---:::::-------:::/+///++yNmoo/:`    
+   :sdm:-::::------------:-----::/osysooooo+//:/+osyyyyys+/:-------......------::/+///+omMho+//     
+    -:m/::::----.............---/osssoosss+/::-:/+oysssyys/:----.....``.......-:////++oydmsso/-     
+     .h+:///:--:-...........--:/oso++++oo+/.````.:oosooosyo+/:-......`........-////+++shms-.::      
+     .hyo/::--:-..-......--:/+++os+////+//-...``./ooso++syo+//:-......-.------:/+/+++ohdm/``-`      
+     .yms+/:::///-----..-://+++osyssyhyso+/////:/ooyhdhyyys+//::-.----:::::////+o++ooydNm/-`        
+      smyo+///o+/::--.-:/oo++oosyhdddhhysyysyysssyhdmmmdhyys+/::---:-::///+++++++ooosdmNh:-.        
+      /mss++oyso/:::-:/ossoosssyydddmddhhhdddmddmddmmmmddhyyss+////::-:/++ooooo+ooysyymNy/-`        
+      .Nhsosshmy+/:::/oyyhhyyysyhddddddhdmmmmmNmdddddmmdhhyyssyssyso/////+oossss+syyhmNN+.`         
+      `hdhsoshhy+://++hhddhyyyyhhhhddhhhhmNNmmNmdhhyhdhhyhyhhyhhhyhhyoo+/+osyyssoshyydNm`           
+       sNmdhoysoo+/+oyddhyysssoooosooo+o+osysssssysssyyyyyyyyyshhhhhhyso//osyys+oshymmNo            
+       .NNdhyysssoo+oyyysssssssysssssssyysso+ossyyyssyyyyyyyyhhhhyyhhhhs++shhhssydhymmm-            
+        yNmhyhdhy++/ooosooshhdmmmmmmdddhhhhyyyhhhhhhhhhhhhddmdhyyhyyyss+/+ydmdhyyddydNs             
+        :mNddhhyyso++ooosssooosyyhhhhhhhhhhhhhhhhhyyyyyyyyyyso++/ossoo///ohhyyhdsydmmm.             
+         smmdhdshhhs/+ooyso++oo++osyyysssoosssssoossyyyyyso++++++ooys+//oyddhyhhhdmmNo              
+         `dmNmdddhddoosssooo+++++//++osssooo++ooooossoo+/////+++oooyyyyyhhhydhdddmNNm`              
+          :NNNNmmmmmhhhhhyso+////////://+++o+++++////////+///++++ooshdmdNNmhmmNNMMMm:               
+           oMMNNMMNNmmdmmdhso+////:/++++osssyhyshyyyso++/:://+ooosyhdmNNNNNMNMNMMMm:                
+           `+NMMMMMNNmmNNmyyyo++///////+osyhhmddmhhyoo+//::/++ssyyhmmNNNmNMMMMMMMM/                 
+             -mMMMNNMMNNNmyysssoo++/++oossyhhhdddhhysoo++///+ssyyhdmmNmNNNMMMMMMd+                  
+              .yNMMMMNMMNNmdydyssssssyyssossoosyyyysysssoosssyhdhhdNNMNNNMNNMMMm`                   
+                -mMMMNNMMNmmmdyshhysysyssyssysyysssyyssssyhhdddmmmNNNMMNMMNMMNh/                    
+                 /smMMMMMMNNmdhdhhhhysyssssssyyyyssyssyyyhdmmmNmNmNMMMMMMMMMms+-                    
+                 :++dNMMMMMNNmmddmhyyyssssssyyyyysoyssyyhyddmmmNNNNMMMMMMMMmyo+-                    
+                 /+/+hmNMMMMNMNmdddyysosyyssyhdhhosysssydddmmNNMNMMMMMMMNNmho+/.                    
+                 :+o+oymNNMMMMMNmddhhhyyyyhyhmNmmyyyhysshmmmNNNMMMMMMMNNNmds+++.                    
+                `:::o++yhdNMMMMMMNNNmmmddhddNMMNmmhhyhhhdmmNMMMMMMMNNmmmhys++++-                    
+              `-.::::++/oydNNNMNNMMMNNNNNNNNMMMMNNNmdmmNMMMMMMMNMNNNmmdsss//+++/o+:`                
+        ``:ohmh/----..://:/sdNMNddmmmNMMMMMMMMMMMMMMMNMMNNMMNmdmmmdhso//////++o+/smMdo-"""
+        
+        print(Fore.BLACK + "\n =================== \n")
+        print(Back.WHITE)
+        print(Style.DIM)
+        
+        # for line in string:
+        #     sys.stdout.write(line)
+        #     time.sleep(.1)
+        print(string)
+        print(Style.RESET_ALL)
+        time.sleep(1)
+        print(Fore.YELLOW)
+        print(Back.BLACK)
+        print("Now Dirk-Philip will select a control group for you!")
+        #time.sleep(2)
+        print("van Herwaarden et al. 2019!")
+        #time.sleep(2)
+        
+        # print(string)
