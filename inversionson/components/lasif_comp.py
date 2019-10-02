@@ -8,6 +8,7 @@ import warnings
 import subprocess
 import sys
 
+
 class LasifComponent(Component):
     """
     Communication with Lasif
@@ -107,7 +108,7 @@ class LasifComponent(Component):
         else:
             batch = existing
             if len(blocked_events) == 0:
-                rand_batch = self.comm.salvus_opt.get_random_event(
+                rand_batch = self.comm.minibatch.get_random_event(
                     n=self.comm.project.n_random_events_picked,
                     existing=existing
                 )
@@ -400,7 +401,7 @@ class LasifComponent(Component):
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
 
-    def write_misfit(self):
+    def write_misfit(self, events=None, details=None):
         """
         Write the iteration's misfit into a toml file.
         TODO: I might want to add this to make it do more statistics
@@ -412,10 +413,15 @@ class LasifComponent(Component):
                                     f"ITERATION_{iteration}",
                                     "misfits.toml")
         if os.path.exists(misfit_path):
-            print("Misfit already exists. If you want it rewritten, "
-                  "delete the misfit toml in the lasif_project")
-            return
-        lapi.write_misfit(self.lasif_comm, iteration=iteration)
+            if "compute additional" in details:
+                # Reason for this that I have to append to path in this
+                # specific case.
+                print("Misfit file exists, will append additional events")
+            else:
+                print("Misfit already exists. If you want it rewritten, "
+                    "delete the misfit toml in the lasif_project")
+                return
+        lapi.write_misfit(self.lasif_comm, iteration=iteration, events=events)
 
     def _already_processed(self, event: str) -> bool:
         """

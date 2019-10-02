@@ -411,7 +411,8 @@ class ProjectComponent(Component):
                 cg_dict[iteration] = {}
                 cg_dict[iteration]["old"] = cg_dict[prev_iter]["new"]
             if new:
-                cg_dict[iteration] = {}
+                if iteration not in cg_dict.keys():
+                    cg_dict[iteration] = {}
                 cg_dict[iteration]["new"] = self.new_control_group
         
         with open(self.paths["control_group_toml"], "w") as fh:

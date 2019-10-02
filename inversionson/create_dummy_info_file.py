@@ -25,6 +25,8 @@ info["n_random_events"] = 2
 info["salvus_smoother"] = os.path.join(cwd, "salvus_smoother")
 info["max_ctrl_group_size"] = 4
 info["min_ctrl_group_size"] = 2
+info["max_angular_change"] = 30.0
+info["dropout_probability"] = 0.15
 
 filename = os.path.join(cwd, "inversion_info.toml")
 with open(filename, "w+") as fh:

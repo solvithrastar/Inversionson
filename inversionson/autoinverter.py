@@ -449,12 +449,15 @@ class AutoInverter(object):
         # self.comm.smoother.generate_input_toml(gradient)
         # self.comm.smoother.run_smoother(gradient)
 
-    def monitor_jobs(self, sim_type: str):
+    def monitor_jobs(self, sim_type: str, events=None):
         """
         Takes events in iteration and monitors its job stati
 
         :param sim_type: Type of simulation, forward or adjoint
         :type sim_type: str
+        :param events: list of events used in task, if nothing given,
+        will take all events in iteration
+        :type events: list
 
         Can return a list of events which have been retrieved.
         If none... call itself again.
@@ -462,7 +465,9 @@ class AutoInverter(object):
         import time
         events_retrieved_now = []
         events_already_retrieved = []
-        for event in self.comm.project.events_in_iteration:
+        if not events:
+            events = self.comm.project.events_in_iteration
+        for event in events:
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["retrieved"]:
                     events_already_retrieved.append(event)
@@ -485,9 +490,11 @@ class AutoInverter(object):
                     elif status == "JobStatus.running":
                         print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.failed":
+                        print(f"Status = {status}, event: {event}")
                         print("Job failed. Need to implement something here")
                         print("Probably resubmit or something like that")
                     elif status == "JobStatus.unknown":
+                        print(f"Status = {status}, event: {event}")
                         print("Job unknown. Need to implement something here")
                     elif status == "JobStatus.cancelled":
                         print("What to do here?")
@@ -517,11 +524,14 @@ class AutoInverter(object):
                     elif status == "JobStatus.running":
                         print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.failed":
+                        print(f"Status = {status}, event: {event}")
                         print("Job failed. Need to implement something here")
                         print("Probably resubmit or something like that")
                     elif status == "JobStatus.unknown":
+                        print(f"Status = {status}, event: {event}")
                         print("Job unknown. Need to implement something here")
                     elif status == "JobStatus.cancelled":
+                        print(f"Status = {status}, event: {event}")
                         print("What to do here?")
                     else:
                         warnings.warn(
@@ -539,20 +549,24 @@ class AutoInverter(object):
                 self.monitor_jobs(sim_type)
         return events_retrieved_now
 
-    def wait_for_all_jobs_to_finish(self, sim_type: str):
+    def wait_for_all_jobs_to_finish(self, sim_type: str, events=None):
         """
         Just a way to make the algorithm wait until all jobs are done.
 
         :param sim_type: Simulation type forward or adjoint
         :type sim_type: str
+        :param events: list of events used in task, if nothing given,
+        will take all events in iteration
+        :type events: list
         """
         if sim_type == "forward":
             jobs = self.comm.project.forward_job
         elif sim_type == "adjoint":
             jobs = self.comm.project.adjoint_job
-
-        done = np.zeros(len(self.comm.project.events_in_iteration), dtype=bool)
-        for _i, event in enumerate(self.comm.project.events_in_iteration):
+        if not events:
+            events = self.comm.project.events_in_iteration
+        done = np.zeros(len(events), dtype=bool)
+        for _i, event in enumerate(events):
             if jobs[event]["retrieved"]:
                 done[_i] = True
             else:
@@ -594,12 +608,9 @@ class AutoInverter(object):
         self.prepare_iteration(first=True)
 
         print(emoji.emojize('Iteration prepared | :thumbsup:',
-            use_aliases=True))
+                            use_aliases=True))
 
-        print("Will select first event batch")
-        # self.get_first_batch_of_events() Already have the batch from
-        # The iteration preparation
-        print("Initial batch selected")
+        print(f"Current Iteration: {self.comm.project.current_iteration}")
 
         for event in self.comm.project.events_in_iteration:
             print(Fore.CYAN + "\n ============================= \n")
@@ -752,7 +763,18 @@ class AutoInverter(object):
         :param verbose: Detailed info regarding task
         :type verbose: str
         """
+        print(Fore.RED + "\n =================== \n")
+        print("Will prepare iteration")
         self.prepare_iteration()
+
+        print(emoji.emojize('Iteration prepared | :thumbsup:',
+                            use_aliases=True))
+
+        print(Fore.RED + "\n =================== \n")
+        print(f"Current Iteration: {self.comm.project.current_iteration}")
+        print(f"Current Task: {task}")
+        print(f"More specifically: {verbose}")
+
         if "compute misfit for" in verbose:
             events_to_use = self.comm.project.old_control_group
         else:
@@ -781,20 +803,60 @@ class AutoInverter(object):
                     use_aliases=True))
 
             self.calculate_station_weights(event)
+
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Waiting for jobs',
+                            use_aliases=True))
         events_retrieved = []
+        i = 0
         while events_retrieved != "All retrieved":
-            time.sleep(30)
-            events_retrieved = self.monitor_jobs("forward")
-            if events_retrieved == "All retrieved":
+            time.sleep(20)
+            print(Fore.BLUE)
+            print(emoji.emojize(':hourglass: | Waiting for jobs',
+                                use_aliases=True))
+            i += 1
+            events_retrieved = self.monitor_jobs(sim_type="forward",
+                                                 events=events_to_use)
+            if events_retrieved == "All retrieved" and i != 1:
                 break
             else:
+                if len(events_retrieved) == 0:
+                    print("No new events retrieved, lets wait")
+                    continue
+                if events_retrieved == "All retrieved":
+                    events_retrieved = events_to_use
                 for event in events_retrieved:
+                    print(f"{event} retrieved")
+                    print(Fore.GREEN + "\n ===================== \n")
+                    print(emoji.emojize(':floppy_disk: | Process data if '
+                                        'needed', use_aliases=True))
+
                     self.process_data(event)
+
+                    print(Fore.WHITE + "\n ===================== \n")
+                    print(emoji.emojize(':foggy: | Select windows',
+                                        use_aliases=True))
+
                     self.select_windows(event)
+
+                    print(Fore.MAGENTA + "\n ==================== \n")
+                    print(emoji.emojize(':zap: | Quantify Misfit',
+                                        use_aliases=True))
+
                     self.misfit_quantification(event)
 
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Making sure all jobs are done',
+                            use_aliases=True))
+
+        self.wait_for_all_jobs_to_finish(sim_type="forward",
+                                         events=events_to_use)
+        self.comm.lasif.write_misfit(events=events_to_use, details=verbose)
+
         self.comm.storyteller.document_task(task, verbose)
-        self.comm.salvus_opt.write_misfit_to_task_toml()
+        if "compute additional" in verbose:
+            events_to_use = None
+        self.comm.salvus_opt.write_misfit_to_task_toml(events=events_to_use)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
         self.comm.salvus_opt.run_salvus_opt()
@@ -816,25 +878,75 @@ class AutoInverter(object):
             new_value=iteration
         )
         self.comm.project.get_iteration_attributes(iteration)
-        for event in self.comm.project.events_used:
-            self.prepare_gradient_for_smoothing(event)
+
+        print(Fore.RED + "\n =================== \n")
+        print(f"Current Iteration: {self.comm.project.current_iteration}")
+        print(f"Current Task: {task}")
+
+        for event in self.comm.project.events_in_iteration:
+            print(Fore.YELLOW + "\n ==================== \n")
+            print(emoji.emojize(':rocket: | Run adjoint simulation',
+                                use_aliases=True))
+            print(f"Event: {event} \n")
             self.run_adjoint_simulation(event)
-        # Cut sources and receivers?
+
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Waiting for jobs',
+                            use_aliases=True))
         events_retrieved = []
-        first = True  # Maybe this will not be needed later.
+        i = 0
         while events_retrieved != "All retrieved":
-            time.sleep(30)
-            events_retrieved = self.monitor_jobs("adjoint")
-            if events_retrieved == "All retrieved":
+            time.sleep(20)
+            print(Fore.BLUE)
+            print(emoji.emojize(':hourglass: | Waiting for jobs',
+                                use_aliases=True))
+            i += 1
+            events_retrieved = self.monitor_jobs(sim_type="adjoint")
+            if events_retrieved == "All retrieved" and i != 1:
                 break
             else:
+                if len(events_retrieved) == 0:
+                    print("No new events retrieved, lets wait")
+                    continue
+                if events_retrieved == "All retrieved":
+                    events_retrieved = self.comm.project.events_in_iteration
                 for event in events_retrieved:
+                    # TODO: Cut source from gradient and maybe receivers
+                    print(f"{event} retrieved")
+
+                    print(Fore.YELLOW + "\n ==================== \n")
+                    print(emoji.emojize(':rocket: | Run Diffusion equation',
+                                        use_aliases=True))
+                    print(f"Event: {event} gradient will be smoothed")
+
                     self.smooth_gradient(event)
-                    self.interpolate_gradient(event, first)
-                    first = False
+
+                    print(Fore.CYAN + "\n ============================= \n")
+                    print(emoji.emojize(
+                        ':globe_with_meridians: :point_right: '
+                        ':globe_with_meridians: | Interpolation Stage',
+                        use_aliases=True))
+                    print(f"{event} interpolation")
+
+                    self.interpolate_gradient(event)
+
+        print(Fore.BLUE + "\n ========================= \n")
+        print(emoji.emojize(':hourglass: | Making sure all jobs are done',
+                            use_aliases=True))
+        self.wait_for_all_jobs_to_finish("adjoint")
+        events_retrieved = []
+
+        print(Fore.RED + "\n =================== \n")
+        print(emoji.emojize(':love_letter: | Finalizing iteration '
+                            'documentation', use_aliases=True))
+
         # Smooth gradients
-        self.comm.salvus_opt.move_gradient_to_salvus_opt_folder(event)
-        self.comm.salvus_opt.get_new_control_group()
+        self.comm.salvus_opt.write_gradients_to_task_toml()
+        # control_group = self.comm.minibatch.select_optimal_control_group()
+        # self.comm.project.change_attribute(
+        #     attribute="new_control_group",
+        #     new_value=control_group)
+        self.comm.project.update_control_group_toml(new=True)
         self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.salvus_opt.run_salvus_opt()
@@ -850,12 +962,14 @@ class AutoInverter(object):
         :param verbose: Detailed info regarding task
         :type verbose: str
         """
+        print(Fore.RED + "\n =================== \n")
+        print(f"Current Iteration: {self.comm.project.current_iteration}")
+        print(f"Current Task: {task} \n")
         print("Selection of Dynamic Mini-Batch Control Group:")
-        iteration = self.comm.salvus_opt.get_newest_iteration_name()
         self.comm.project.get_iteration_attributes()
         self.comm.minibatch.print_dp()
-        for event in self.comm.project.events_in_iteration:
-            self.interpolate_gradient(event)
+        # for event in self.comm.project.events_in_iteration:
+        #     self.interpolate_gradient(event)
         
         # Need to implement these below
         control_group = self.comm.minibatch.select_optimal_control_group()
@@ -880,6 +994,10 @@ class AutoInverter(object):
         :param verbose: Detailed info regarding task
         :type verbose: str
         """
+        print(Fore.RED + "\n =================== \n")
+        print(f"Current Iteration: {self.comm.project.current_iteration}")
+        print(f"Current Task: {task}")
+    
         iteration = self.comm.salvus_opt.get_newest_iteration_name()
         self.comm.project.current_iteration = iteration
         self.comm.project.get_iteration_attributes(iteration)
@@ -945,6 +1063,11 @@ if __name__ == "__main__":
         '\n :flag_for_Iceland: | Welcome to Inversionson | :flag_for_Iceland: \n',
         use_aliases=True))
     info_toml = input("Give me a path to your information_toml \n\n")
+    # Tired of writing it in, I'll do this quick mix for now
+    # print("Give me a path to your information_toml \n\n")
+    # time.sleep(1)
+    print("Just kidding, I know it")
+    info_toml = "inversion_info.toml"
     if not info_toml.startswith("/"):
         import os
         cwd = os.getcwd()

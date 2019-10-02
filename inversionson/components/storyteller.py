@@ -158,7 +158,7 @@ class StoryTellerComponent(Component):
         Keep track of event quality, which is based on removal order of
         batch gradients in control group selection.
         """
-        for key, val in self.comm.project.event_quality:
+        for key, val in self.comm.project.event_quality.items():
             self.events_quality[key] = val
         with open(self.events_quality_toml, "w") as fh:
             toml.dump(self.events_quality, fh)
@@ -199,11 +199,10 @@ class StoryTellerComponent(Component):
         ray_file = self.comm.lasif.plot_iteration_raydensity()
         self.markdown.add_image(
             image_url=ray_file,
-            image_title=f"Ray density plotn for "
+            image_title=f"Ray density plot for "
                         f"{self.comm.project.current_iteration}",
             alt_text="text"
         )
-
 
     def _report_acceptance_of_model(self):
         """

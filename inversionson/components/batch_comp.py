@@ -40,7 +40,7 @@ class BatchComponent(Component):
                 dropout.append(event)
         return dropout
 
-    def _assert_parameter_in_mesh(self, mesh: str):
+    def _assert_parameter_in_mesh(self, mesh: str):  # Not used
         """
         It is not trivial to find parameters in an hdf5 mesh. This function
         takes care of that and returns an index where the parameter is kept.
@@ -157,6 +157,30 @@ class BatchComponent(Component):
             grad=gradient,
             parameters=parameters)
         return gradient
+
+    def get_random_event(self, n: int, existing: list) -> list:
+        """
+        Get an n number of events based on the probabilities defined
+        in the event_quality toml file
+
+        :param n: Number of events to randomly choose
+        :type n: int
+        :param existing: Events blocked from selection
+        :type existing: list
+        :return: List of events randomly picked
+        :rtype: list
+        """
+        events_quality = self.comm.storyteller.event_quality
+        for k in existing:
+            del events_quality[k]
+        list_of_events = list(events_quality.keys())
+        list_of_probabilities = list(events_quality.values())
+        list_of_probabilities /= np.sum(list_of_probabilities)
+
+        chosen_events = list(np.random.choice(
+            list_of_events, n, replace=False, p=list_of_probabilities
+        ))
+        return chosen_events
 
     def select_optimal_control_group(self) -> list:
         """

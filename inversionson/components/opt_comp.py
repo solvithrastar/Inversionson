@@ -94,6 +94,10 @@ class SalvusOptComponent(Component):
         """
         iteration = self.comm.project.current_iteration
         grad_name = "gradient_" + iteration + ".e"
+        gradient = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=
+        )
         dest_path = os.path.join(self.models, grad_name)
         current_path = os.path.join(self.comm.project.lasif_root, "GRADIENTS",
                                     "ITERATION_" + iteration, "gradient.e")
@@ -124,7 +128,7 @@ class SalvusOptComponent(Component):
         else:
             return os.path.join(self.models, iteration + ".e")
 
-    def write_misfit_to_task_toml(self):
+    def write_misfit_to_task_toml(self, events=None):
         """
         Report the correct misfit value to salvus opt.
         ** Still have to find a consistant place to read/write misfit **
@@ -132,14 +136,15 @@ class SalvusOptComponent(Component):
         ** Needs to be done on an individual level actually **
         """
         iteration = self.comm.project.current_iteration
-        events_used = self.comm.project.events_used
+        if not events:
+            events = self.comm.project.events_in_iteration
         misfits = toml.load(os.path.join(self.comm.project.lasif_root,
                                          f"ITERATION_{iteration}",
                                          "misfits.toml"))
         events_list = []
         task = self.read_salvus_opt()
 
-        for event in events_used:
+        for event in events:
             misfit = misfits["event_misfits"][event]
             events_list.append({
                 "misfit": float(misfit),
@@ -156,14 +161,15 @@ class SalvusOptComponent(Component):
         Make sure you move gradient to salvus opt directory first.
         """
         iteration = self.comm.project.current_iteration
-        events_used = self.comm.project.events_used
+        events_used = self.comm.project.events_in_iteration
         events_list = []
         task = self.read_salvus_opt()
         for event in events_used:
             grad_path = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
-                smooth=True
+                smooth=True,
+                inversion_grid=True
             )
             events_list.append({
                 "gradient": grad_path,
@@ -315,21 +321,21 @@ class SalvusOptComponent(Component):
         blocked_events = []
         events_used = self.comm.storyteller.events_used  # Usage of all events
         needed_events = int(round(self.get_batch_size / 2.0))
-        for key, val in events_used:
+        for key, val in events_used.items():
             if val != 0:
                 blocked_events.append(key)
         if abs(len(blocked_events) - len(events_used.keys()) >= needed_events):
             # We still have plenty of events to choose from.
             use_these = None
             return blocked_events, use_these
-        else:
-            # We have fewer events to choose from
-            prev_iter = self.get_previous_iteration_name()
-            prev_it_toml = os.path.join(
-                self.comm.project.paths["iteration_tomls"],
-                prev_iter + ".toml"
-            )
-            prev_it_dict = toml.load(prev_it_toml)
+        # else:
+        #     # We have fewer events to choose from
+        #     prev_iter = self.get_previous_iteration_name()
+        #     prev_it_toml = os.path.join(
+        #         self.comm.project.paths["iteration_tomls"],
+        #         f"{prev_iter}.toml"
+        #     )
+        #     prev_it_dict = toml.load(prev_it_toml)
         if len(blocked_events) == len(events_used.keys()):
             use_these = None
         else:
@@ -342,30 +348,6 @@ class SalvusOptComponent(Component):
         #     if key not in prev_it_dict["new_control_group"]:
         #         blocked_events.append(key)
         return blocked_events, use_these
-
-    def get_random_event(self, n: int, existing: list) -> list:
-        """
-        Get an n number of events based on the probabilities defined
-        in the event_quality toml file
-
-        :param n: Number of events to randomly choose
-        :type n: int
-        :param existing: Events blocked from selection
-        :type existing: list
-        :return: List of events randomly picked
-        :rtype: list
-        """
-        events_quality = self.comm.storyteller.event_quality
-        for k in existing:
-            del events_quality[k]
-        list_of_events = list(events_quality.keys())
-        list_of_probabilities = list(events_quality.values())
-        list_of_probabilities /= np.sum(list_of_probabilities)
-
-        chosen_events = list(np.random.choice(
-            list_of_events, n, replace=False, p=list_of_probabilities
-        ))
-        return chosen_events
 
     def _parse_model_files(self, models: list) -> dict:
         """
