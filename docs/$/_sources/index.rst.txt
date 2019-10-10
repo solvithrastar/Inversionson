@@ -1,0 +1,24 @@
+Inversionson's documentation!
+========================================
+
+Does this work?
+===============
+
+Yes it does.::
+
+    print('hello')
+
+Guide
+^^^^^
+
+.. toctree::
+   :maxdepth: 2
+
+
+
+Indices and tables
+==================
+
+* :ref:`genindex`
+* :ref:`modindex`
+* :ref:`search`
