@@ -30,6 +30,9 @@ author = 'Solvi Thrastarson'
 extensions = ['sphinx.ext.autodoc'
 ]
 
+# So that readthedocs does not look for contents.rst
+master_doc = 'index'
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
