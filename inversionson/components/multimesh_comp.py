@@ -80,10 +80,11 @@ class MultiMeshComponent(Component):
             mapi.gll_2_gll(
                 from_gll=gradient,
                 to_gll=master_disc_gradient,
-                nelem_to_search=10,
+                nelem_to_search=300,
                 parameters=self.comm.project.inversion_params,
                 gradient=True  # This is only true if added on top
                 )
+            self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
         elif mode == "gll2exo":  # This will probably be removed soon
             mapi.gll_2_exodus(
                 gll_model=gradient,
@@ -93,5 +94,6 @@ class MultiMeshComponent(Component):
                 gradient=True,
                 first=True
             )
+            self.comm.salvus_mesher
         else:
             raise ValueError(f"Mode: {mode} not implemented")

@@ -18,7 +18,7 @@ class SalvusSmoothComponent(Component):
     def __init__(self, communicator, component_name):
         super(SalvusSmoothComponent, self).__init__(
             communicator, component_name)
-        self.smoother_path = self.comm.project.paths["salvus_smoother"]
+        # self.smoother_path = self.comm.project.paths["salvus_smoother"]
     
     def generate_diffusion_object(self, gradient: str, mesh: object, par: str,
                                   movie=False) -> object:

@@ -9,3 +9,9 @@ class InversionsonWarning(UserWarning):
     Base warning class for Inversionson.
     """
     pass
+
+class InversionsonOptError(Exception):
+    """
+    Salvus Opt exception class for Inversionson
+    """
+    pass

@@ -1,8 +1,5 @@
 """
-A class which takes care of a Full-Waveform Inversion using multiple meshes.
-It uses Salvus, Lasif and Multimesh to perform most of its actions.
-This is a class which wraps the three packages together to perform an
-automatic Full-Waveform Inversion
+
 """
 import numpy as np
 import time
@@ -23,6 +20,11 @@ import emoji
 
 class AutoInverter(object):
     """
+    A class which takes care of a Full-Waveform Inversion using multiple 
+    meshes.
+    It uses Salvus, Lasif and Multimesh to perform most of its actions.
+    This is a class which wraps the three packages together to perform an
+    automatic Full-Waveform Inversion
     """
 
     def __init__(self, info_dict: dict):
@@ -40,23 +42,6 @@ class AutoInverter(object):
         from inversionson.components.project import ProjectComponent
 
         return ProjectComponent(self.info).get_communicator()
-
-    # def initialize_inversion(self):
-    #     """
-    #     Set up everything regarding the inversion. Make sure everything
-    #     is correct and that information is there.
-    #     Make this check status of salvus opt, the inversion does not have
-    #     to be new to call this method.
-    #     """
-    #     # Check status of inversion. If no task file or if task is closed,
-    #     # run salvus opt. Otherwise just read task and start working.
-    #     # Will do later.
-    #     task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-    #     self.comm.project.get_inversion_attributes(
-    #         simulation_info=self.comm.project.simulation_dict
-    #     )
-    #     self.comm.project.create_control_group_toml()
-    #     self.perform_task(task, verbose)
 
     def prepare_iteration(self, first=False):
         """
@@ -107,14 +92,14 @@ class AutoInverter(object):
 
         self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name)
-        self.comm.project.get_iteration_attributes(it_name)
+        self.comm.project.get_iteration_attributes()
         # mixa inn control group fra gamalli vinkonu
         # Get control group info into iteration attributes
-        ctrl_groups = toml.load(
-            self.comm.project.paths["control_group_toml"])
-        if it_name in ctrl_groups.keys():
-            self.comm.project.change_attribute(
-                "old_control_group", ctrl_groups[it_name]["old"])
+        # ctrl_groups = toml.load(
+        #     self.comm.project.paths["control_group_toml"])
+        # if it_name in ctrl_groups.keys():
+        #     self.comm.project.change_attribute(
+        #         "old_control_group", ctrl_groups[it_name]["old"])
 
     def interpolate_model(self, event: str):
         """
@@ -431,21 +416,20 @@ class AutoInverter(object):
             event=event,
             smooth=False
         )
-        mesh = self.prepare_gradient_for_smoothing(event)
-        smoothed_gradient = mesh.copy()
+        mesh, smoothed_gradient = self.prepare_gradient_for_smoothing(event)
         simulations = {}
-        # TODO: Make a list of simulation objects and implement the loop in submit job
         for par in ["VS", "VP", "RHO"]:
             simulation = self.comm.smoother.generate_diffusion_object(
                     gradient=gradient, par=par, mesh=mesh)
             simulations[par] = simulation
-        self.comm.salvus_flow.submit_smoothing_job(event, simulation,
-                                                    smoothed_gradient,
-                                                    simulations)
+        self.comm.salvus_flow.submit_smoothing_job(event,
+                                                   smoothed_gradient,
+                                                   simulations)
         self.comm.project.change_attribute(
             attribute=f"adjoint_job[\"{event}\"][\"gradient_smoothed\"]",
             new_value=True
         )
+        self.comm.project.update_iteration_toml()
         # self.comm.smoother.generate_input_toml(gradient)
         # self.comm.smoother.run_smoother(gradient)
 
@@ -645,7 +629,7 @@ class AutoInverter(object):
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                 use_aliases=True))
             i += 1
-            time.sleep(5)
+            # time.sleep(5)
             events_retrieved = self.monitor_jobs("forward")
             if events_retrieved == "All retrieved" and i != 1:
                 break
@@ -666,19 +650,19 @@ class AutoInverter(object):
 
                     print(Fore.WHITE + "\n ===================== \n")
                     print(emoji.emojize(':foggy: | Select windows',
-                            use_aliases=True))
+                                        use_aliases=True))
 
                     self.select_windows(event)
 
                     print(Fore.MAGENTA + "\n ==================== \n")
                     print(emoji.emojize(':zap: | Quantify Misfit',
-                            use_aliases=True))
+                                        use_aliases=True))
 
                     self.misfit_quantification(event)
 
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(emoji.emojize(':rocket: | Run adjoint simulation',
-                            use_aliases=True))
+                                        use_aliases=True))
                     # if "NEAR" in event:
                     self.run_adjoint_simulation(event)
                     # elif "REYKJANES" in event:
@@ -698,7 +682,7 @@ class AutoInverter(object):
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                     use_aliases=True))
             i += 1
-            time.sleep(15)
+            # time.sleep(15)
             events_retrieved_adjoint = self.monitor_jobs("adjoint")
             if events_retrieved_adjoint == "All retrieved" and i != 1:
                 break
@@ -750,9 +734,13 @@ class AutoInverter(object):
                             use_aliases=True))
         
         self.comm.salvus_opt.run_salvus_opt()
-        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-        print(f"Next salvus opt task is: {task}")
-        self.assign_task_to_function(task, verbose)
+        task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
+        if task_2 == task and verbose_2 == verbose:
+            message = "Salvus Opt did not run properly "
+            message += "It gave an error and the task.toml has not been "
+            message += "updated."
+            raise InversionsonError(message)
+        self.assign_task_to_function(task_2, verbose_2)
 
     def compute_misfit(self, task: str, verbose: str):
         """
@@ -794,13 +782,13 @@ class AutoInverter(object):
 
             print(Fore.YELLOW + "\n ============================ \n")
             print(emoji.emojize(':rocket: | Run forward simulation',
-                    use_aliases=True))
+                                use_aliases=True))
 
             self.run_forward_simulation(event)
 
             print(Fore.RED + "\n =========================== \n")
             print(emoji.emojize(':trident: | Calculate station weights',
-                    use_aliases=True))
+                                use_aliases=True))
 
             self.calculate_station_weights(event)
 
@@ -860,8 +848,13 @@ class AutoInverter(object):
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
         self.comm.salvus_opt.run_salvus_opt()
-        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-        self.assign_task_to_function(task, verbose)
+        task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
+        if task_2 == task and verbose_2 == verbose:
+            message = "Salvus Opt did not run properly "
+            message += "It gave an error and the task.toml has not been "
+            message += "updated."
+            raise InversionsonError(message)
+        self.assign_task_to_function(task_2, verbose_2)
 
     def compute_gradient(self, task: str, verbose: str):
         """
@@ -896,7 +889,6 @@ class AutoInverter(object):
         events_retrieved = []
         i = 0
         while events_retrieved != "All retrieved":
-            time.sleep(20)
             print(Fore.BLUE)
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                                 use_aliases=True))
@@ -942,16 +934,16 @@ class AutoInverter(object):
 
         # Smooth gradients
         self.comm.salvus_opt.write_gradients_to_task_toml()
-        # control_group = self.comm.minibatch.select_optimal_control_group()
-        # self.comm.project.change_attribute(
-        #     attribute="new_control_group",
-        #     new_value=control_group)
-        self.comm.project.update_control_group_toml(new=True)
         self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.salvus_opt.run_salvus_opt()
-        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-        self.assign_task_to_function(task, verbose)
+        task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
+        if task_2 == task and verbose_2 == verbose:
+            message = "Salvus Opt did not run properly "
+            message += "It gave an error and the task.toml has not been "
+            message += "updated."
+            raise InversionsonError(message)
+        self.assign_task_to_function(task_2, verbose_2)
 
     def select_control_batch(self, task, verbose):
         """
@@ -967,23 +959,28 @@ class AutoInverter(object):
         print(f"Current Task: {task} \n")
         print("Selection of Dynamic Mini-Batch Control Group:")
         self.comm.project.get_iteration_attributes()
-        self.comm.minibatch.print_dp()
-        # for event in self.comm.project.events_in_iteration:
-        #     self.interpolate_gradient(event)
-        
+        # self.comm.minibatch.print_dp()
+
         # Need to implement these below
         control_group = self.comm.minibatch.select_optimal_control_group()
+        print(f"Selected Control group: {control_group}")
         self.comm.salvus_opt.write_control_group_to_task_toml(
             control_group=control_group)
         self.comm.project.change_attribute(
                 attribute="new_control_group",
                 new_value=control_group)
         self.comm.project.update_control_group_toml(new=True)
-        # self.comm.salvus_opt.close_salvus_opt_task()
-        # self.comm.project.update_iteration_toml()
-        # self.comm.salvus_opt.run_salvus_opt()
-        # task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-        # self.assign_task_to_function(task, verbose)
+        self.comm.storyteller.document_task(task)
+        self.comm.salvus_opt.close_salvus_opt_task()
+        self.comm.project.update_iteration_toml()
+        self.comm.salvus_opt.run_salvus_opt()
+        task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
+        if task_2 == task and verbose_2 == verbose:
+            message = "Salvus Opt did not run properly "
+            message += "It gave an error and the task.toml has not been "
+            message += "updated."
+            raise InversionsonError(message)
+        self.assign_task_to_function(task_2, verbose_2)
 
     def finalize_iteration(self, task, verbose):
         """
@@ -1004,8 +1001,13 @@ class AutoInverter(object):
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
         self.comm.salvus_opt.run_salvus_opt()
-        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-        self.assign_task_to_function(task, verbose)
+        task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
+        if task_2 == task and verbose_2 == verbose:
+            message = "Salvus Opt did not run properly "
+            message += "It gave an error and the task.toml has not been "
+            message += "updated."
+            raise InversionsonError(message)
+        self.assign_task_to_function(task_2, verbose_2)
 
     def assign_task_to_function(self, task: str, verbose: str):
         """
@@ -1016,6 +1018,9 @@ class AutoInverter(object):
         :param verbose: Detailed info regarding task
         :type verbose: str
         """
+        print(f"\nNext salvus opt task is: {task}\n")
+        print(f"More specifically: {verbose}")
+
         if task == "compute_misfit_and_gradient":
             self.compute_misfit_and_gradient(task, verbose)
         elif task == "compute_misfit":

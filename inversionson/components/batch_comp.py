@@ -82,8 +82,7 @@ class BatchComponent(Component):
         norm_2 = np.linalg.norm(gradient_2)
         angle = np.arccos(
             np.dot(gradient_1, gradient_2) /
-            (norm_1 * norm_2) / np.pi * 180.0
-        )
+            (norm_1 * norm_2)) / np.pi * 180.0
         return angle
 
     def _compute_angular_change(self, full_gradient, full_norm,
@@ -105,8 +104,8 @@ class BatchComponent(Component):
         test_grad_norm = np.linalg.norm(test_grad)
         angle = np.arccos(
             np.dot(test_grad, full_gradient) /
-            (test_grad_norm * full_norm) / np.pi * 180.0
-        )
+            (test_grad_norm * full_norm)
+        ) / np.pi * 180.0
         return angle
 
     def _sum_relevant_values(self, grad, parameters: list):
@@ -124,12 +123,10 @@ class BatchComponent(Component):
         indices = []
         for param in inversion_params:
             indices.append(parameters.index(param))
-        print(f"Indices: {indices}")
         summed_grad = np.zeros(shape=(grad.shape[0]))
         
         for i in indices:
             summed_grad += grad[:, i]
-        print(f"Total summed grad: {np.sum(summed_grad)}")
         return summed_grad
 
     def _get_vector_of_values(self, gradient,
@@ -199,7 +196,8 @@ class BatchComponent(Component):
         # is reached or minimum control group is reached.
         # We just use the bulk norm of the gradients it seems
         events = self.comm.project.events_in_iteration
-        ctrl_group = events
+        print(f"Control batch events: {events}")
+        ctrl_group = events.copy()
         max_ctrl = self.comm.project.max_ctrl_group_size
         min_ctrl = self.comm.project.min_ctrl_group_size
         iteration = self.comm.project.current_iteration
@@ -265,7 +263,7 @@ class BatchComponent(Component):
         batch_grad = np.copy(full_grad)
         test_batch_grad = np.copy(batch_grad)
 
-        while len(ctrl_group) >= min_ctrl or len(ctrl_group) > max_ctrl:
+        while len(ctrl_group) > min_ctrl or len(ctrl_group) > max_ctrl:
             redundant_gradient = min(angular_changes, key=angular_changes.get)
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
@@ -280,7 +278,8 @@ class BatchComponent(Component):
                     parameters=parameters)
                 test_batch_grad -= removal_grad
             angle = self._angle_between(full_grad, batch_grad)
-
+            #TODO: Figure out problem with small angle.
+            print(f"Angle: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
                 break
             else:
@@ -303,6 +302,8 @@ class BatchComponent(Component):
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val
+        print(f"Control batch events: {self.comm.project.events_in_iteration}")
+
 
         return ctrl_group
 

@@ -1,0 +1,63 @@
+import os
+
+from inversionson.components.communicator import Communicator
+from inversionson.components.component import Component
+from inversionson.create_dummy_info_file import create_info
+from inversionson.components import project
+from inversionson import InversionsonOptError, InversionsonError
+
+import lasif.api
+
+
+class DummyProject():
+
+    def __init__(self, tmp_path):
+        self.root_folder = os.path.join(tmp_path, "dummy_project")
+        os.mkdir(self.root_folder)
+        self._dummy_salvus_opt()
+        info = create_info(root=os.path.join(self.root_folder))
+        lasif.api.init_project(os.path.join(self.root_folder, "LASIF_PROJECT"))
+        self.comm = project.ProjectComponent(info).get_communicator()
+        self._dummy_events_to_lasif()
+
+    def _dummy_file(self, path):
+        with open(path, 'a'):
+            os.utime(path, None)
+
+    def _dummy_salvus_opt(self):
+        salvus_opt = os.path.join(self.root_folder, "SALVUS_OPT")
+        os.mkdir(salvus_opt)
+        os.mkdir(os.path.join(salvus_opt, "PHYSICAL_MODELS"))
+        os.mkdir(os.path.join(salvus_opt, "INVERSION_MODELS"))
+        os.mkdir(os.path.join(salvus_opt, "BACKUP"))
+        self._dummy_file(os.path.join(salvus_opt, "inversion.toml"))
+        self._dummy_file(os.path.join(salvus_opt, "PHYSICAL_MODELS", 
+        "it0000_model.h5"))
+
+    def _dummy_events_to_lasif(self):
+        events = [
+            "http://ds.iris.edu/spud/momenttensor/988455",
+            "http://ds.iris.edu/spud/momenttensor/735711"]
+
+        for event in events:
+            lasif.api.add_spud_event(
+                lasif_root=self.comm.project.lasif_root,
+                url=event
+            )
+        # This is only here as a reminder
+        event_names = ["GCMT_event_TURKEY_Mag_5.1_2010-3-24-14-11",
+                       "GCMT_event_TURKEY_Mag_5.9_2011-5-19-20-11"]
+        event_mesh = os.path.join(
+            self.comm.project.lasif_root,
+            "MODELS",
+            "EVENT_MESHES",
+            event_names[0],
+            "mesh.h5"
+        )
+        os.makedirs(os.path.join(
+            self.comm.project.lasif_root,
+            "MODELS",
+            "EVENT_MESHES",
+            event_names[0]
+        ))
+        self._dummy_file(event_mesh)

@@ -44,6 +44,8 @@ class LasifComponent(Component):
         :return: True if lasif has the iteration
         """
         iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        if it_name.startswith("ITERATION_"):
+            it_name = it_name.replace("ITERATION_", "")
         if isinstance(iterations, list):
             if it_name in iterations:
                 return True
@@ -65,7 +67,7 @@ class LasifComponent(Component):
                 warnings.warn(
                     f"Iteration {name} already exists", InversionsonWarning)
 
-        lapi.set_up_iteration(self.lasif_comm, iteration=name, events=events)
+        lapi.set_up_iteration(self.lasif_root, iteration=name, events=events)
 
     def get_minibatch(self, first=False) -> list:
         """
@@ -98,10 +100,14 @@ class LasifComponent(Component):
         prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
         prev_iter_info = self.comm.project.get_old_iteration_info(prev_iter)
         existing = prev_iter_info["new_control_group"]
-        count -= existing
+        self.comm.project.change_attribute(
+            attribute="old_control_group",
+            new_value=existing
+        )
+        count -= len(existing)
         if use_these:
             count -= len(use_these)
-            batch = use_these + existing
+            batch = list(set(use_these + existing))
             avail_events = list(
                 set(events) - set(blocked_events) - set(use_these))
             existing = list(set(existing + use_these))
@@ -118,13 +124,15 @@ class LasifComponent(Component):
         # TODO: existing events should only be the control group.
         # events should exclude the blocked events because that's what
         # are the options to choose from. The existing go into the poisson disc
+        print(f"count: {count}")
         add_batch = lapi.get_subset(
             self.lasif_comm,
             count=count,
             events=avail_events,
             existing_events=existing
         )
-        batch = list(set(batch) + set(add_batch))
+        batch = list(set(batch + add_batch))
+        print(f"Picked batch: {batch}")
         return batch
 
     def list_events(self, iteration=None):
@@ -413,7 +421,7 @@ class LasifComponent(Component):
                                     f"ITERATION_{iteration}",
                                     "misfits.toml")
         if os.path.exists(misfit_path):
-            if "compute additional" in details:
+            if details and "compute additional" in details:
                 # Reason for this that I have to append to path in this
                 # specific case.
                 print("Misfit file exists, will append additional events")
@@ -478,7 +486,7 @@ class LasifComponent(Component):
         if os.path.exists(path):
             print(f"Window set for event {event} exists.")
             return
-        
+
         if mpi:
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n 6 lasif select_windows "
@@ -522,4 +530,4 @@ class LasifComponent(Component):
         if not os.path.exists(event_folder):
             os.mkdir(event_folder)
 
-        return  os.path.join(event_folder, "receivers.h5")
+        return os.path.join(event_folder, "receivers.h5")

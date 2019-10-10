@@ -33,10 +33,10 @@ class SalvusMeshComponent(Component):
 
     def add_smoothing_fields(self, event: str) -> object:
         """
-        The diffusion equation smoothing needs certain parameters for 
+        The diffusion equation smoothing needs certain parameters for
         smoothing. These parameters need to be appended to the mesh as fields.
         Currently we only use constant smoothing lengths but that will change.
-        
+
         :param event: name of event
         :type event: str
         """
@@ -50,7 +50,7 @@ class SalvusMeshComponent(Component):
             iteration=iteration,
             event=event,
             smooth=False)
-        
+
         # grad_folder, _ = os.path.split(gradient)
         # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
         
@@ -75,10 +75,24 @@ class SalvusMeshComponent(Component):
 
         mesh = UnstructuredMesh.from_h5(gradient)
         mesh.elemental_fields = {}
+        smooth_gradient = UnstructuredMesh.from_h5(gradient)
+        smooth_gradient.elemental_fields = {}
+
         mesh.attach_field('M0', np.ones_like(mesh.get_element_nodes()[:, :, 0]))
         mesh.attach_field('M1', 0.5 * smoothing_length ** 2 * np.ones_like(mesh.get_element_nodes()[:, :, 0]))
         mesh.attach_field('fluid', np.ones(mesh.nelem))
 
         print(f"Smoothing fields M0 and M1 added to gradient for "
               f"event {event}")
-        return mesh
+        return mesh, smooth_gradient
+
+    def write_xdmf(self, filename: str):
+        """
+        A hacky way to write an xdmf file for the hdf5 file
+        :param filename: path to hdf5 file
+        :return:
+        """
+        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+
+        mesh = UnstructuredMesh.from_h5(filename)
+        mesh.write_h5(filename)

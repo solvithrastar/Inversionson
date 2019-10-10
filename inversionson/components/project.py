@@ -170,10 +170,10 @@ class ProjectComponent(Component):
         #         raise InversionsonError("Salvus opt inversion not initiated")
         
         # Salvus Smoother
-        if "salvus_smoother" not in self.info.keys():
-            raise InversionsonError(
-                "We need information regarding location of your salvus "
-                "smoother binary. Key: salvus_smoother")
+        # if "salvus_smoother" not in self.info.keys():
+        #     raise InversionsonError(
+        #         "We need information regarding location of your salvus "
+        #         "smoother binary. Key: salvus_smoother")
 
         # Lasif
         if "lasif_root" not in self.info.keys():
@@ -216,7 +216,7 @@ class ProjectComponent(Component):
         SalvusSmoothComponent(communicator=self.comm,
                               component_name="smoother")
 
-    def _arrange_params(self, parameters: list) -> list:
+    def arrange_params(self, parameters: list) -> list:
         """
         Re-arrange list of parameters in order to have
         them conveniently aranged when called upon. This can be an annoying
@@ -232,17 +232,20 @@ class ProjectComponent(Component):
                 ["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
         case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
         case_iso_inv = set(["VP", "VS"])
+        case_iso_inv_dens = set(["VP", "VS", "RHO"])
 
         if set(parameters) == case_tti_inv:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
         elif set(parameters) == case_tti_mod:
-            parameters = ["VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "ETA"]
+            parameters = ["VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "QMU", "ETA"]
         elif set(parameters) == case_iso_inv:
             parameters = ["VP", "VS"]
+        elif set(parameters) == case_iso_inv_dens:
+            parameters = ["RHO", "VP", "VS"]
         elif set(parameters) == case_iso_mod:
             parameters = ["QKAPPA", "QMU", "RHO", "VP", "VS"]
         else:
-            raise InversionsonWarning(f"Parameter list {parameters} not "
+            raise InversionsonError(f"Parameter list {parameters} not "
                                       f"a recognized set of parameters")
         return parameters
 
@@ -280,9 +283,9 @@ class ProjectComponent(Component):
             print(f"Current Iteration: {self.current_iteration}")
             self.event_quality = toml.load(
                 self.comm.storyteller.events_quality_toml)
-        self.inversion_params = self._arrange_params(
+        self.inversion_params = self.arrange_params(
             self.info["inversion_parameters"])
-        self.modelling_params = self._arrange_params(
+        self.modelling_params = self.arrange_params(
             self.info["modelling_parameters"]
         )
 
@@ -306,7 +309,7 @@ class ProjectComponent(Component):
             self.paths["documentation"], "ITERATIONS")
         if not os.path.exists(self.paths["iteration_tomls"]):
             os.makedirs(self.paths["iteration_tomls"])
-        self.paths["salvus_smoother"] = self.info["salvus_smoother"]
+        # self.paths["salvus_smoother"] = self.info["salvus_smoother"]
 
         self.paths["control_group_toml"] = os.path.join(
             self.paths["documentation"], "control_groups.toml"
@@ -333,8 +336,15 @@ class ProjectComponent(Component):
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
-        # I need a way to figure out what the controlgroup is
-        it_dict["last_control_group"] = []
+
+        last_control_group = []
+        if iteration != "it0000_model":
+            ctrl_grps = toml.load(
+                self.comm.project.paths["control_group_toml"]
+            )
+            last_control_group = ctrl_grps[iteration]["old"]
+
+        it_dict["last_control_group"] = last_control_group
         it_dict["new_control_group"] = []
         f_job_dict = {
                 "name": "",
@@ -352,6 +362,7 @@ class ProjectComponent(Component):
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {
                     "misfit": 0.0,
+                    "usage_updated": False,
                     "jobs": {
                         "forward": f_job_dict,
                         "adjoint": a_job_dict
@@ -410,6 +421,8 @@ class ProjectComponent(Component):
                 prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
                 cg_dict[iteration] = {}
                 cg_dict[iteration]["old"] = cg_dict[prev_iter]["new"]
+                if new not in cg_dict[iteration].keys():
+                    cg_dict[iteration]["new"] = []
             if new:
                 if iteration not in cg_dict.keys():
                     cg_dict[iteration] = {}
@@ -445,6 +458,7 @@ class ProjectComponent(Component):
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {
                     "misfit": self.misfits[event],
+                    "usage_updated": self.updated[event],
                     "jobs": {
                         "forward": self.forward_job[event],
                         "adjoint": self.adjoint_job[event]
@@ -476,10 +490,12 @@ class ProjectComponent(Component):
         self.old_control_group = it_dict["last_control_group"]
         self.new_control_group = it_dict["new_control_group"]
         self.misfits = {}
+        self.updated = {}
         self.forward_job = {}
         self.adjoint_job = {}
         # Not sure if it's worth it to include station misfits
         for event in self.events_in_iteration:
+            self.updated[event] = it_dict["events"][event]["usage_updated"]
             self.misfits[event] = it_dict["events"][event]["misfit"]
             self.forward_job[event] = it_dict["events"][event]["jobs"]["forward"]
             self.adjoint_job[event] = it_dict["events"][event]["jobs"]["adjoint"]

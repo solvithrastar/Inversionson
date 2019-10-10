@@ -12,6 +12,7 @@ import shutil
 import sys
 
 from inversionson import InversionsonError
+from inversionson import InversionsonOptError
 import numpy as np
 
 
@@ -83,26 +84,26 @@ class SalvusOptComponent(Component):
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
 
-    def move_gradient_to_salvus_opt_folder(self, event=None):
-        """
-        Move the gradient into the folder where salvus opt operates.
-        This can either be an individual gradient (not implemented yet),
-        or a full iteration gradient. (Exodus gradients for now)
+    # def move_gradient_to_salvus_opt_folder(self, event=None):
+    #     """
+    #     Move the gradient into the folder where salvus opt operates.
+    #     This can either be an individual gradient (not implemented yet),
+    #     or a full iteration gradient. (Exodus gradients for now)
 
-        :param event: Name of event if individual gradient, defaults to None
-        :type event: string, optional
-        """
-        iteration = self.comm.project.current_iteration
-        grad_name = "gradient_" + iteration + ".e"
-        gradient = self.comm.lasif.find_gradient(
-            iteration=iteration,
-            event=
-        )
-        dest_path = os.path.join(self.models, grad_name)
-        current_path = os.path.join(self.comm.project.lasif_root, "GRADIENTS",
-                                    "ITERATION_" + iteration, "gradient.e")
+    #     :param event: Name of event if individual gradient, defaults to None
+    #     :type event: string, optional
+    #     """
+    #     iteration = self.comm.project.current_iteration
+    #     grad_name = "gradient_" + iteration + ".e"
+    #     gradient = self.comm.lasif.find_gradient(
+    #         iteration=iteration,
+    #         event=
+    #     )
+    #     dest_path = os.path.join(self.models, grad_name)
+    #     current_path = os.path.join(self.comm.project.lasif_root, "GRADIENTS",
+    #                                 "ITERATION_" + iteration, "gradient.e")
 
-        shutil.copy(current_path, dest_path)
+    #     shutil.copy(current_path, dest_path)
 
     def get_model_from_salvus_opt(self):
         """
@@ -131,9 +132,6 @@ class SalvusOptComponent(Component):
     def write_misfit_to_task_toml(self, events=None):
         """
         Report the correct misfit value to salvus opt.
-        ** Still have to find a consistant place to read/write misfit **
-        ** Maybe this should be done on an individual level aswell **
-        ** Needs to be done on an individual level actually **
         """
         iteration = self.comm.project.current_iteration
         if not events:
@@ -220,8 +218,10 @@ class SalvusOptComponent(Component):
         """
         events_used = self.comm.project.events_in_iteration
         task = self.read_salvus_opt()
+        print(f"Events used: {events_used}")
         
         events_list = []
+        ctrl = False
         for event in events_used:
             if event in control_group:
                 ctrl = True
@@ -249,7 +249,7 @@ class SalvusOptComponent(Component):
                     models.append(file)
 
         if len(models) == 0:
-            raise InversionsonError("Please initialize inversion in Salvus Opt")
+            raise InversionsonOptError("Please initialize inversion in Salvus Opt")
         iterations = self._parse_model_files(models)
 
         new_it_number = max(iterations)
@@ -273,6 +273,8 @@ class SalvusOptComponent(Component):
         iterations = self._parse_model_files(models)
 
         if not tr_region:
+            if max(iterations) == 0:
+                return "it0000_model"
             old_it_number = max(iterations) - 1
             old_it_tr_region = min(iterations[old_it_number])
             return self._create_iteration_name(old_it_number, old_it_tr_region)
@@ -304,7 +306,22 @@ class SalvusOptComponent(Component):
         if len(iterations[max(iterations)]) == 1:
             return True
         else:
+            if max(iterations) == 0:
+                if len(iterations[max(iterations)]) == 2:
+                    return True
             return False
+
+    def get_batch_size(self) -> int:
+        """
+        Get the size of the batch to be used in an iteration.
+        Batch size is double the control group
+        
+        :return: Number of sources to use.
+        :rtype: int
+        """
+        task = self.read_salvus_opt()
+        events = task["task"][0]["output"]["event"]
+        return len(events) * 2
 
     def find_blocked_events(self):
         """
@@ -320,11 +337,11 @@ class SalvusOptComponent(Component):
         """
         blocked_events = []
         events_used = self.comm.storyteller.events_used  # Usage of all events
-        needed_events = int(round(self.get_batch_size / 2.0))
+        needed_events = int(round(self.get_batch_size() / 2))
         for key, val in events_used.items():
             if val != 0:
                 blocked_events.append(key)
-        if abs(len(blocked_events) - len(events_used.keys()) >= needed_events):
+        if abs(len(blocked_events) - len(events_used.keys())) >= needed_events:
             # We still have plenty of events to choose from.
             use_these = None
             return blocked_events, use_these
@@ -370,7 +387,7 @@ class SalvusOptComponent(Component):
                     iterations[iteration] = [tr_region]
                 else:
                     iteration = int(model[2:6])
-                    tr_region = float(model[-10:-2])
+                    tr_region = float(model[-11:-3])
                     if iteration in iterations:
                         iterations[iteration].append(tr_region)
                     else:

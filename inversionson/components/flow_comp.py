@@ -355,7 +355,7 @@ class SalvusFlowComponent(Component):
 
         return job.get_output_files()
 
-    def submit_smoothing_job(self, event: str, simulation: object, smooth, simulations):
+    def submit_smoothing_job(self, event: str, smooth, simulations):
         """
         Submit the salvus diffusion equation smoothing job
 
@@ -372,6 +372,7 @@ class SalvusFlowComponent(Component):
             "smoother_output"
         )
         from salvus_mesh.unstructured_mesh import UnstructuredMesh
+
         for par in simulations.keys():
             sapi.run(
                 #site_name="swp_smooth",

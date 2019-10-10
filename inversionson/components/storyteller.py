@@ -21,6 +21,7 @@ class StoryTellerComponent(Component):
 
     - During inversion
     -- How often each event has been used
+    -- How influential the event was on the inversion
     -- It allows for the addition of new data by regularly
         querying Lasif project to look for new data and then
         updates list of how often events have been used.
@@ -80,7 +81,7 @@ class StoryTellerComponent(Component):
         Create a markdown file which will be used to tell the story
         of the inversion automatically.
         """
-        if os.path.exists(self.story_file):
+        if os.path.isfile(self.story_file):
             raise InversionsonError(f"File {self.story_file} already exists."
                                     f" Will stop here so that it does not get"
                                     f" overwritten.")
@@ -149,7 +150,12 @@ class StoryTellerComponent(Component):
         To keep track of how often events are used.
         """
         for event in self.comm.project.events_in_iteration:
-            self.events_used[event] += 1
+            if not self.comm.project.updated[event]:
+                self.events_used[event] += 1
+                self.comm.project.change_attribute(
+                    attribute=f"updated[\"{event}\"]",
+                    new_value=True
+                )
         with open(self.events_used_toml, "w") as fh:
             toml.dump(self.events_used, fh)
 
@@ -196,6 +202,7 @@ class StoryTellerComponent(Component):
                         f"{self.comm.project.current_iteration}",
             alt_text="text"
         )
+        print("Preparing Ray density image")
         ray_file = self.comm.lasif.plot_iteration_raydensity()
         self.markdown.add_image(
             image_url=ray_file,
@@ -342,7 +349,7 @@ class StoryTellerComponent(Component):
         self.markdown.add_list(items=self.comm.project.new_control_group)
 
         cg_misfit = 0.0
-        for key, value in self.comm.project.misfits:
+        for key, value in self.comm.project.misfits.items():
             if key in self.comm.project.new_control_group:
                 cg_misfit += value
 
@@ -410,6 +417,8 @@ class StoryTellerComponent(Component):
 
         if task == "compute_gradient":
             self._initiate_gradient_computation_task()
+
+        if task == "select_control_batch":
             self._report_control_group()
             self._update_event_quality()
 
@@ -553,6 +562,7 @@ class MarkDown(StoryTellerComponent):
         for key in data.keys():
             self.stream += f"| {key} | {data[key]} |\n"
 
+        self._transform_special_characters()
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()
