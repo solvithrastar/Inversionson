@@ -48,7 +48,8 @@ setup_config = dict(
         "pytest",
         "flask",
         "flask-cache",
-        "sphinx"]
+        "sphinx",
+        "emoji"]
 )
 
 

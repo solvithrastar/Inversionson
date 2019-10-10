@@ -1,6 +1,3 @@
-"""
-
-"""
 import numpy as np
 import time
 import os
@@ -16,7 +13,6 @@ init()
 
 from colorama import Fore, Style
 import emoji
-
 
 class AutoInverter(object):
     """
@@ -435,16 +431,15 @@ class AutoInverter(object):
 
     def monitor_jobs(self, sim_type: str, events=None):
         """
-        Takes events in iteration and monitors its job stati
+        Takes events in iteration and monitors its job statuses
+        Can return a list of events which have been retrieved.
+        If none... call itself again.
 
         :param sim_type: Type of simulation, forward or adjoint
         :type sim_type: str
         :param events: list of events used in task, if nothing given,
-        will take all events in iteration
+            will take all events in iteration
         :type events: list
-
-        Can return a list of events which have been retrieved.
-        If none... call itself again.
         """
         import time
         events_retrieved_now = []
@@ -540,7 +535,7 @@ class AutoInverter(object):
         :param sim_type: Simulation type forward or adjoint
         :type sim_type: str
         :param events: list of events used in task, if nothing given,
-        will take all events in iteration
+            will take all events in iteration
         :type events: list
         """
         if sim_type == "forward":
