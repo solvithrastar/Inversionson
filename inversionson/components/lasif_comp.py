@@ -141,6 +141,9 @@ class LasifComponent(Component):
         Make lasif list events, supposed to be used when all events
         are used per iteration. IF only for an iteration, pass 
         an iteration value.
+
+        :param iteration: Name of iteration, defaults to None
+        :type iteration: str
         """
         return lapi.list_events(
             self.lasif_comm,
@@ -200,7 +203,7 @@ class LasifComponent(Component):
         :param smooth: Do you want the smoothed gradient, defaults to False
         :type smooth: bool
         :param inversion_grid: Do you want the gradient on inversion 
-        discretization?, defaults to False
+            discretization?, defaults to False
         :type inversion_grid: bool
         :return: Path to a gradient
         :rtype: str
