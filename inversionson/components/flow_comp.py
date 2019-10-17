@@ -355,6 +355,27 @@ class SalvusFlowComponent(Component):
 
         return job.get_output_files()
 
+    def delete_stored_wavefields(self, iteration: str, sim_type: str):
+        """
+        Delete all stored jobs for a certain simulation type of an iteration
+
+        :param iteration: Name of iteration
+        :type iteration: str
+        :param sim_type: Type of simulation, forward or adjoint
+        :type sim_type: str
+        """
+        iter_info = self.comm.project.get_old_iteration_info(iteration)
+
+        events_in_iteration = list(iter_info["events"].keys())
+
+        for event in events_in_iteration:
+            job_name = iter_info["events"][event]["jobs"][sim_type]["name"]
+            job = sapi.get_job(
+                site_name=self.comm.project.site_name,
+                job_name=job_name
+            )
+            job.delete()
+
     def submit_smoothing_job(self, event: str, smooth, simulations):
         """
         Submit the salvus diffusion equation smoothing job

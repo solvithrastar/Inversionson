@@ -171,11 +171,11 @@ class AutoInverter(object):
                     print(f"Will resubmit")
                 elif status == "JobStatus.finished":
                     print(f"Status of job for event {event} is finished")
-                    print("Will retrieve and update toml")
-                    self.comm.project.change_attribute(
-                            attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
-                            new_value=True)
-                    self.comm.project.update_iteration_toml()
+                    # print("Will retrieve and update toml")
+                    # self.comm.project.change_attribute(
+                    #         attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
+                    #         new_value=True)
+                    # self.comm.project.update_iteration_toml()
                     return
                 else:
                     print("Jobstatus unknown for event {event}")
@@ -318,7 +318,8 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
-        if self.comm.project.adjoint_job["retrieved"]:
+        #TODO: Do I want this?
+        if self.comm.project.adjoint_job[event]["retrieved"]:
             print(f"Gradient for event {event} has already been retrieved. "
                   f"Will not retrieve it again.")
             return
@@ -371,7 +372,6 @@ class AutoInverter(object):
             shutil.copy(latest_windows, os.path.join(
                 windows, window_set_name + ".sqlite"))
         else:
-            print("I entered into the window selection in autoinverter")
             self.comm.lasif.select_windows(
                 window_set_name=window_set_name,
                 event=event,
@@ -464,11 +464,8 @@ class AutoInverter(object):
 
                     if status == "JobStatus.finished":
                         self.retrieve_seismograms(event)
-                        self.comm.project.change_attribute(
-                                attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
-                                new_value=True)
-                        self.comm.project.update_iteration_toml()
                         events_retrieved_now.append(event)
+                        print(f"Events retrieved now: {events_retrieved_now}")
                     elif status == "JobStatus.pending":
                         print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.running":
@@ -486,10 +483,9 @@ class AutoInverter(object):
                         warnings.warn(
                             f"Inversionson does not recognise job status: "
                             f"{status}", InversionsonWarning)
-                    time.sleep(30)
 
             elif sim_type == "adjoint":
-                if self.comm.project.forward_job[event]["retrieved"]:
+                if self.comm.project.adjoint_job[event]["retrieved"]:
                     events_already_retrieved.append(event)
                     continue
                 else:
@@ -498,10 +494,6 @@ class AutoInverter(object):
 
                     if status == "JobStatus.finished":
                         self.retrieve_gradient(event)
-                        self.comm.project.change_attribute(
-                                attribute=f"adjoint_job[\"{event}\"][\"retrieved\"]",
-                                new_value=True)
-                        self.comm.project.update_iteration_toml()
                         events_retrieved_now.append(event)
                     elif status == "JobStatus.pending":
                         print(f"Status = {status}, event: {event}")
@@ -521,16 +513,24 @@ class AutoInverter(object):
                         warnings.warn(
                             f"Inversionson does not recognise job status: "
                             f"{status}", InversionsonWarning)
-                    time.sleep(30)
+
             else:
                 raise ValueError(f"Sim type {sim_type} not supported")
-
+        
         # If no events have been retrieved, we call the function again.
         if len(events_retrieved_now) == 0:
-            if len(events_already_retrieved) == len(self.comm.project.events_in_iteration):
+            if len(events_already_retrieved) == len(events):
                 return "All retrieved"
             else:
-                self.monitor_jobs(sim_type)
+                print(f"Recovered {len(events_already_retrieved)} out of "
+                      f"{len(events)} events.")
+                time.sleep(60)
+                self.monitor_jobs(sim_type, events=events)
+        for event in events_retrieved_now:
+            self.comm.project.change_attribute(
+                    attribute=f"{sim_type}_job[\"{event}\"][\"retrieved\"]",
+                    new_value=True)
+            self.comm.project.update_iteration_toml()
         return events_retrieved_now
 
     def wait_for_all_jobs_to_finish(self, sim_type: str, events=None):
@@ -575,7 +575,7 @@ class AutoInverter(object):
 
         if not np.all(done):  # If not all done, keep monitoring
             time.sleep(20)
-            self.wait_for_all_jobs_to_finish(sim_type)
+            self.wait_for_all_jobs_to_finish(sim_type, events=events)
 
     def compute_misfit_and_gradient(self, task: str, verbose: str):
         """
@@ -619,28 +619,29 @@ class AutoInverter(object):
             self.calculate_station_weights(event)
         
         print(Fore.BLUE + "\n ========================= \n")
-        print(emoji.emojize(':hourglass: | Waiting for jobs',
-                use_aliases=True))
 
-        events_retrieved = []
+        events_retrieved = "None retrieved"
         i = 0
         while events_retrieved != "All retrieved":
+            i += 1
+            # time.sleep(5)
             print(Fore.BLUE)
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                 use_aliases=True))
-            i += 1
-            # time.sleep(5)
-            events_retrieved = self.monitor_jobs("forward")
-            if events_retrieved == "All retrieved" and i != 1:
+            events_retrieved_now = self.monitor_jobs("forward")
+            print(f"Events retrieved: {events_retrieved_now}")
+            if events_retrieved_now == "All retrieved" and i != 1:
                 break
             else:
-                if len(events_retrieved) == 0:
+                if len(events_retrieved_now) == 0:
                     print("No new events retrieved, lets wait")
                     continue
                     # Should not happen
-                if events_retrieved == "All retrieved":
-                    events_retrieved = self.comm.project.events_in_iteration
-                for event in events_retrieved:
+                if events_retrieved_now == "All retrieved":
+                    events_retrieved_now = \
+                        self.comm.project.events_in_iteration
+                    events_retrieved = "All retrieved"
+                for event in events_retrieved_now:
                     print(f"{event} retrieved")
                     print(Fore.GREEN + "\n ===================== \n")
                     print(emoji.emojize(':floppy_disk: | Process data if '
@@ -675,7 +676,7 @@ class AutoInverter(object):
         self.wait_for_all_jobs_to_finish("forward")
         self.comm.lasif.write_misfit()
 
-        events_retrieved_adjoint = []
+        events_retrieved_adjoint = "None retrieved"
         i = 0
         while events_retrieved_adjoint != "All retrieved":
             print(Fore.BLUE)
@@ -683,17 +684,18 @@ class AutoInverter(object):
                     use_aliases=True))
             i += 1
             # time.sleep(15)
-            events_retrieved_adjoint = self.monitor_jobs("adjoint")
-            if events_retrieved_adjoint == "All retrieved" and i != 1:
+            events_retrieved_adjoint_now = self.monitor_jobs("adjoint")
+            if events_retrieved_adjoint_now == "All retrieved" and i != 1:
                 break
             else:
-                if len(events_retrieved_adjoint) == 0:
+                if len(events_retrieved_adjoint_now) == 0:
                     print("No new events retrieved, lets wait")
                     continue
                     # Should not happen
-                if events_retrieved_adjoint == "All retrieved":
-                    events_retrieved_adjoint = self.comm.project.events_in_iteration
-                for event in events_retrieved_adjoint:
+                if events_retrieved_adjoint_now == "All retrieved":
+                    events_retrieved_adjoint_now = self.comm.project.events_in_iteration
+                    events_retrieved_adjoint = "All retrieved"
+                for event in events_retrieved_adjoint_now:
                     print(f"{event} retrieved")
 
                     print(Fore.YELLOW + "\n ==================== \n")
@@ -793,27 +795,26 @@ class AutoInverter(object):
             self.calculate_station_weights(event)
 
         print(Fore.BLUE + "\n ========================= \n")
-        print(emoji.emojize(':hourglass: | Waiting for jobs',
-                            use_aliases=True))
-        events_retrieved = []
+
+        events_retrieved = "None retrieved"
         i = 0
         while events_retrieved != "All retrieved":
-            time.sleep(20)
             print(Fore.BLUE)
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                                 use_aliases=True))
             i += 1
-            events_retrieved = self.monitor_jobs(sim_type="forward",
+            events_retrieved_now = self.monitor_jobs(sim_type="forward",
                                                  events=events_to_use)
-            if events_retrieved == "All retrieved" and i != 1:
+            if events_retrieved_now == "All retrieved" and i != 1:
                 break
             else:
-                if len(events_retrieved) == 0:
+                if len(events_retrieved_now) == 0:
                     print("No new events retrieved, lets wait")
                     continue
-                if events_retrieved == "All retrieved":
-                    events_retrieved = events_to_use
-                for event in events_retrieved:
+                if events_retrieved_now == "All retrieved":
+                    events_retrieved_now = events_to_use
+                    events_retrieved = "All retrieved"
+                for event in events_retrieved_now:
                     print(f"{event} retrieved")
                     print(Fore.GREEN + "\n ===================== \n")
                     print(emoji.emojize(':floppy_disk: | Process data if '
@@ -884,25 +885,26 @@ class AutoInverter(object):
             self.run_adjoint_simulation(event)
 
         print(Fore.BLUE + "\n ========================= \n")
-        print(emoji.emojize(':hourglass: | Waiting for jobs',
-                            use_aliases=True))
-        events_retrieved = []
+
+        events_retrieved = "None retrieved"
         i = 0
         while events_retrieved != "All retrieved":
             print(Fore.BLUE)
             print(emoji.emojize(':hourglass: | Waiting for jobs',
                                 use_aliases=True))
             i += 1
-            events_retrieved = self.monitor_jobs(sim_type="adjoint")
-            if events_retrieved == "All retrieved" and i != 1:
+            events_retrieved_now = self.monitor_jobs(sim_type="adjoint")
+            if events_retrieved_now == "All retrieved" and i != 1:
                 break
             else:
-                if len(events_retrieved) == 0:
+                if len(events_retrieved_now) == 0:
                     print("No new events retrieved, lets wait")
                     continue
-                if events_retrieved == "All retrieved":
-                    events_retrieved = self.comm.project.events_in_iteration
-                for event in events_retrieved:
+                if events_retrieved_now == "All retrieved":
+                    events_retrieved_now = self.comm.\
+                        project.events_in_iteration
+                    events_retrieved = "All retrieved"
+                for event in events_retrieved_now:
                     # TODO: Cut source from gradient and maybe receivers
                     print(f"{event} retrieved")
 
@@ -926,7 +928,6 @@ class AutoInverter(object):
         print(emoji.emojize(':hourglass: | Making sure all jobs are done',
                             use_aliases=True))
         self.wait_for_all_jobs_to_finish("adjoint")
-        events_retrieved = []
 
         print(Fore.RED + "\n =================== \n")
         print(emoji.emojize(':love_letter: | Finalizing iteration '
@@ -1000,6 +1001,8 @@ class AutoInverter(object):
         self.comm.project.get_iteration_attributes(iteration)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
         self.comm.salvus_opt.run_salvus_opt()
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
         if task_2 == task and verbose_2 == verbose:

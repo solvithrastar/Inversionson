@@ -83,8 +83,9 @@ class LasifComponent(Component):
             blocked_events = []
             use_these = None
             # TODO: There must be a better way of defining number of events.
-            count = self.comm.salvus_opt.read_salvus_opt()
-            count = count["task"][0]["input"]["num_events"]
+            count = self.comm.project.initial_batch_size
+            # count = self.comm.salvus_opt.read_salvus_opt()
+            # count = count["task"][0]["input"]["num_events"]
             events = self.list_events()
             batch = lapi.get_subset(
                 self.lasif_comm,

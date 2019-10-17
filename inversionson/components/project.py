@@ -273,6 +273,7 @@ class ProjectComponent(Component):
         self.site_name = self.info["site_name"]
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]
+        self.initial_batch_size = self.info["initial_batch_size"]
         self.n_random_events_picked = self.info["n_random_events"]
         self.max_ctrl_group_size = self.info["max_ctrl_group_size"]
         self.min_ctrl_group_size = self.info["min_ctrl_group_size"]

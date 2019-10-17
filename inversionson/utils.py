@@ -10,36 +10,62 @@ import numpy as np
 import os
 import h5py
 
-def cartesian_to_spherical(cartesian: np.ndarray, radius: float) -> np.ndarray:
-    """
-    Take a cartesian coordinate and convert it to spherical coordinates
 
-    :param cartesian: x-y-z coordinate
-    :type cartesian: list
-    :param radius: radius away
-    :type radius: float
-    :return: lat, lon, depth
-    :rtype: list
+def latlondepth_to_cartesian(lat: float, lon: float,
+                             depth_in_km=0.0) -> np.ndarray:
     """
+    Go from lat, lon, depth to cartesian coordinates
 
-def spherical_to_cartesian(spherical: np.ndarray) -> np.ndarray:
-    """
-    Transform spherical coordinates to cartesian
-    NOT READY
-    :param spherical: theta-phi-r
-    :type spherical: np.ndarray
-    :return: x-y-z
+    :param lat: Latitude
+    :type lat: float
+    :param lon: Longitude
+    :type lon: float
+    :param depth_in_km: Depth in kilometers, Optional
+    :type depth_in_km: float, defaults to 0.0
+    :return: x,y,z coordinates
     :rtype: np.ndarray
     """
-    cart = np.zeros_like(spherical)
-    cart[0] = spherical[2] * np.sin(spherical[0]) * np.cos(spherical[1])
-    cart[1] = spherical[2] * np.sin(spherical[0]) * np.sin(spherical[1])
-    cart[2] = spherical[2] * np.cos(spherical[0])
+    R = (6371.0 - depth_in_km) * 1000.0
+    lat *= (np.pi / 180.0)
+    lon *= (np.pi / 180.0)
+    x = R * np.cos(lat) * np.cos(lon)
+    y = R * np.cos(lat) * np.sin(lon)
+    z = R * np.sin(lat)
+
+    return x, y, z
+
+
+def find_parameters_in_dataset(dataset) -> list:
+    """
+    Figure out which parameter is in dataset and where
     
-    return cart
+    :param dataset: hdf5 dataset with a dimension labels
+    :type dataset: hdf5 dataset
+    :return: parameters
+    :rtype: list
+    """
+    dims = dataset.attrs.get("DIMENSION_LABELS")[1].decode()
+    params = dims[2:-2].split("|").replace(" ", "")
+    return params
+
+
+def add_dimension_labels(mesh, parameters: list):
+    """
+    Label the dimensions in a newly created dataset
+    
+    :param dataset: Loaded mesh as an hdf5 file
+    :type dataset: hdf5 file
+    :param parameters: list of parameters
+    :type parameters: list
+    """
+    dimstr = '[ ' + ' | '.join(parameters) + ' ]'
+    mesh['MODEL/data'].dims[0].label = 'element'
+    mesh['MODEL/data'].dims[1].label = dimstr
+    mesh['MODEL/data'].dims[2].label = 'point'
+
 
 def cut_source_region_from_gradient(mesh: str, source_location: dict,
-    radius_to_cut: float):
+                                    radius_to_cut: float):
     """
     Sources often show unreasonable sensitivities. This function
     brings the value of the gradient down to zero for that region.
@@ -53,23 +79,39 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
     :type radius_to_cut: float
     """
     gradient = h5py.File(mesh, "r+")
-    #TODO: Look for parameters in mesh
     coordinates = gradient["MODEL/coordinates"]
-    VP = gradient["MODEL/data"][:, 0, :]
+    data = gradient["MODEL/data"]
+    # TODO: Maybe I should implement this in a way that it uses predefined
+    # params. Then I only need to find out where they are
+    params = find_parameters_in_dataset(data)
 
-    dist = np.sqrt((coordinates[:, 0, :] - source_x) ** 2 +
-                   (coordinates[:, 1, :] - source_y) ** 2 +
-                   (coordinates[:, 2, :] - source_z) ** 2)
+    s_x, s_y, s_z = latlondepth_to_cartesian(
+        lat=source_location["latitude"],
+        lon=source_location["longitude"],
+        depth_in_km=source_location["depth"]
+    )
 
-    np.where(dist < radius_to_cut * 1000.0)
-    # Find indices of coordinates which are within a distance from source
-    # location and set these indices to zero in the gradients
+    dist = np.sqrt((coordinates[:, :, 0] - s_x) ** 2 +
+                   (coordinates[:, :, 1] - s_y) ** 2 +
+                   (coordinates[:, :, 2] - s_z) ** 2).ravel()
 
-    print("Not at all implemented yet.")
-    print("Not even sure in which coordinate system the mesh operates")
+    cut_indices = np.where(dist < radius_to_cut * 1000.0)
+
+    for i in range(len(params)):
+        tmp_dat = data[:, i, :].ravel()
+        tmp_dat[cut_indices] = 0.0
+        tmp_dat.reshape((data.shape[0], 1, data.shape[2]))
+        if i == 0:
+            cut_data = tmp_dat.copy()
+        else:
+            cut_data = np.concatenate((cut_data, tmp_dat), axis=1)
+    data[:, :, :] = cut_data
+
+    gradient.close()
+
 
 def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
-    radius_to_cut: float):
+                                       radius_to_cut: float):
     """
     Remove regions around receivers from gradients. Receivers often have an
     imprint on a model and this aims to fight that effect.
@@ -81,15 +123,69 @@ def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
     :param radius_to_cut: Radius to cut gradient in km
     :type radius_to_cut: float
     """
-    print("Still need to implement this but should be done soon.")
+
+    gradient = h5py.File(mesh, "r+")
+    coordinates = gradient["MODEL/coordinates"]
+    data = gradient["MODEL/data"]
+    # TODO: Maybe I should implement this in a way that it uses predefined
+    # params. Then I only need to find out where they are
+
+    params = find_parameters_in_dataset(data)
+
+    for _i, rec in enumerate(receivers.keys()):
+        x_r, y_r, z_r = latlondepth_to_cartesian(
+            lat=rec["latitude"],
+            lon=rec["longitude"]
+        )
+        dist = np.sqrt((coordinates[:, :, 0] - x_r) ** 2 +
+                       (coordinates[:, :, 1] - y_r) ** 2 +
+                       (coordinates[:, :, 2] - z_r) ** 2).ravel()
+        if _i == 0:
+            close_by = np.where(dist < radius_to_cut * 1000.0)
+        else:
+            tmp_close = np.where(dist < radius_to_cut * 1000.0)
+            close_by = np.concatenate(close_by, tmp_close)
+    
+    close_by = np.unique(close_by)
+
+    for i in range(data.shape[1]):
+        parameter = data[:, i, :].ravel()
+        parameter[close_by] = 0.0
+        parameter.reshape(data.shape[0], 1, data.shape[2])
+        if i == 0:
+            cut_data = parameter.copy()
+        else:
+            cut_data = np.concatenate((cut_data, parameter), axis=1)
+    data[:, :, :] = cut_data
+
+    gradient.close()
+
 
 def clip_gradient(mesh: str, percentile: float):
     """
     Clip the gradient to remove abnormally high/low values from it.
-    
+    Discrete gradients sometimes have the problem of unphysically high
+    values, especially at source/receiver locations so this should be
+    taken care of by cutting out a region around these.
+
     :param mesh: Path to mesh containing gradient
     :type mesh: str
     :param percentile: The percentile at which you want to clip the gradient
     :type percentile: float
     """
-    print("Not implemented yet")
+    gradient = h5py.File(mesh, "r+")
+    data = gradient["MODEL/data"]
+
+    clipped_data = data[:, :, :].copy()
+
+    for i in range(data.shape[1]):
+        clipped_data[:, i, :] = np.clip(data[:, i, :],
+                                        a_min=np.quantile(
+                                            data[:, i, :],
+                                            1.0 - percentile),
+                                        a_max=np.quantile(
+                                            data[:, i, :],
+                                            percentile))
+    data[:, :, :] = clipped_data
+    gradient.close()
+

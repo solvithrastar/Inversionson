@@ -29,6 +29,7 @@ def create_info(root=None):
     info["min_ctrl_group_size"] = 2
     info["max_angular_change"] = 30.0
     info["dropout_probability"] = 0.15
+    info["initial_batch_size"] = 4
 
     return info
 
