@@ -14,6 +14,7 @@ init()
 from colorama import Fore, Style
 import emoji
 
+
 class AutoInverter(object):
     """
     A class which takes care of a Full-Waveform Inversion using multiple 
@@ -384,6 +385,53 @@ class AutoInverter(object):
         events = self.comm.lasif.get_minibatch(first=True)
         self.comm.project.events_used = events
 
+    def preprocess_gradient(self, event: str):
+        """
+        Cut sources and receivers from gradient before smoothing.
+        We also clip the gradient to some percentile
+        This can all be configured in information toml.
+
+        :param event: Name of event
+        :type event: str
+        """
+        from .utils import cut_source_region_from_gradient
+        from .utils import cut_receiver_regions_from_gradient
+        from .utils import clip_gradient
+
+        gradient = self.comm.find_gradient(
+            iteration=self.comm.project.current_iteration,
+            event=event,
+            smooth=False,
+            inversion_grid=False
+        )
+        if self.comm.project.cut_source_radius > 0.0:
+            print("Cutting source region")
+            source_location = self.comm.lasif.get_source(
+                event_name=event
+            )
+            cut_source_region_from_gradient(
+                mesh=gradient,
+                source_location=source_location,
+                radius_to_cut=self.comm.project.cut_source_radius
+            )
+        
+        if self.comm.project.cut_receiver_radius > 0.0:
+            print("Cutting receiver region")
+            receiver_info = self.comm.lasif.get_receivers(
+                event_name=event
+            )
+            cut_receiver_regions_from_gradient(
+                mesh=gradient,
+                receivers=receiver_info,
+                radius_to_cut=self.comm.project.cut_receiver_radius
+            )
+        if self.comm.project.clip_gradient != 1.0:
+            print("Clipping gradient")
+            clip_gradient(
+                mesh=gradient,
+                percentile=self.comm.project.clip_gradient
+            )
+
     def prepare_gradient_for_smoothing(self, event) -> object:
         """
         Add smoothing fields to the relevant mesh.
@@ -693,6 +741,12 @@ class AutoInverter(object):
                 for event in events_retrieved_adjoint_now:
                     print(f"{event} retrieved")
 
+                    print(Fore.GREEN + "\n ===================== \n")
+                    print(emoji.emojize(':floppy_disk: | Cut sources and '
+                                        'receivers from gradient',
+                                        use_aliases=True))
+                    self.preprocess_gradient(event)
+
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(emoji.emojize(':rocket: | Run Diffusion equation',
                         use_aliases=True))
@@ -902,6 +956,12 @@ class AutoInverter(object):
                 for event in events_retrieved_now:
                     # TODO: Cut source from gradient and maybe receivers
                     print(f"{event} retrieved")
+
+                    print(Fore.GREEN + "\n ===================== \n")
+                    print(emoji.emojize(':floppy_disk: | Cut sources and '
+                                        'receivers from gradient',
+                                        use_aliases=True))
+                    self.preprocess_gradient(event)
 
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(emoji.emojize(':rocket: | Run Diffusion equation',

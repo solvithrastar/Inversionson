@@ -30,6 +30,16 @@ def create_info(root=None):
     info["max_angular_change"] = 30.0
     info["dropout_probability"] = 0.15
     info["initial_batch_size"] = 4
+    info["cut_source_region_from_gradient_in_km"] = 100.0
+    info["cut_receiver_region_from_gradient_in_km"] = 10.0
+    cut_stuff_gradient = "Put 0.0 if you don't want to cut anything"
+    info["clip_gradient"] = 1.0
+    clip_grad_comment = "Values between 0.55 - 1.0. The number represents the "
+    clip_grad_comment += "quantile where the gradient will be clipped. "
+    clip_grad_comment += "If 1.0 nothing will be cut"
+    info["comments"] = {}
+    info["comments"]["clip_gradient"] = clip_grad_comment
+    info["comments"]["cut_gradient"] = cut_stuff_gradient
 
     return info
 

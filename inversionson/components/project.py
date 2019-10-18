@@ -270,6 +270,12 @@ class ProjectComponent(Component):
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
         self.gradient_interpolation_mode = self.info[
             "gradient_interpolation_mode"]
+        self.cut_source_radius = self.info[
+            "cut_source_region_from_gradient_in_km"
+        ]
+        self.cut_receiver_radius = self.info[
+            "cut_receiver_region_from_gradient_in_km"
+        ]
         self.site_name = self.info["site_name"]
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]

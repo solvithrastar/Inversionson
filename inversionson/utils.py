@@ -83,12 +83,11 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
     data = gradient["MODEL/data"]
     # TODO: Maybe I should implement this in a way that it uses predefined
     # params. Then I only need to find out where they are
-    params = find_parameters_in_dataset(data)
 
     s_x, s_y, s_z = latlondepth_to_cartesian(
         lat=source_location["latitude"],
         lon=source_location["longitude"],
-        depth_in_km=source_location["depth"]
+        depth_in_km=source_location["depth_in_m"] * 1000.0
     )
 
     dist = np.sqrt((coordinates[:, :, 0] - s_x) ** 2 +
@@ -97,7 +96,7 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
 
     cut_indices = np.where(dist < radius_to_cut * 1000.0)
 
-    for i in range(len(params)):
+    for i in range(data.shape[1]):
         tmp_dat = data[:, i, :].ravel()
         tmp_dat[cut_indices] = 0.0
         tmp_dat.reshape((data.shape[0], 1, data.shape[2]))
@@ -130,9 +129,8 @@ def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
     # TODO: Maybe I should implement this in a way that it uses predefined
     # params. Then I only need to find out where they are
 
-    params = find_parameters_in_dataset(data)
 
-    for _i, rec in enumerate(receivers.keys()):
+    for _i, rec in enumerate(receivers):
         x_r, y_r, z_r = latlondepth_to_cartesian(
             lat=rec["latitude"],
             lon=rec["longitude"]
