@@ -5,16 +5,27 @@ This will not be tracked by git to begin with as it is only experimental
 
 import pytest
 import os
+import shutil
 
 from inversionson.tests.testing_helpers import DummyProject
 from inversionson import InversionsonError
 
+@pytest.fixture(scope="module")
+def pro():
+    # Create a physical tmp folder
+    # Create a project in there
+    dir_path = os.path.dirname(os.path.realpath(__file__))
+    project_path = os.path.join(dir_path, "tmp")
+    os.makedirs(project_path)
+    pro = DummyProject(project_path)
+    yield pro
+    shutil.rmtree(project_path)
 
-def test_initialization(tmp_path):
+
+def test_initialization(pro):
     """
     Ertu hress?
     """
-    pro = DummyProject(tmp_path)
     assert pro.comm.project.inversion_root == pro.root_folder
     assert os.path.exists(os.path.join(
         pro.comm.project.inversion_root,
@@ -37,8 +48,7 @@ def test_initialization(tmp_path):
     assert pro.comm.project.modelling_params == ["RHO", "VP", "VS"]
 
 
-def test_arrange_params(tmp_path):
-    pro = DummyProject(tmp_path)
+def test_arrange_params(pro):
 
     params = ["VS", "VP"]
     assert pro.comm.project.arrange_params(params) == ["VP", "VS"]

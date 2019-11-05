@@ -86,6 +86,36 @@ class SalvusMeshComponent(Component):
               f"event {event}")
         return mesh, smooth_gradient
 
+    def add_field_from_one_mesh_to_another(self, from_mesh: str, to_mesh: str,
+                                           field_name: str):
+        """
+        Add one field from a specific mesh to another mesh. The two meshes
+        need to have identical discretisations
+        
+        :param from_mesh: Path of mesh to copy field from
+        :type from_mesh: str
+        :param to_mesh: Path of mesh to copy field to
+        :type to_mesh: str
+        :param field_name: Name of the field to copy between them.
+        :type field_name: str
+        """
+        from salvus_mesh.unstructred_mesh import UnstructuredMesh
+        import os
+        import shutil
+
+        if not os.path.exists(to_mesh):
+            print(f"Mesh {to_mesh} does not exist. Will create new one.")
+            shutil.copy(from_mesh, to_mesh)
+            tm = UnstructuredMesh.from_h5(to_mesh)
+            tm.nodal_fields = {}
+        else:
+            tm = UnstructuredMesh.from_h5(to_mesh)
+        fm = UnstructuredMesh.from_h5(from_mesh)
+
+        field = fm.nodal_fields[field_name]
+        tm.attach_field(field_name, field)
+        print(f"Attached field {field_name} to mesh {to_mesh}")
+
     def write_xdmf(self, filename: str):
         """
         A hacky way to write an xdmf file for the hdf5 file
@@ -96,3 +126,40 @@ class SalvusMeshComponent(Component):
 
         mesh = UnstructuredMesh.from_h5(filename)
         mesh.write_h5(filename)
+
+    def add_fluid_and_roi_from_lasif_mesh(self):
+        """
+        For some reason the salvus opt meshes don't have all the necessary info.
+        I need this to get them simulation ready. I will write them into the
+        lasif folder afterwards.
+        As this is a quickfix, I will make it for my specific case.
+        """
+        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        import os
+        import numpy as np
+
+        initial_model = os.path.join(self.comm.project.lasif_root,
+                                     "MODELS",
+                                     "Globe3D_csem_100.h5")
+        iteration = self.comm.project.current_iteration
+        opt_mesh = os.path.join(
+                self.comm.project.paths["salvus_opt"],
+                "PHYSICAL_MODELS",
+                f"{iteration}.h5")
+        m_opt = UnstructuredMesh.from_h5(opt_mesh)
+        m_init = UnstructuredMesh.from_h5(initial_model)
+        
+        fluid = m_init.elemental_fields['fluid']
+        roi = np.abs(1.0 - fluid)
+
+        m_opt.attach_field(name="fluid", data=fluid)
+        m_opt.attach_field(name="ROI", data=roi)
+
+        iteration_mesh = os.path.join(
+                self.comm.project.lasif_root,
+                "MODELS",
+                f"ITERATION_{iteration}",
+                "mesh.h5")
+        if not os.path.exists(os.path.dirname(iteration_mesh)):
+            os.makedirs(os.path.dirname(iteration_mesh))
+        m_opt.write_h5(iteration_mesh)

@@ -2,6 +2,7 @@ from .component import Component
 import salvus_flow.api as sapi
 from inversionson import InversionsonError
 import os
+import time
 import numpy as np
 
 
@@ -65,6 +66,72 @@ class SalvusFlowComponent(Component):
         self.comm.project.update_iteration_toml()
         return job
 
+    def retrieve_outputs(self, event_name: str, sim_type: str, par=None):
+        """
+        Currently we need to use command line salvus opt to
+        retrieve the seismograms. There must be some better way
+        though.
+
+        :param event_name: Name of event
+        :type event_name: str
+        :param sim_type: Type of simulation, forward, adjoint, smoothing
+        :type sim_type: str
+        :param par: parameter to smooth if sim_type=smoothing, optional
+        :type par: str
+        """
+        job_name = self._get_job_name(
+            event=event_name,
+            sim_type=sim_type,
+            new=False
+        )
+        salvus_job = sapi.get_job(
+            site_name=self.comm.project.site_name,
+            job_name=job_name
+        )
+        if sim_type == "forward":
+            destination = self.comm.lasif.find_seismograms(
+                    event=event_name,
+                    iteration=self.comm.project.current_iteration)
+
+        if sim_type == "adjoint":
+            destination = self.comm.lasif.find_gradient(
+                iteration=self.comm.project.current_iteration,
+                event=event_name,
+                smooth=False,
+                inversion_grid=False,
+                just_give_path=True)
+        
+        if sim_type == "smoothing":
+            destination = self.comm.lasif.find_gradient(
+                iteration=self.comm.project.current_iteration,
+                event=event_name,
+                smooth=True,
+                inversion_grid=False,
+                just_give_path=True)
+            smooth_grad = self.comm.lasif.find_gradient(
+                iteration=self.comm.project.current_iteration,
+                event=event_name,
+                smooth=True,
+                inversion_grid=True,
+                just_give_path=True)
+            
+            destination = os.path.join(
+                os.path.dirname(destination),
+                "smoother_output",
+                "smooth_gradient.h5")
+
+        salvus_job.copy_output(
+            destination=os.path.dirname(destination),
+            allow_existing_destination_folder=True
+        )
+        
+        if sim_type == "smoothing":
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=destination,
+                to_mesh=smooth_grad,
+                field_name=par
+            )
+
     def get_source_object(self, event_name: str):
         """
         Create the source object that the simulation wants
@@ -90,8 +157,12 @@ class SalvusFlowComponent(Component):
             mtp=src_info["mtp"],
             mrp=src_info["mrp"],
             mrt=src_info["mrt"],
-            source_time_function=stf.Custom(filename=src_info["stf_file"],
-                                            dataset_name=src_info["dataset"])
+            source_time_function=stf.FilteredHeaviside(
+                end_time_in_seconds=self.comm.project.end_time,
+                min_frequency_in_hertz=1.0 / self.comm.project.period_high,
+                max_frequency_in_hertz=1.0 / self.comm.project.period_low,
+                start_time_in_seconds=self.comm.project.start_time
+            )
         )
 
         return src
@@ -115,22 +186,29 @@ class SalvusFlowComponent(Component):
             iteration=iteration
             )
         # A workaround needed for a current salvus bug:
-        stf_forward = os.path.join(
-                self.comm.project.lasif_root,
-                "SALVUS_INPUT_FILES",
-                f"ITERATION_{iteration}",
-                "stf.h5")
-        f = h5py.File(stf_forward)
-        stf_source = f['source'][()]
+        # stf_forward = os.path.join(
+        #         self.comm.project.lasif_root,
+        #         "SALVUS_INPUT_FILES",
+        #         f"ITERATION_{iteration}",
+        #         "custom_stf.h5")
+        # job_name = self._get_job_name(
+        #     event=event_name,
+        #     sim_type="forward",
+        #     new=False) 
+        # stf_forward_path = f"/scratch/snx3000/tsolvi/salvus_flow/run/{job_name}/input/custom_stf.h5"
+        # copy it:
+        # os.system(f"scp daint:{stf_forward_path} {stf_forward}")
+        # f = h5py.File(stf_forward)
+        # stf_source = f['stf'][()]
         p = h5py.File(adjoint_filename)
-        if 'source' in p.keys():
-            del p['source']
+        # if 'stf' in p.keys():
+            # del p['stf']
         adjoint_recs = list(p.keys())
-        p.create_dataset(name='source', data=stf_source)
-        p["source"].attrs["sampling_rate_in_hertz"] = 1 / self.comm.project.time_step
-        p["source"].attrs["spatial-type"] = np.string_("moment_tensor")
-        p["source"].attrs["start_time_in_seconds"] = -self.comm.project.time_step
-        f.close()
+        # p.create_dataset(name='stf', data=stf_source)
+        # p["stf"].attrs["sampling_rate_in_hertz"] = 1 / self.comm.project.time_step
+        # p["source"].attrs["spatial-type"] = np.string_("moment_tensor")
+        # p["stf"].attrs["start_time_in_seconds"] = -self.comm.project.time_step
+        # f.close()
         #rec = receivers[0]
         #Need to make sure I only take receivers with an adjoint source
         adjoint_sources = []
@@ -237,7 +315,7 @@ class SalvusFlowComponent(Component):
                 "gradient.h5")
 
         w = simulation.Waveform(mesh=mesh)
-        w.adjoint.forward_meta_json_filename = meta
+        w.adjoint.forward_meta_json_filename = f"REMOTE:{meta}"
         w.adjoint.gradient.parameterization = "rho-vp-vs"
         w.adjoint.gradient.output_filename = gradient
         w.adjoint.point_source = adj_src
@@ -268,18 +346,18 @@ class SalvusFlowComponent(Component):
         defaults to 1024
         :type ranks: int, optional
         """
-        iteration = self.comm.project.current_iteration
-        output_folder = os.path.join(
-        self.comm.lasif.lasif_root,
-                "SYNTHETICS",
-                "EARTHQUAKES",
-                f"ITERATION_{iteration}",
-                event)
+        # iteration = self.comm.project.current_iteration
+        # output_folder = os.path.join(
+        # self.comm.lasif.lasif_root,
+        #         "SYNTHETICS",
+        #         "EARTHQUAKES",
+        #         f"ITERATION_{iteration}",
+        #         event)
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
-            ranks=ranks
-            #wall_time_in_seconds=wall_time
+            ranks=ranks,
+            wall_time_in_seconds=self.comm.project.wall_time
             #output_folder=output_folder
         )
         #sapi.run(
@@ -319,6 +397,13 @@ class SalvusFlowComponent(Component):
             elif sim_type == "adjoint":
                 if self.comm.project.adjoint_job[event]["submitted"]:
                     job_name = self.comm.project.adjoint_job[event]["name"]
+                else:
+                    raise InversionsonError(
+                        f"Adjoint job for event: {event} has not been "
+                        "submitted")
+            elif sim_type == "smoothing":
+                if self.comm.project.smoothing_job[event]["submitted"]:
+                    job_name = self.comm.project.smoothing_job[event]["name"]
                 else:
                     raise InversionsonError(
                         f"Adjoint job for event: {event} has not been "
@@ -376,7 +461,7 @@ class SalvusFlowComponent(Component):
             )
             job.delete()
 
-    def submit_smoothing_job(self, event: str, smooth, simulations):
+    def submit_smoothing_job(self, event: str, simulation, par):
         """
         Submit the salvus diffusion equation smoothing job
 
@@ -384,6 +469,8 @@ class SalvusFlowComponent(Component):
         :type event: str
         :param simulation: Simulation object required by salvus flow
         :type simulation: object
+        :param par: Parameter to smooth
+        :type par: str
         """
         output_folder = os.path.join(
             self.comm.lasif.lasif_root,
@@ -393,23 +480,31 @@ class SalvusFlowComponent(Component):
             "smoother_output"
         )
         from salvus_mesh.unstructured_mesh import UnstructuredMesh
-
-        for par in simulations.keys():
-            sapi.run(
-                #site_name="swp_smooth",
-                site_name=self.comm.project.site_name,
-                input_file=simulations[par],
-                output_folder=output_folder,
-                overwrite=True,
-                ranks=8,
-                get_all=True)
-            
-            smoothed = UnstructuredMesh.from_h5(os.path.join(output_folder, "smooth_gradient.h5"))
-            smooth.attach_field(par, smoothed.elemental_fields[par])
-        output_folder = os.path.join(
-            self.comm.lasif.lasif_root,
-            "GRADIENTS",
-            f"ITERATION_{self.comm.project.current_iteration}",
-            event
+        if self.comm.project.site_name == "swp":
+            for par in simulations.keys():
+                sapi.run(
+                    #site_name="swp_smooth",
+                    site_name=self.comm.project.site_name,
+                    input_file=simulations[par],
+                    output_folder=output_folder,
+                    overwrite=True,
+                    ranks=8,
+                    get_all=True)
+                
+                smoothed = UnstructuredMesh.from_h5(os.path.join(output_folder, "smooth_gradient.h5"))
+                smooth.attach_field(par, smoothed.elemental_fields[par])
+            output_folder = os.path.join(
+                self.comm.lasif.lasif_root,
+                "GRADIENTS",
+                f"ITERATION_{self.comm.project.current_iteration}",
+                event
+            )
+            smooth.write_h5(os.path.join(output_folder, "smooth_gradient.h5"))
+        job = sapi.run_async(
+            site_name=self.comm.project.site_name,
+            input_file=simulation,
+            ranks=self.comm.project.smoothing_ranks,
+            wall_time=self.comm.project.smoothing_walltime
         )
-        smooth.write_h5(os.path.join(output_folder, "smooth_gradient.h5"))
+        self.comm.project.change_attribute(f"smoothing_job[\"{event}\"][\"{par}\"][\"name\"]", job.job_name)
+        self.comm.project.change_attribute(f"forward_job[\"{event}\"][\"{par}\"][\"submitted\"]", True)

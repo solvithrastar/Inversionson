@@ -293,6 +293,8 @@ class BatchComponent(Component):
         best_non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
         for grad in grads_dropped:
             non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
+            print(f"Best non: {best_non_ctrl_group_event}")
+            print(f"Event Quality: {event_quality}")
             event_quality[grad] = event_quality[best_non_ctrl_group_event]
             ctrl_group.remove(grad)
             ctrl_group.append(non_ctrl_group_event)
@@ -304,8 +306,33 @@ class BatchComponent(Component):
             self.comm.project.event_quality[key] = val
         print(f"Control batch events: {self.comm.project.events_in_iteration}")
 
-
         return ctrl_group
+
+    def increase_control_group_size(self):
+        """
+        If the control group is not deemed good enough, we need to add more
+        events into the control group.
+        We thus find the highest quality events from the iteration and add
+        to the batch.
+        """
+        events = self.comm.project.events_in_iteration
+        ctrl_group = self.comm.project.new_control_group
+        events_quality = self.comm.project.event_quality
+
+        non_ctrl_events = list(set(events) - set(ctrl_group))
+        best = 0.0
+        for event in non_ctrl_events:
+            if events_quality[event] > best:
+                add_to_ctrl_group = event
+        events_quality[add_to_ctrl_group] = 0.0
+        ctrl_group.append(add_to_ctrl_group)
+        print(f"\n Event: {add_to_ctrl_group} added to control group \n")
+        self.comm.project.change_attribute(
+            attribute="new_control_group",
+            new_value=ctrl_group
+        )
+        self.comm.project.update_control_group_toml(new=True)
+        self.comm.project.update_iteration_toml()
 
     def print_dp(self):
         """

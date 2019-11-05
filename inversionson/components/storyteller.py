@@ -67,7 +67,14 @@ class StoryTellerComponent(Component):
         """
         Backup all information at the end of each iteration.
         """
-        shutil.copytree(self.root, self.backup)
+        tmpdir = os.path.join(self.backup, "..", "tmp")
+        if os.path.exists(self.backup):
+            shutil.copytree(self.backup, tmpdir)
+            shutil.rmtree(self.backup)
+            shutil.copytree(self.root, self.backup)
+            shutil.rmtree(tmpdir)
+        else:
+            shutil.copytree(self.root, self.backup)
 
     def _backup_story_file(self):
         """
@@ -156,6 +163,7 @@ class StoryTellerComponent(Component):
                     attribute=f"updated[\"{event}\"]",
                     new_value=True
                 )
+                self.comm.project.update_iteration_toml()
         with open(self.events_used_toml, "w") as fh:
             toml.dump(self.events_used, fh)
 
@@ -174,7 +182,7 @@ class StoryTellerComponent(Component):
         Start a new section in the story file
         """
         iteration = self.comm.project.current_iteration
-        if iteration == "it0000_model":
+        if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
             iteration_number = int(iteration.split("_")[0][2:].strip("0"))
@@ -217,7 +225,10 @@ class StoryTellerComponent(Component):
         we report it to story file.
         """
         iteration = self.comm.project.current_iteration
-        iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+        if iteration.startswith("it0000_model"):
+            iteration_number = 0
+        else:
+            iteration_number = int(iteration.split("_")[0][2:].strip("0"))
         tr_region = float(iteration.split("_")[-1][:-2])
         text = f"Model for Iteration {iteration_number} accepted for"
         text += f" trust region: {tr_region}."
@@ -230,7 +241,10 @@ class StoryTellerComponent(Component):
         we report it to story file.
         """
         iteration = self.comm.project.current_iteration
-        iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+        if iteration.startswith("it0000_model"):
+            iteration_number = 0
+        else:
+            iteration_number = int(iteration.split("_")[0][2:].strip("0"))
         tr_region = float(iteration.split("_")[-1][:-2])
         text = f"Model for Iteration {iteration_number} was rejected "
         text += f"so now we shrink the trust region to: {tr_region} "
@@ -255,7 +269,7 @@ class StoryTellerComponent(Component):
 
         current_total_misfit = 0.0
         current_cg_misfit = 0.0
-        for key, value in self.comm.project.misfits:
+        for key, value in self.comm.project.misfits.items():
             current_total_misfit += value
             if key in self.comm.project.old_control_group:
                 current_cg_misfit += value
@@ -328,7 +342,10 @@ class StoryTellerComponent(Component):
 
             text = f"Misfit for the old control group: "
             text += f"{old_control_group_misfit}"
-            text += f"\n Misfit reduction between the iterations: {cg_red}"
+            if cg_red >= 0.0:
+                text += f"\n Misfit increase between the iterations: {cg_red}%"
+            else:
+                text += f"\n Misfit reduction between the iterations: {cg_red}%"
 
         self.markdown.add_paragraph(text=text)
 
@@ -355,6 +372,17 @@ class StoryTellerComponent(Component):
 
         text = f"The current misfit for the control group is {cg_misfit}"
         self.markdown.add_paragraph(text=text)
+
+    def _report_increase_in_control_group_size(self):
+        """
+        The control group needs to be enlarged. This is reported here.
+        """
+        text = "Control group was not good enough, so we increase it with "
+        text += "one extra event."
+
+        self.markdown.add_paragraph(
+            text=text
+        )
 
     def _report_number_of_used_events(self):
         """
@@ -419,6 +447,8 @@ class StoryTellerComponent(Component):
             self._initiate_gradient_computation_task()
 
         if task == "select_control_batch":
+            if verbose and "increase" in verbose:
+                self._report_increase_in_control_group_size()
             self._report_control_group()
             self._update_event_quality()
 
@@ -479,12 +509,15 @@ class MarkDown(StoryTellerComponent):
         else:
             self._append_to_file()
 
-    def _transform_special_characters(self):
+    def _transform_special_characters(self, string=None):
         """
         Take special markdown characters from string
         and make sure they are interpreted correctly
         """
-        string = self.stream
+        output = True
+        if not string:
+            string = self.stream
+            output = False
         string = string.replace('*', '\*')
         string = string.replace('`', '\`')
         string = string.replace('_', '\_')
@@ -500,6 +533,8 @@ class MarkDown(StoryTellerComponent):
         string = string.replace('!', '\!')
         string = string.replace('&', '&amp;')
         string = string.replace('<', '&lt;')
+        if output:
+            return string
         self.stream = string
 
     def add_paragraph(self, text: str, textstyle='normal'):
@@ -577,7 +612,7 @@ class MarkDown(StoryTellerComponent):
         self.stream = ""
 
         for item in items:
-            self.stream += f"* {item} \n"
+            self.stream += f"* {self._transform_special_characters(item)} \n"
 
         self._add_line_break()
         self._add_line_break()

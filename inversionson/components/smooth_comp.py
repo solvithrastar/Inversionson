@@ -41,7 +41,7 @@ class SalvusSmoothComponent(Component):
         movie_file = output_file + "/smoothing_movie.h5"
         output_file += "/smooth_gradient.h5"
 
-        sim.physics.diffusion_equation.time_step_in_seconds = 1e-4
+        sim.physics.diffusion_equation.time_step_in_seconds = 1e-5
         sim.physics.diffusion_equation.initial_values.filename = gradient
         sim.physics.diffusion_equation.initial_values.format = "hdf5"
         sim.physics.diffusion_equation.initial_values.field = par # Temporary

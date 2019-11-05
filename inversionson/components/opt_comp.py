@@ -26,6 +26,7 @@ class SalvusOptComponent(Component):
         self.path = self.comm.project.paths["salvus_opt"]
         self.task_toml = os.path.join(self.path, "task.toml")
         self.models = os.path.join(self.path, "PHYSICAL_MODELS")
+        self.inv_models = os.path.join(self.path, "INVERSION_MODELS")
     
     def run_salvus_opt(self):
         """
@@ -137,6 +138,7 @@ class SalvusOptComponent(Component):
         if not events:
             events = self.comm.project.events_in_iteration
         misfits = toml.load(os.path.join(self.comm.project.lasif_root,
+                                         "ITERATIONS",
                                          f"ITERATION_{iteration}",
                                          "misfits.toml"))
         events_list = []
@@ -148,9 +150,22 @@ class SalvusOptComponent(Component):
                 "misfit": float(misfit),
                 "name": event
             })
+        task["task"][0]["output"]["event"] = events_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
+
+    def quickfix_delete_old_gradient_files(self):
+        """
+        A quick fix to bypass an error in salvus opt.
+        Salvus Opt can not overwrite currently existing gradient files.
+        This rather deletes the files beforehand and paves the way for Salvus
+        opt to work its magic.
+        """
+        for event in self.comm.project.events_in_iteration:
+            if os.path.exists(os.path.join(self.inv_models, f"gradient_{event}.h5")):
+                os.remove(os.path.join(self.inv_models, f"gradient_{event}.h5"))
+                os.remove(os.path.join(self.inv_models, f"gradient_{event}.xdmf"))
 
     def write_gradient_to_task_toml(self):
         """
@@ -384,10 +399,14 @@ class SalvusOptComponent(Component):
                     # The first iteration is shorter
                     iteration = int(model[2:6])
                     tr_region = 9.999999
-                    iterations[iteration] = [tr_region]
+                    if iteration in iterations:
+                        iterations[iteration].append(tr_region)
+                    else:
+                        iterations[iteration] = [tr_region]
                 else:
                     iteration = int(model[2:6])
-                    tr_region = float(model[-11:-3])
+                    tr_region = float(model[22:-3])
+
                     if iteration in iterations:
                         iterations[iteration].append(tr_region)
                     else:
@@ -414,5 +433,9 @@ class SalvusOptComponent(Component):
             return "it" + num_part + "_model"
         
         tr_region_part = str(tr_region)
+        region_parts = tr_region_part.split(".")
+        while len(region_parts[1]) < 6:
+            region_parts[1] = region_parts[1] + '0'
+        tr_region_part = f"{region_parts[0]}.{region_parts[1]}"
 
         return "it" + num_part + "_model_TrRadius_" + tr_region_part

@@ -7,6 +7,7 @@ from inversionson import InversionsonError, InversionsonWarning
 import warnings
 import subprocess
 import sys
+import toml
 
 
 class LasifComponent(Component):
@@ -146,7 +147,7 @@ class LasifComponent(Component):
         :type iteration: str
         """
         return lapi.list_events(
-            self.lasif_comm,
+            self.lasif_root,
             just_list=True,
             iteration=iteration,
             output=True)
@@ -182,6 +183,8 @@ class LasifComponent(Component):
             event_iteration_mesh = lapi.get_simulation_mesh(
                 self.lasif_comm, event, iteration)
             if not os.path.exists(event_iteration_mesh):
+                if not os.path.exists(os.path.dirname(event_iteration_mesh)):
+                    os.makedirs(os.path.dirname(event_iteration_mesh))
                 shutil.copy(event_mesh, event_iteration_mesh)
                 print(
                     f"Mesh for event: {event} has been moved to correct path for "
@@ -192,7 +195,7 @@ class LasifComponent(Component):
                       f"Will not move new one.")
 
     def find_gradient(self, iteration: str, event: str, smooth=False,
-                      inversion_grid=False) -> str:
+                      inversion_grid=False, just_give_path=False) -> str:
         """
         Find the path to a gradient produced by an adjoint simulation.
 
@@ -214,11 +217,25 @@ class LasifComponent(Component):
                                     event, "smooth_gradient.h5")
             if inversion_grid:
                 gradient = os.path.join(gradients, f"ITERATION_{iteration}",
-                                    event, "smooth_grad_master.h5")
+                                        event, "smooth_grad_master.h5")
+                if self.comm.project.meshes == "single":
+                    gradient = os.path.join(
+                        gradients,
+                        f"ITERATION_{iteration}",
+                        event,
+                        "smooth_gradient.h5"
+                    )
         else:
+            if not os.path.exists(os.path.join(
+                gradients, f"ITERATION_{iteration}", event)):
+                os.makedirs(os.path.join(
+                    gradients, f"ITERATION_{iteration}", event))
+
             gradient = os.path.join(gradients, f"ITERATION_{iteration}",
                                     event, "gradient.h5")
         if os.path.exists(gradient):
+            return gradient
+        if just_give_path:
             return gradient
         else:
             raise ValueError(f"File: {gradient} does not exist.")
@@ -272,10 +289,11 @@ class LasifComponent(Component):
         :return: Path to inversion grid
         :rtype: str
         """
+        # TODO: Hardcoded for now but needs fixing
         path = os.path.join(
             self.lasif_root,
             "MODELS",
-            "Globe3D_csem_100.h5" #TODO: Hardcoded for now but needs fixing
+            "Globe3D_csem_100.h5"
         )
         return path
 
@@ -314,10 +332,23 @@ class LasifComponent(Component):
         :return: Path to a mesh
         :rtype: str
         """
-        return lapi.get_simulation_mesh(
-            self.lasif_comm,
-            event_name,
-            self.comm.project.current_iteration)
+        if self.comm.project.info["meshes"] == "wavefield-adapted":
+            return lapi.get_simulation_mesh(
+                self.lasif_comm,
+                event_name,
+                self.comm.project.current_iteration)
+        else:
+            iteration = self.comm.project.current_iteration
+            return os.path.join(
+                    self.comm.project.lasif_root,
+                    "MODELS",
+                    f"ITERATION_{iteration}",
+                    "mesh.h5")
+            #return os.path.join(
+            #    self.comm.project.paths["salvus_opt"],
+            #    "PHYSICAL_MODELS",
+            #    f"{iteration}.h5"
+            #)
 
     def calculate_station_weights(self, event: str):
         """
@@ -339,7 +370,7 @@ class LasifComponent(Component):
             events=[event]
         )
 
-    def misfit_quantification(self, event: str, mpi=True, n=6):
+    def misfit_quantification(self, event: str, mpi=True, n=8):
         """
         Quantify misfit and calculate adjoint sources.
 
@@ -358,11 +389,11 @@ class LasifComponent(Component):
                 "ADJOINT_SOURCES",
                 f"ITERATION_{iteration}",
                 event,
-                "stf.h5")
-        if os.path.exists(adjoint_path):   
+                "custom_stf.h5")
+        if os.path.exists(adjoint_path):
             print(f"Adjoint source exists for event: {event} ")
             print("Will not be recalculated. If you want them "
-                    f"calculated, delete file: {adjoint_path}")
+                  f"calculated, delete file: {adjoint_path}")
         elif mpi:
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif calculate_adjoint_sources "
@@ -381,14 +412,14 @@ class LasifComponent(Component):
                 self.lasif_comm,
                 iteration=iteration,
                 window_set=window_set,
-                weight_set=event,
+                # weight_set=event,
                 events=[event])
         # See if misfit has already been written into iteration toml
         if self.comm.project.misfits[event] == 0.0:
             misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
                 event=event,
-                iteration=iteration,
-                weight_set_name=event
+                # weight_set_name=event,
+                iteration=iteration
             )
         else:
             misfit = self.comm.project.misfits[event]
@@ -408,7 +439,7 @@ class LasifComponent(Component):
         :return: Path to adjoint source file
         :rtype: str
         """
-        adjoint_filename = "stf.h5"
+        adjoint_filename = "custom_stf.h5"
         adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
@@ -428,6 +459,20 @@ class LasifComponent(Component):
             if details and "compute additional" in details:
                 # Reason for this that I have to append to path in this
                 # specific case.
+                print("Misfit file exists, will append additional events")
+                # Need to see if the misfit is already in there or not
+                misfits = toml.load(misfit_path)
+                append = False
+                for event in events:
+                    if event in misfits["event_misfits"].keys():
+                        if misfits["event_misfits"][event] == 0.0:
+                            append = True
+                    else:
+                        append = True
+                if not append:
+                    print("Misfit already exists. If you want it rewritten, "
+                          "delete the misfit toml in the lasif_project")
+                    return
                 print("Misfit file exists, will append additional events")
             else:
                 print("Misfit already exists. If you want it rewritten, "
@@ -493,7 +538,7 @@ class LasifComponent(Component):
 
         if mpi:
             os.chdir(self.comm.project.lasif_root)
-            command = f"mpirun -n 6 lasif select_windows "
+            command = f"mpirun -n 8 lasif select_windows "
             command += f"{self.comm.project.current_iteration} "
             command += f"{window_set_name} {event}"
             process = subprocess.Popen(

@@ -159,6 +159,14 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need information regarding minimum control group size."
                 " Key: min_ctrl_group_size")
+        
+        if "inversion_mode" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on inversion mode. mini-batch or normal")
+        
+        if self.info["inversion_mode"] not in ["mini-batch", "normal"]:
+            raise InversionsonError(
+                "Only implemented inversion modes are mini-batch or normal")
 
         # # Salvus Opt
         # if "salvus_opt_dir" not in self.info.keys():
@@ -246,7 +254,7 @@ class ProjectComponent(Component):
             parameters = ["QKAPPA", "QMU", "RHO", "VP", "VS"]
         else:
             raise InversionsonError(f"Parameter list {parameters} not "
-                                      f"a recognized set of parameters")
+                                    f"a recognized set of parameters")
         return parameters
 
     def get_inversion_attributes(self, first=False):
@@ -267,6 +275,8 @@ class ProjectComponent(Component):
         self.inversion_root = self.info["inversion_path"]
         self.lasif_root = self.info["lasif_root"]
         self.inversion_id = self.info["inversion_id"]
+        self.inversion_mode = self.info["inversion_mode"]
+        self.meshes = self.info["meshes"]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
         self.gradient_interpolation_mode = self.info[
             "gradient_interpolation_mode"]
@@ -276,6 +286,7 @@ class ProjectComponent(Component):
         self.cut_receiver_radius = self.info[
             "cut_receiver_region_from_gradient_in_km"
         ]
+        self.clip_gradient = self.info["clip_gradient"]
         self.site_name = self.info["site_name"]
         self.ranks = self.info["ranks"]
         self.wall_time = self.info["wall_time"]
@@ -363,16 +374,23 @@ class ProjectComponent(Component):
             "name": "",
             "submitted": False,
             "retrieved": False,
-            "gradient_smoothed": False,
             "interpolated": False
         }
+        s_job_dict = {}
+        for parameter in self.inversion_params:
+            s_job_dict[parameter] = {
+                "name": "",
+                "submitted": False,
+                "retrieved": False
+            } 
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {
                     "misfit": 0.0,
                     "usage_updated": False,
                     "jobs": {
                         "forward": f_job_dict,
-                        "adjoint": a_job_dict
+                        "adjoint": a_job_dict,
+                        "smoothing": s_job_dict
                         }
                     }
 
@@ -468,7 +486,8 @@ class ProjectComponent(Component):
                     "usage_updated": self.updated[event],
                     "jobs": {
                         "forward": self.forward_job[event],
-                        "adjoint": self.adjoint_job[event]
+                        "adjoint": self.adjoint_job[event],
+                        "smoothing": self.smoothing_job[event]
                         }
                     }
 
@@ -500,12 +519,14 @@ class ProjectComponent(Component):
         self.updated = {}
         self.forward_job = {}
         self.adjoint_job = {}
+        self.smoothing_job = {}
         # Not sure if it's worth it to include station misfits
         for event in self.events_in_iteration:
             self.updated[event] = it_dict["events"][event]["usage_updated"]
             self.misfits[event] = it_dict["events"][event]["misfit"]
             self.forward_job[event] = it_dict["events"][event]["jobs"]["forward"]
             self.adjoint_job[event] = it_dict["events"][event]["jobs"]["adjoint"]
+            self.smoothing_job[event] = it_dict["events"][event]["jobs"]["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:
         """

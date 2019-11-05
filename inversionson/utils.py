@@ -83,7 +83,8 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
     data = gradient["MODEL/data"]
     # TODO: Maybe I should implement this in a way that it uses predefined
     # params. Then I only need to find out where they are
-
+    if isinstance(source_location, list):
+        source_location = source_location[0]
     s_x, s_y, s_z = latlondepth_to_cartesian(
         lat=source_location["latitude"],
         lon=source_location["longitude"],
@@ -99,7 +100,7 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
     for i in range(data.shape[1]):
         tmp_dat = data[:, i, :].ravel()
         tmp_dat[cut_indices] = 0.0
-        tmp_dat.reshape((data.shape[0], 1, data.shape[2]))
+        tmp_dat = np.reshape(tmp_dat, (data.shape[0], 1, data.shape[2]))
         if i == 0:
             cut_data = tmp_dat.copy()
         else:
@@ -129,7 +130,6 @@ def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
     # TODO: Maybe I should implement this in a way that it uses predefined
     # params. Then I only need to find out where they are
 
-
     for _i, rec in enumerate(receivers):
         x_r, y_r, z_r = latlondepth_to_cartesian(
             lat=rec["latitude"],
@@ -139,17 +139,22 @@ def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
                        (coordinates[:, :, 1] - y_r) ** 2 +
                        (coordinates[:, :, 2] - z_r) ** 2).ravel()
         if _i == 0:
-            close_by = np.where(dist < radius_to_cut * 1000.0)
+            close_by = np.where(dist < radius_to_cut * 1000.0)[0]
         else:
             tmp_close = np.where(dist < radius_to_cut * 1000.0)
-            close_by = np.concatenate(close_by, tmp_close)
-    
+            if tmp_close[0].shape[0] == 0:
+                continue
+            if close_by.shape[0] == 0:
+                close_by = tmp_close[0]
+                continue
+            close_by = np.concatenate((close_by, tmp_close[0]))
+
     close_by = np.unique(close_by)
 
     for i in range(data.shape[1]):
         parameter = data[:, i, :].ravel()
         parameter[close_by] = 0.0
-        parameter.reshape(data.shape[0], 1, data.shape[2])
+        parameter = np.reshape(parameter, (data.shape[0], 1, data.shape[2]))
         if i == 0:
             cut_data = parameter.copy()
         else:
