@@ -112,23 +112,53 @@ class ProjectComponent(Component):
                 f"The allowable model_interpolation_modes are: "
                 f" {allowed_interp_modes}"
             )
+        if "HPC" not in self.info.keys():
+            raise InversionsonError(
+                "We need information regarding your computational resources."
+                " run create_dummy_info_file.py for an example")
+        
+        if "wave_propagation" not in self.info["HPC"].keys():
+            raise InversionsonError(
+                "We need specific computational info on wave_propagation")
+        
+        if "diffusion_equation" not in self.info["HPC"].keys():
+            raise InversionsonError(
+                "We need specific computational info on diffusion_equation")
 
-        if "site_name" not in self.info.keys():
+        if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the site where jobs are submitted. "
-                "Key: site_name"
+                "Key: HPC.wave_propagation.site_name"
             )
 
-        if "wall_time" not in self.info.keys():
+        if "wall_time" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the site where jobs are submitted. "
-                "Key: site_name"
+                "Key: HPC.wave_propagation.site_name"
             )
         
-        if "ranks" not in self.info.keys():
+        if "ranks" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the amount of ranks you want to "
-                "run your simulations. Key: ranks"
+                "run your simulations. Key: HPC.wave_propagation.ranks"
+            )
+
+        if "site_name" not in self.info["HPC"]["diffusion_equation"].keys():
+            raise InversionsonError(
+                "We need information on the site where jobs are submitted. "
+                "Key: HPC.diffusion_equation.site_name"
+            )
+
+        if "wall_time" not in self.info["HPC"]["diffusion_equation"].keys():
+            raise InversionsonError(
+                "We need information on the site where jobs are submitted. "
+                "Key: HPC.diffusion_equation.site_name"
+            )
+        
+        if "ranks" not in self.info["HPC"]["diffusion_equation"].keys():
+            raise InversionsonError(
+                "We need information on the amount of ranks you want to "
+                "run your simulations. Key: HPC.diffusion_equation.ranks"
             )
 
         if "inversion_parameters" not in self.info.keys():
@@ -287,9 +317,13 @@ class ProjectComponent(Component):
             "cut_receiver_region_from_gradient_in_km"
         ]
         self.clip_gradient = self.info["clip_gradient"]
-        self.site_name = self.info["site_name"]
-        self.ranks = self.info["ranks"]
-        self.wall_time = self.info["wall_time"]
+        self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
+        self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
+        self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
+        self.smoothing_site_name = self.info["HPC"]["diffusion_equation"]["site_name"]
+        self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
+        self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
+
         self.initial_batch_size = self.info["initial_batch_size"]
         self.n_random_events_picked = self.info["n_random_events"]
         self.max_ctrl_group_size = self.info["max_ctrl_group_size"]

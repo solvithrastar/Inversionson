@@ -22,6 +22,17 @@ def create_info(root=None):
     meshes_comment = "Pick between 'wavefield-adapted' or 'single'"
     info["model_interpolation_mode"] = "gll_2_gll"
     info["gradient_interpolation_mode"] = "gll_2_gll"
+    info["HPC"] = {}
+    info["HPC"]["wave_propagation"] = {
+        "site_name": "daint",
+        "wall_time": 3600,
+        "ranks": 1024
+    }
+    info["HPC"]["wave_propagation"] = {
+        "site_name": "daint",
+        "wall_time": 1000,
+        "ranks": 512
+    }
     info["site_name"] = "daint"
     info["wall_time"] = 3600
     info["ranks"] = 1024

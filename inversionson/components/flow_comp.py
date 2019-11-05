@@ -501,7 +501,7 @@ class SalvusFlowComponent(Component):
         #     )
         #     smooth.write_h5(os.path.join(output_folder, "smooth_gradient.h5"))
         job = sapi.run_async(
-            site_name=self.comm.project.site_name,
+            site_name=self.comm.project.smoothing_site_name,
             input_file=simulation,
             ranks=self.comm.project.smoothing_ranks,
             wall_time=self.comm.project.smoothing_walltime
