@@ -484,21 +484,13 @@ class AutoInverter(object):
             smooth=False
         )
         mesh, smoothed_gradient = self.prepare_gradient_for_smoothing(event)
-        simulations = {}
         for par in self.comm.project.inversion_params:
             simulation = self.comm.smoother.generate_diffusion_object(
                     gradient=gradient, par=par, mesh=mesh)
-            simulations[par] = simulation
             self.comm.salvus_flow.submit_smoothing_job(event,
-                                                       smoothed_gradient,
-                                                       simulations)
-        self.comm.project.change_attribute(
-            attribute=f"smoothing_job[\"{event}\"][\"submitted\"]",
-            new_value=True
-        )
+                                                       simulation,
+                                                       par)
         self.comm.project.update_iteration_toml()
-        # self.comm.smoother.generate_input_toml(gradient)
-        # self.comm.smoother.run_smoother(gradient)
 
     def monitor_jobs(self, sim_type: str, events=None):
         """

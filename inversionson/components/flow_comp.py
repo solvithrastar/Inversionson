@@ -472,34 +472,34 @@ class SalvusFlowComponent(Component):
         :param par: Parameter to smooth
         :type par: str
         """
-        output_folder = os.path.join(
-            self.comm.lasif.lasif_root,
-            "GRADIENTS",
-            f"ITERATION_{self.comm.project.current_iteration}",
-            event,
-            "smoother_output"
-        )
-        from salvus_mesh.unstructured_mesh import UnstructuredMesh
-        if self.comm.project.site_name == "swp":
-            for par in simulations.keys():
-                sapi.run(
-                    #site_name="swp_smooth",
-                    site_name=self.comm.project.site_name,
-                    input_file=simulations[par],
-                    output_folder=output_folder,
-                    overwrite=True,
-                    ranks=8,
-                    get_all=True)
-                
-                smoothed = UnstructuredMesh.from_h5(os.path.join(output_folder, "smooth_gradient.h5"))
-                smooth.attach_field(par, smoothed.elemental_fields[par])
-            output_folder = os.path.join(
-                self.comm.lasif.lasif_root,
-                "GRADIENTS",
-                f"ITERATION_{self.comm.project.current_iteration}",
-                event
-            )
-            smooth.write_h5(os.path.join(output_folder, "smooth_gradient.h5"))
+        # output_folder = os.path.join(
+        #     self.comm.lasif.lasif_root,
+        #     "GRADIENTS",
+        #     f"ITERATION_{self.comm.project.current_iteration}",
+        #     event,
+        #     "smoother_output"
+        # )
+        # from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        # if self.comm.project.site_name == "swp":
+        #     for par in simulations.keys():
+        #         sapi.run(
+        #             #site_name="swp_smooth",
+        #             site_name=self.comm.project.site_name,
+        #             input_file=simulations[par],
+        #             output_folder=output_folder,
+        #             overwrite=True,
+        #             ranks=8,
+        #             get_all=True)
+        #         
+        #         smoothed = UnstructuredMesh.from_h5(os.path.join(output_folder, "smooth_gradient.h5"))
+        #         smooth.attach_field(par, smoothed.elemental_fields[par])
+        #     output_folder = os.path.join(
+        #         self.comm.lasif.lasif_root,
+        #         "GRADIENTS",
+        #         f"ITERATION_{self.comm.project.current_iteration}",
+        #         event
+        #     )
+        #     smooth.write_h5(os.path.join(output_folder, "smooth_gradient.h5"))
         job = sapi.run_async(
             site_name=self.comm.project.site_name,
             input_file=simulation,
@@ -507,4 +507,4 @@ class SalvusFlowComponent(Component):
             wall_time=self.comm.project.smoothing_walltime
         )
         self.comm.project.change_attribute(f"smoothing_job[\"{event}\"][\"{par}\"][\"name\"]", job.job_name)
-        self.comm.project.change_attribute(f"forward_job[\"{event}\"][\"{par}\"][\"submitted\"]", True)
+        self.comm.project.change_attribute(f"smoothing_job[\"{event}\"][\"{par}\"][\"submitted\"]", True)
