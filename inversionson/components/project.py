@@ -25,7 +25,6 @@ from .smooth_comp import SalvusSmoothComponent
 
 
 class ProjectComponent(Component):
-
     def __init__(self, information_dict: dict):
         """
         Initiate everything to make it work correctly. Make sure that
@@ -48,18 +47,28 @@ class ProjectComponent(Component):
         :return: Simulation dictionary
         :rtype: dict
         """
-        with open(os.path.join(self.info["lasif_root"], "lasif_config.toml"), "r") as fh:
+        with open(
+            os.path.join(self.info["lasif_root"], "lasif_config.toml"), "r"
+        ) as fh:
             config_dict = toml.load(fh)
 
         simulation_info = {}
         solver_settings = config_dict["solver_settings"]
         simulation_info["start_time"] = -solver_settings["time_increment"]
-        simulation_info["number_of_time_steps"] = int(round(
-            (solver_settings["end_time"] - simulation_info["start_time"]) / solver_settings["time_increment"]))
+        simulation_info["number_of_time_steps"] = int(
+            round(
+                (solver_settings["end_time"] - simulation_info["start_time"])
+                / solver_settings["time_increment"]
+            )
+        )
         simulation_info["end_time"] = solver_settings["end_time"]
         simulation_info["time_step"] = solver_settings["time_increment"]
-        simulation_info["period_low"] = config_dict["data_processing"]["highpass_period"]
-        simulation_info["period_high"] = config_dict["data_processing"]["lowpass_period"]
+        simulation_info["period_low"] = config_dict["data_processing"][
+            "highpass_period"
+        ]
+        simulation_info["period_high"] = config_dict["data_processing"][
+            "lowpass_period"
+        ]
 
         return simulation_info
 
@@ -76,17 +85,17 @@ class ProjectComponent(Component):
         :type simulation_dict: dict
         """
         import pathlib
+
         allowed_interp_modes = ["gll_2_gll", "gll_2_exodus", "exodus_2_gll"]
         if "inversion_id" not in self.info.keys():
-            raise ValueError(
-                "The inversion needs a name, Key: inversion_id")
+            raise ValueError("The inversion needs a name, Key: inversion_id")
 
         if "inversion_path" not in self.info.keys():
             raise InversionsonError(
                 "We need a given path for the inversion root directory."
                 " Key: inversion_path"
             )
-        
+
         if "model_interpolation_mode" not in self.info.keys():
             raise InversionsonError(
                 "We need information on how you want to interpolate "
@@ -115,15 +124,18 @@ class ProjectComponent(Component):
         if "HPC" not in self.info.keys():
             raise InversionsonError(
                 "We need information regarding your computational resources."
-                " run create_dummy_info_file.py for an example")
-        
+                " run create_dummy_info_file.py for an example"
+            )
+
         if "wave_propagation" not in self.info["HPC"].keys():
             raise InversionsonError(
-                "We need specific computational info on wave_propagation")
-        
+                "We need specific computational info on wave_propagation"
+            )
+
         if "diffusion_equation" not in self.info["HPC"].keys():
             raise InversionsonError(
-                "We need specific computational info on diffusion_equation")
+                "We need specific computational info on diffusion_equation"
+            )
 
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
@@ -136,7 +148,7 @@ class ProjectComponent(Component):
                 "We need information on the site where jobs are submitted. "
                 "Key: HPC.wave_propagation.site_name"
             )
-        
+
         if "ranks" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the amount of ranks you want to "
@@ -154,7 +166,7 @@ class ProjectComponent(Component):
                 "We need information on the site where jobs are submitted. "
                 "Key: HPC.diffusion_equation.site_name"
             )
-        
+
         if "ranks" not in self.info["HPC"]["diffusion_equation"].keys():
             raise InversionsonError(
                 "We need information on the amount of ranks you want to "
@@ -183,20 +195,24 @@ class ProjectComponent(Component):
         if "max_ctrl_group_size" not in self.info.keys():
             raise InversionsonError(
                 "We need information regarding maximum control group size."
-                " Key: max_ctrl_group_size")
-        
+                " Key: max_ctrl_group_size"
+            )
+
         if "min_ctrl_group_size" not in self.info.keys():
             raise InversionsonError(
                 "We need information regarding minimum control group size."
-                " Key: min_ctrl_group_size")
-        
+                " Key: min_ctrl_group_size"
+            )
+
         if "inversion_mode" not in self.info.keys():
             raise InversionsonError(
-                "We need information on inversion mode. mini-batch or normal")
-        
+                "We need information on inversion mode. mini-batch or normal"
+            )
+
         if self.info["inversion_mode"] not in ["mini-batch", "normal"]:
             raise InversionsonError(
-                "Only implemented inversion modes are mini-batch or normal")
+                "Only implemented inversion modes are mini-batch or normal"
+            )
 
         # # Salvus Opt
         # if "salvus_opt_dir" not in self.info.keys():
@@ -206,7 +222,7 @@ class ProjectComponent(Component):
         #     folder = pathlib.Path(self.info["salvus_opt_dir"])
         #     if not (folder / "inversion.toml").exists():
         #         raise InversionsonError("Salvus opt inversion not initiated")
-        
+
         # Salvus Smoother
         # if "salvus_smoother" not in self.info.keys():
         #     raise InversionsonError(
@@ -217,7 +233,8 @@ class ProjectComponent(Component):
         if "lasif_root" not in self.info.keys():
             raise InversionsonError(
                 "Information on lasif_project is missing from information. "
-                "Key: lasif_root")
+                "Key: lasif_root"
+            )
         else:
             folder = pathlib.Path(self.info["lasif_root"])
             if not (folder / "lasif_config.toml").exists():
@@ -226,15 +243,18 @@ class ProjectComponent(Component):
         # Simulation parameters:
         if "end_time" not in self.simulation_dict.keys():
             raise InversionsonError(
-                "Information regarding end time of simulation missing")
+                "Information regarding end time of simulation missing"
+            )
 
         if "time_step" not in self.simulation_dict.keys():
             raise InversionsonError(
-                "Information regarding time step of simulation missing")
+                "Information regarding time step of simulation missing"
+            )
 
         if "start_time" not in self.simulation_dict.keys():
             raise InversionsonError(
-                "Information regarding start time of simulation missing")
+                "Information regarding start time of simulation missing"
+            )
 
     def __setup_components(self):
         """
@@ -244,15 +264,11 @@ class ProjectComponent(Component):
         LasifComponent(communicator=self.comm, component_name="lasif")
         SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
         MultiMeshComponent(communicator=self.comm, component_name="multi_mesh")
-        SalvusFlowComponent(communicator=self.comm,
-                            component_name="salvus_flow")
-        SalvusMeshComponent(communicator=self.comm,
-                            component_name="salvus_mesher")
-        StoryTellerComponent(communicator=self.comm,
-                             component_name="storyteller")
+        SalvusFlowComponent(communicator=self.comm, component_name="salvus_flow")
+        SalvusMeshComponent(communicator=self.comm, component_name="salvus_mesher")
+        StoryTellerComponent(communicator=self.comm, component_name="storyteller")
         BatchComponent(communicator=self.comm, component_name="minibatch")
-        SalvusSmoothComponent(communicator=self.comm,
-                              component_name="smoother")
+        SalvusSmoothComponent(communicator=self.comm, component_name="smoother")
 
     def arrange_params(self, parameters: list) -> list:
         """
@@ -266,8 +282,7 @@ class ProjectComponent(Component):
         :type parameters: list
         """
         case_tti_inv = set(["VSV", "VSH", "VPV", "VPH", "RHO"])
-        case_tti_mod = set(
-                ["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
+        case_tti_mod = set(["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
         case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
         case_iso_inv = set(["VP", "VS"])
         case_iso_inv_dens = set(["VP", "VS", "RHO"])
@@ -283,8 +298,9 @@ class ProjectComponent(Component):
         elif set(parameters) == case_iso_mod:
             parameters = ["QKAPPA", "QMU", "RHO", "VP", "VS"]
         else:
-            raise InversionsonError(f"Parameter list {parameters} not "
-                                    f"a recognized set of parameters")
+            raise InversionsonError(
+                f"Parameter list {parameters} not " f"a recognized set of parameters"
+            )
         return parameters
 
     def get_inversion_attributes(self, first=False):
@@ -308,14 +324,9 @@ class ProjectComponent(Component):
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
-        self.gradient_interpolation_mode = self.info[
-            "gradient_interpolation_mode"]
-        self.cut_source_radius = self.info[
-            "cut_source_region_from_gradient_in_km"
-        ]
-        self.cut_receiver_radius = self.info[
-            "cut_receiver_region_from_gradient_in_km"
-        ]
+        self.gradient_interpolation_mode = self.info["gradient_interpolation_mode"]
+        self.cut_source_radius = self.info["cut_source_region_from_gradient_in_km"]
+        self.cut_receiver_radius = self.info["cut_receiver_region_from_gradient_in_km"]
         self.clip_gradient = self.info["clip_gradient"]
         self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
@@ -333,32 +344,28 @@ class ProjectComponent(Component):
         if not first:
             self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
             print(f"Current Iteration: {self.current_iteration}")
-            self.event_quality = toml.load(
-                self.comm.storyteller.events_quality_toml)
-        self.inversion_params = self.arrange_params(
-            self.info["inversion_parameters"])
-        self.modelling_params = self.arrange_params(
-            self.info["modelling_parameters"]
-        )
+            self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
+        self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
+        self.modelling_params = self.arrange_params(self.info["modelling_parameters"])
 
         # Some useful paths
         self.paths = {}
         self.paths["inversion_root"] = self.inversion_root
         self.paths["lasif_root"] = self.lasif_root
-        self.paths["salvus_opt"] = os.path.join(
-            self.inversion_root, "SALVUS_OPT")
+        self.paths["salvus_opt"] = os.path.join(self.inversion_root, "SALVUS_OPT")
         if not os.path.exists(self.paths["salvus_opt"]):
             raise InversionsonError(
-                "Please make a folder for Salvus opt and initialize it in there")
+                "Please make a folder for Salvus opt and initialize it in there"
+            )
 
-        self.paths["documentation"] = os.path.join(
-            self.inversion_root, "DOCUMENTATION")
+        self.paths["documentation"] = os.path.join(self.inversion_root, "DOCUMENTATION")
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
             os.mkdir(os.path.join(self.paths["documentation"], "BACKUP"))
 
         self.paths["iteration_tomls"] = os.path.join(
-            self.paths["documentation"], "ITERATIONS")
+            self.paths["documentation"], "ITERATIONS"
+        )
         if not os.path.exists(self.paths["iteration_tomls"]):
             os.makedirs(self.paths["iteration_tomls"])
         # self.paths["salvus_smoother"] = self.info["salvus_smoother"]
@@ -376,13 +383,16 @@ class ProjectComponent(Component):
         :type iteration: str
         """
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml")
+            self.paths["iteration_tomls"], iteration + ".toml"
+        )
         if os.path.exists(iteration_toml):
             warnings.warn(
                 f"Iteration toml for iteration: {iteration} already exists. backed it up",
-                InversionsonWarning)
+                InversionsonWarning,
+            )
             backup = os.path.join(
-                    self.paths["iteration_tomls"], f"backup_{iteration}.toml")
+                self.paths["iteration_tomls"], f"backup_{iteration}.toml"
+            )
             shutil.copyfile(iteration_toml, backup)
 
         it_dict = {}
@@ -391,42 +401,36 @@ class ProjectComponent(Component):
 
         last_control_group = []
         if iteration != "it0000_model":
-            ctrl_grps = toml.load(
-                self.comm.project.paths["control_group_toml"]
-            )
+            ctrl_grps = toml.load(self.comm.project.paths["control_group_toml"])
             last_control_group = ctrl_grps[iteration]["old"]
 
         it_dict["last_control_group"] = last_control_group
         it_dict["new_control_group"] = []
         f_job_dict = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False,
-                "interpolated": False
-                }
+            "name": "",
+            "submitted": False,
+            "retrieved": False,
+            "interpolated": False,
+        }
         a_job_dict = {
             "name": "",
             "submitted": False,
             "retrieved": False,
-            "interpolated": False
+            "interpolated": False,
         }
         s_job_dict = {}
         for parameter in self.inversion_params:
-            s_job_dict[parameter] = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False
-            } 
+            s_job_dict[parameter] = {"name": "", "submitted": False, "retrieved": False}
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {
-                    "misfit": 0.0,
-                    "usage_updated": False,
-                    "jobs": {
-                        "forward": f_job_dict,
-                        "adjoint": a_job_dict,
-                        "smoothing": s_job_dict
-                        }
-                    }
+                "misfit": 0.0,
+                "usage_updated": False,
+                "jobs": {
+                    "forward": f_job_dict,
+                    "adjoint": a_job_dict,
+                    "smoothing": s_job_dict,
+                },
+            }
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -442,7 +446,7 @@ class ProjectComponent(Component):
         :type new_value: whatever the attribure needs
         """
         if isinstance(new_value, str):
-            command = f"self.{attribute} = \"{new_value}\""
+            command = f'self.{attribute} = "{new_value}"'
         elif isinstance(new_value, list):
             command = f"self.{attribute} = {new_value}"
         elif isinstance(new_value, bool):
@@ -474,6 +478,7 @@ class ProjectComponent(Component):
             cg_dict[iteration] = {"old": [], "new": []}
             with open(self.paths["control_group_toml"], "w") as fh:
                 toml.dump(cg_dict, fh)
+                return
         else:
             cg_dict = toml.load(self.paths["control_group_toml"])
             if not new:
@@ -486,7 +491,7 @@ class ProjectComponent(Component):
                 if iteration not in cg_dict.keys():
                     cg_dict[iteration] = {}
                 cg_dict[iteration]["new"] = self.new_control_group
-        
+
         with open(self.paths["control_group_toml"], "w") as fh:
             toml.dump(cg_dict, fh)
 
@@ -500,12 +505,17 @@ class ProjectComponent(Component):
         if iteration == "current":
             iteration = self.current_iteration
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml")
+            self.paths["iteration_tomls"], iteration + ".toml"
+        )
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
-                f"Iteration toml for iteration: {iteration} does not exists")
-        control_group_dict = toml.load(self.paths["control_group_toml"])
-        control_group_dict = control_group_dict[iteration]
+                f"Iteration toml for iteration: {iteration} does not exists"
+            )
+        if os.path.exists(self.paths["control_group_toml"]):
+            control_group_dict = toml.load(self.paths["control_group_toml"])
+            control_group_dict = control_group_dict[iteration]
+        else:
+            control_group_dict = {"old": [], "new": []}
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
@@ -516,14 +526,14 @@ class ProjectComponent(Component):
 
         for event in self.comm.lasif.list_events(iteration=iteration):
             it_dict["events"][event] = {
-                    "misfit": self.misfits[event],
-                    "usage_updated": self.updated[event],
-                    "jobs": {
-                        "forward": self.forward_job[event],
-                        "adjoint": self.adjoint_job[event],
-                        "smoothing": self.smoothing_job[event]
-                        }
-                    }
+                "misfit": self.misfits[event],
+                "usage_updated": self.updated[event],
+                "jobs": {
+                    "forward": self.forward_job[event],
+                    "adjoint": self.adjoint_job[event],
+                    "smoothing": self.smoothing_job[event],
+                },
+            }
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -537,10 +547,10 @@ class ProjectComponent(Component):
         """
         iteration = self.comm.salvus_opt.get_newest_iteration_name()
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml")
+            self.paths["iteration_tomls"], iteration + ".toml"
+        )
         if not os.path.exists(iteration_toml):
-            raise InversionsonError(
-                f"No toml file exists for iteration: {iteration}")
+            raise InversionsonError(f"No toml file exists for iteration: {iteration}")
 
         it_dict = toml.load(iteration_toml)
 
@@ -572,10 +582,10 @@ class ProjectComponent(Component):
         :rtype: dict
         """
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml")
+            self.paths["iteration_tomls"], iteration + ".toml"
+        )
         if not os.path.exists(iteration_toml):
-            raise InversionsonError(
-                f"No toml file eists for iteration: {iteration}")
+            raise InversionsonError(f"No toml file eists for iteration: {iteration}")
 
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)

@@ -32,15 +32,13 @@ class StoryTellerComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        super(StoryTellerComponent, self).__init__(
-            communicator, component_name)
+        super(StoryTellerComponent, self).__init__(communicator, component_name)
         self.root, self.backup = self._create_root_folder()
         self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
-        self.events_quality_toml = os.path.join(
-            self.root, "events_quality.toml")
+        self.events_quality_toml = os.path.join(self.root, "events_quality.toml")
         if os.path.exists(self.events_used_toml):
             self.events_used = toml.load(self.events_used_toml)
         else:
@@ -89,9 +87,11 @@ class StoryTellerComponent(Component):
         of the inversion automatically.
         """
         if os.path.isfile(self.story_file):
-            raise InversionsonError(f"File {self.story_file} already exists."
-                                    f" Will stop here so that it does not get"
-                                    f" overwritten.")
+            raise InversionsonError(
+                f"File {self.story_file} already exists."
+                f" Will stop here so that it does not get"
+                f" overwritten."
+            )
         header = self.comm.project.inversion_id
         self.markdown.add_header(header_style=1, text=header, new=True)
 
@@ -160,8 +160,7 @@ class StoryTellerComponent(Component):
             if not self.comm.project.updated[event]:
                 self.events_used[event] += 1
                 self.comm.project.change_attribute(
-                    attribute=f"updated[\"{event}\"]",
-                    new_value=True
+                    attribute=f'updated["{event}"]', new_value=True
                 )
                 self.comm.project.update_iteration_toml()
         with open(self.events_used_toml, "w") as fh:
@@ -186,10 +185,7 @@ class StoryTellerComponent(Component):
             iteration_number = 0
         else:
             iteration_number = int(iteration.split("_")[0][2:].strip("0"))
-        self.markdown.add_header(
-            header_style=2,
-            text=f"Iteration: {iteration_number}"
-        )
+        self.markdown.add_header(header_style=2, text=f"Iteration: {iteration_number}")
         text = f"Here you can read all about what happened in iteration "
         text += f"{iteration_number}."
 
@@ -199,24 +195,21 @@ class StoryTellerComponent(Component):
         """
         Include an image of event distribution to story file.
         """
-        self.markdown.add_header(
-            header_style=3,
-            text="Data Used"
-        )
+        self.markdown.add_header(header_style=3, text="Data Used")
         im_file = self.comm.lasif.plot_iteration_events()
         self.markdown.add_image(
             image_url=im_file,
             image_title=f"Event distribution for "
-                        f"{self.comm.project.current_iteration}",
-            alt_text="text"
+            f"{self.comm.project.current_iteration}",
+            alt_text="text",
         )
         print("Preparing Ray density image")
         ray_file = self.comm.lasif.plot_iteration_raydensity()
         self.markdown.add_image(
             image_url=ray_file,
             image_title=f"Ray density plot for "
-                        f"{self.comm.project.current_iteration}",
-            alt_text="text"
+            f"{self.comm.project.current_iteration}",
+            alt_text="text",
         )
 
     def _report_acceptance_of_model(self):
@@ -233,7 +226,7 @@ class StoryTellerComponent(Component):
         text = f"Model for Iteration {iteration_number} accepted for"
         text += f" trust region: {tr_region}."
 
-        self.markdown.add_paragraph(text=text, textstyle='bold')
+        self.markdown.add_paragraph(text=text, textstyle="bold")
 
     def _report_shrinking_of_trust_region(self):
         """
@@ -257,12 +250,13 @@ class StoryTellerComponent(Component):
         Compute misfit reduction between previous two iterations
         """
         # We start with misfit of previous iteration
+        # TODO: Something wrong going on here and needs fixing
         prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
         prev_it_dict = self.comm.project.get_old_iteration_info(prev_iter)
 
         prev_total_misfit = 0.0
         prev_cg_misfit = 0.0
-        for key in prev_it_dict["events"]:
+        for key in prev_it_dict["events"].keys():
             prev_total_misfit += prev_it_dict["events"][key]["misfit"]
             for key in prev_it_dict["new_control_group"]:
                 prev_cg_misfit += prev_it_dict["events"][key]["misfit"]
@@ -274,8 +268,7 @@ class StoryTellerComponent(Component):
             if key in self.comm.project.old_control_group:
                 current_cg_misfit += value
 
-        tot_red = (prev_total_misfit - current_total_misfit) / \
-            prev_total_misfit
+        tot_red = (prev_total_misfit - current_total_misfit) / prev_total_misfit
         cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
 
         return tot_red, cg_red
@@ -285,10 +278,7 @@ class StoryTellerComponent(Component):
         Include a table of events and corresponding misfits to
         the story file.
         """
-        self.markdown.add_header(
-            header_style=3,
-            text="Misfits"
-        )
+        self.markdown.add_header(header_style=3, text="Misfits")
         if not verbose:
             text = "The events used in the iteration along with their misfits"
             text += " are displayed below:"
@@ -306,8 +296,7 @@ class StoryTellerComponent(Component):
         # iteration = self.comm.project.current_iteration
         self.comm.project.get_iteration_attributes()
         self.markdown.add_table(
-            data=self.comm.project.misfits,
-            headers=["Events", "Misfits"]
+            data=self.comm.project.misfits, headers=["Events", "Misfits"]
         )
         if task == "compute_misfit_and_gradient":
             total_misfit = 0.0
@@ -331,13 +320,13 @@ class StoryTellerComponent(Component):
             text += f"Misfit for the old control group: "
             text += f"{old_control_group_misfit}"
             text += f"\n Misfit reduction between the iterations: {cg_red}"
-        
+
         if verbose and "additional" not in verbose:
             old_control_group_misfit = 0.0
             for key, value in self.comm.project.misfits.items():
                 if key in self.comm.project.old_control_group:
                     old_control_group_misfit += value
-            
+
             _, cg_red = self._get_misfit_reduction()
 
             text = f"Misfit for the old control group: "
@@ -353,16 +342,11 @@ class StoryTellerComponent(Component):
         """
         Report what the new control group is and what the current misfit is.
         """
-        self.markdown.add_header(
-            header_style=4,
-            text="Selection of New Control Group"
-        )
+        self.markdown.add_header(header_style=4, text="Selection of New Control Group")
         text = "The events which will continue on to the next iteration are "
         text += "listed below."
 
-        self.markdown.add_paragraph(
-            text=text
-        )
+        self.markdown.add_paragraph(text=text)
         self.markdown.add_list(items=self.comm.project.new_control_group)
 
         cg_misfit = 0.0
@@ -380,18 +364,15 @@ class StoryTellerComponent(Component):
         text = "Control group was not good enough, so we increase it with "
         text += "one extra event."
 
-        self.markdown.add_paragraph(
-            text=text
-        )
+        self.markdown.add_paragraph(text=text)
 
     def _report_number_of_used_events(self):
         """
         At the end of each iteration we report how many events have been
         uses in inversion.
         """
-        num_events = len(
-            [x for x in list(self.events_used.values()) if x != 0])
-        
+        num_events = len([x for x in list(self.events_used.values()) if x != 0])
+
         text = f"We have now used {num_events} events during the inversion."
 
         self.markdown.add_paragraph(text=text)
@@ -465,7 +446,7 @@ class MarkDown(StoryTellerComponent):
 
     def __init__(self, file_name):
         self.file = file_name
-        self.text_styles = ['normal', 'italic', 'bold']
+        self.text_styles = ["normal", "italic", "bold"]
         self.stream = ""
 
     def _read_file(self):
@@ -496,11 +477,10 @@ class MarkDown(StoryTellerComponent):
         :type new: bool
         """
         if header_style < 1 or header_style > 6:
-            raise ValueError(
-                "Header style must be an integer between 1 and 6")
+            raise ValueError("Header style must be an integer between 1 and 6")
         self.stream = text
         self._transform_special_characters()
-        self.stream = "#"*int(header_style) + " " + self.stream
+        self.stream = "#" * int(header_style) + " " + self.stream
         self._add_line_break()
         self._add_line_break()
 
@@ -518,26 +498,26 @@ class MarkDown(StoryTellerComponent):
         if not string:
             string = self.stream
             output = False
-        string = string.replace('*', '\*')
-        string = string.replace('`', '\`')
-        string = string.replace('_', '\_')
-        string = string.replace('{', '\{')
-        string = string.replace('}', '\}')
-        string = string.replace('[', '\[')
-        string = string.replace(']', '\]')
-        string = string.replace('(', '\(')
-        string = string.replace(')', '\)')
-        string = string.replace('#', '\#')
-        string = string.replace('+', '\+')
-        string = string.replace('-', '\-')
-        string = string.replace('!', '\!')
-        string = string.replace('&', '&amp;')
-        string = string.replace('<', '&lt;')
+        string = string.replace("*", "\*")
+        string = string.replace("`", "\`")
+        string = string.replace("_", "\_")
+        string = string.replace("{", "\{")
+        string = string.replace("}", "\}")
+        string = string.replace("[", "\[")
+        string = string.replace("]", "\]")
+        string = string.replace("(", "\(")
+        string = string.replace(")", "\)")
+        string = string.replace("#", "\#")
+        string = string.replace("+", "\+")
+        string = string.replace("-", "\-")
+        string = string.replace("!", "\!")
+        string = string.replace("&", "&amp;")
+        string = string.replace("<", "&lt;")
         if output:
             return string
         self.stream = string
 
-    def add_paragraph(self, text: str, textstyle='normal'):
+    def add_paragraph(self, text: str, textstyle="normal"):
         """
         Add a brand new paragraph to the markdown file
 
@@ -576,7 +556,7 @@ class MarkDown(StoryTellerComponent):
         :type alt_text: str, optional
         """
         self.stream = f"![Alt {alt_text}]"
-        self.stream += f"({image_url} \"{image_title}\")"
+        self.stream += f'({image_url} "{image_title}")'
         self._add_line_break()
         self._append_to_file()
 
@@ -591,13 +571,16 @@ class MarkDown(StoryTellerComponent):
         :type headers: list, optional
         """
         self.stream = ""
-        self.stream += f"| {headers[0]} | {headers[1]} |\n"
+        string = f"| {headers[0]} | {headers[1]} |\n"
+        fixed_string = self._transform_special_characters(string)
+        self.stream += fixed_string
         self.stream += "| --- | ---: | \n"
 
         for key in data.keys():
-            self.stream += f"| {key} | {data[key]} |\n"
+            string = f"| {key} | {data[key]} |\n"
+            fixed_string = self._transform_special_characters(string)
+            self.stream += fixed_string
 
-        self._transform_special_characters()
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()
@@ -611,7 +594,9 @@ class MarkDown(StoryTellerComponent):
         """
         self.stream = ""
 
-        for item in items:
+        for _i, item in enumerate(items):
+            if _i != 0:
+                self.stream += " "
             self.stream += f"* {self._transform_special_characters(item)} \n"
 
         self._add_line_break()

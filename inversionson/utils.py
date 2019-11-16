@@ -11,8 +11,7 @@ import os
 import h5py
 
 
-def latlondepth_to_cartesian(lat: float, lon: float,
-                             depth_in_km=0.0) -> np.ndarray:
+def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates
 
@@ -26,8 +25,8 @@ def latlondepth_to_cartesian(lat: float, lon: float,
     :rtype: np.ndarray
     """
     R = (6371.0 - depth_in_km) * 1000.0
-    lat *= (np.pi / 180.0)
-    lon *= (np.pi / 180.0)
+    lat *= np.pi / 180.0
+    lon *= np.pi / 180.0
     x = R * np.cos(lat) * np.cos(lon)
     y = R * np.cos(lat) * np.sin(lon)
     z = R * np.sin(lat)
@@ -58,14 +57,15 @@ def add_dimension_labels(mesh, parameters: list):
     :param parameters: list of parameters
     :type parameters: list
     """
-    dimstr = '[ ' + ' | '.join(parameters) + ' ]'
-    mesh['MODEL/data'].dims[0].label = 'element'
-    mesh['MODEL/data'].dims[1].label = dimstr
-    mesh['MODEL/data'].dims[2].label = 'point'
+    dimstr = "[ " + " | ".join(parameters) + " ]"
+    mesh["MODEL/data"].dims[0].label = "element"
+    mesh["MODEL/data"].dims[1].label = dimstr
+    mesh["MODEL/data"].dims[2].label = "point"
 
 
-def cut_source_region_from_gradient(mesh: str, source_location: dict,
-                                    radius_to_cut: float):
+def cut_source_region_from_gradient(
+    mesh: str, source_location: dict, radius_to_cut: float
+):
     """
     Sources often show unreasonable sensitivities. This function
     brings the value of the gradient down to zero for that region.
@@ -88,12 +88,14 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
     s_x, s_y, s_z = latlondepth_to_cartesian(
         lat=source_location["latitude"],
         lon=source_location["longitude"],
-        depth_in_km=source_location["depth_in_m"] * 1000.0
+        depth_in_km=source_location["depth_in_m"] * 1000.0,
     )
 
-    dist = np.sqrt((coordinates[:, :, 0] - s_x) ** 2 +
-                   (coordinates[:, :, 1] - s_y) ** 2 +
-                   (coordinates[:, :, 2] - s_z) ** 2).ravel()
+    dist = np.sqrt(
+        (coordinates[:, :, 0] - s_x) ** 2
+        + (coordinates[:, :, 1] - s_y) ** 2
+        + (coordinates[:, :, 2] - s_z) ** 2
+    ).ravel()
 
     cut_indices = np.where(dist < radius_to_cut * 1000.0)
 
@@ -110,8 +112,9 @@ def cut_source_region_from_gradient(mesh: str, source_location: dict,
     gradient.close()
 
 
-def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
-                                       radius_to_cut: float):
+def cut_receiver_regions_from_gradient(
+    mesh: str, receivers: dict, radius_to_cut: float
+):
     """
     Remove regions around receivers from gradients. Receivers often have an
     imprint on a model and this aims to fight that effect.
@@ -132,12 +135,13 @@ def cut_receiver_regions_from_gradient(mesh: str, receivers: dict,
 
     for _i, rec in enumerate(receivers):
         x_r, y_r, z_r = latlondepth_to_cartesian(
-            lat=rec["latitude"],
-            lon=rec["longitude"]
+            lat=rec["latitude"], lon=rec["longitude"]
         )
-        dist = np.sqrt((coordinates[:, :, 0] - x_r) ** 2 +
-                       (coordinates[:, :, 1] - y_r) ** 2 +
-                       (coordinates[:, :, 2] - z_r) ** 2).ravel()
+        dist = np.sqrt(
+            (coordinates[:, :, 0] - x_r) ** 2
+            + (coordinates[:, :, 1] - y_r) ** 2
+            + (coordinates[:, :, 2] - z_r) ** 2
+        ).ravel()
         if _i == 0:
             close_by = np.where(dist < radius_to_cut * 1000.0)[0]
         else:
@@ -182,13 +186,10 @@ def clip_gradient(mesh: str, percentile: float):
     clipped_data = data[:, :, :].copy()
 
     for i in range(data.shape[1]):
-        clipped_data[:, i, :] = np.clip(data[:, i, :],
-                                        a_min=np.quantile(
-                                            data[:, i, :],
-                                            1.0 - percentile),
-                                        a_max=np.quantile(
-                                            data[:, i, :],
-                                            percentile))
+        clipped_data[:, i, :] = np.clip(
+            data[:, i, :],
+            a_min=np.quantile(data[:, i, :], 1.0 - percentile),
+            a_max=np.quantile(data[:, i, :], percentile),
+        )
     data[:, :, :] = clipped_data
     gradient.close()
-

@@ -10,6 +10,7 @@ import random
 from colorama import Fore, Back, Style
 import sys
 import time
+import toml
 
 
 class BatchComponent(Component):
@@ -58,11 +59,9 @@ class BatchComponent(Component):
         # TODO: Check on multimesh to see how it's done there.
         #       remember to raise a warning when it doesn't fit with
         #       what is expected.
-        with h5py.File(mesh, 'r') as mesh:
-            params = mesh["MODEL/data"].attrs.get(
-                "DIMENSION_LABELS")[1].decode()
-            params = params[2:-2].replace(" ",
-                                          "").replace("grad", "").split("|")
+        with h5py.File(mesh, "r") as mesh:
+            params = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1].decode()
+            params = params[2:-2].replace(" ", "").replace("grad", "").split("|")
         # Not sure if I should replace the "grad" in this case
         msg = "Parameters in gradient are not the same as inversion perameters"
         assert params == self.comm.project.inversion_params, msg
@@ -80,13 +79,16 @@ class BatchComponent(Component):
         """
         norm_1 = np.linalg.norm(gradient_1)
         norm_2 = np.linalg.norm(gradient_2)
-        angle = np.arccos(
-            np.dot(gradient_1, gradient_2) /
-            (norm_1 * norm_2)) / np.pi * 180.0
+        angle = (
+            np.arccos(np.dot(gradient_1, gradient_2) / (norm_1 * norm_2))
+            / np.pi
+            * 180.0
+        )
         return angle
 
-    def _compute_angular_change(self, full_gradient, full_norm,
-                                individual_gradient) -> float:
+    def _compute_angular_change(
+        self, full_gradient, full_norm, individual_gradient
+    ) -> float:
         """
         Compute the angular change fo the full gradient, when the individual
         gradient is removed from it.
@@ -102,10 +104,11 @@ class BatchComponent(Component):
         """
         test_grad = np.copy(full_gradient) - individual_gradient
         test_grad_norm = np.linalg.norm(test_grad)
-        angle = np.arccos(
-            np.dot(test_grad, full_gradient) /
-            (test_grad_norm * full_norm)
-        ) / np.pi * 180.0
+        angle = (
+            np.arccos(np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm))
+            / np.pi
+            * 180.0
+        )
         return angle
 
     def _sum_relevant_values(self, grad, parameters: list):
@@ -124,14 +127,12 @@ class BatchComponent(Component):
         for param in inversion_params:
             indices.append(parameters.index(param))
         summed_grad = np.zeros(shape=(grad.shape[0]))
-        
+
         for i in indices:
             summed_grad += grad[:, i]
         return summed_grad
 
-    def _get_vector_of_values(self, gradient,
-                              unique,
-                              parameters: list):
+    def _get_vector_of_values(self, gradient, unique, parameters: list):
         """
         Take a full gradient, find it's unique values and relevant parameters,
         manipulate all of these into a vector of summed parameter values.
@@ -146,13 +147,12 @@ class BatchComponent(Component):
         :rtype: numpy.ndarray
         """
         gradient = np.swapaxes(a=gradient, axis1=1, axis2=2)
-        gradient = np.reshape(a=gradient,
-                              newshape=(gradient.shape[0]*gradient.shape[1],
-                                        gradient.shape[2]))
+        gradient = np.reshape(
+            a=gradient,
+            newshape=(gradient.shape[0] * gradient.shape[1], gradient.shape[2]),
+        )
         gradient = gradient[unique]
-        gradient = self._sum_relevant_values(
-            grad=gradient,
-            parameters=parameters)
+        gradient = self._sum_relevant_values(grad=gradient, parameters=parameters)
         return gradient
 
     def get_random_event(self, n: int, existing: list) -> list:
@@ -167,16 +167,16 @@ class BatchComponent(Component):
         :return: List of events randomly picked
         :rtype: list
         """
-        events_quality = self.comm.storyteller.event_quality
+        events_quality = toml.load(self.comm.storyteller.events_quality_toml)
         for k in existing:
             del events_quality[k]
         list_of_events = list(events_quality.keys())
         list_of_probabilities = list(events_quality.values())
         list_of_probabilities /= np.sum(list_of_probabilities)
 
-        chosen_events = list(np.random.choice(
-            list_of_events, n, replace=False, p=list_of_probabilities
-        ))
+        chosen_events = list(
+            np.random.choice(list_of_events, n, replace=False, p=list_of_probabilities)
+        )
         return chosen_events
 
     def select_optimal_control_group(self) -> list:
@@ -204,25 +204,25 @@ class BatchComponent(Component):
         gradient_paths = []
         for _i, event in enumerate(events):
             gradient = self.comm.lasif.find_gradient(
-                iteration=iteration,
-                event=event,
-                smooth=True,
-                inversion_grid=True
+                iteration=iteration, event=event, smooth=True, inversion_grid=True
             )
             gradient_paths.append(gradient)
             with h5py.File(gradient, "r") as f:
                 grad = f["MODEL/data"]
                 if _i == 0:
                     parameters = grad.attrs.get("DIMENSION_LABELS")[1].decode()
-                    parameters = parameters[2:-2].replace(" ", "").replace("grad", "").split("|")
+                    parameters = (
+                        parameters[2:-2].replace(" ", "").replace("grad", "").split("|")
+                    )
                     coordinates = f["MODEL/coordinates"][()]
                     init_shape = coordinates.shape
-                    coordinates = np.reshape(a=coordinates,
-                        newshape=(init_shape[0] * init_shape[1], init_shape[2]))
+                    coordinates = np.reshape(
+                        a=coordinates,
+                        newshape=(init_shape[0] * init_shape[1], init_shape[2]),
+                    )
                     _, unique_indices = np.unique(
-                        ar=coordinates,
-                        return_index=True,
-                        axis=0)
+                        ar=coordinates, return_index=True, axis=0
+                    )
                 if _i == 0:
                     full_grad = np.zeros_like(grad)
                 # else:
@@ -230,9 +230,8 @@ class BatchComponent(Component):
         # Select only the relevant parameters and sum them together.
         # We also need to make sure we don't use points more often than ones.
         full_grad = self._get_vector_of_values(
-            gradient=full_grad,
-            unique=unique_indices,
-            parameters=parameters)
+            gradient=full_grad, unique=unique_indices, parameters=parameters
+        )
 
         full_grad_norm = np.linalg.norm(full_grad)
 
@@ -240,23 +239,20 @@ class BatchComponent(Component):
         event_quality = {}
         for event in events:
             gradient = self.comm.lasif.find_gradient(
-                iteration=iteration,
-                event=event,
-                smooth=True,
-                inversion_grid=True
+                iteration=iteration, event=event, smooth=True, inversion_grid=True
             )
             with h5py.File(gradient, "r") as f:
                 individual_gradient = f["MODEL/data"][()]
                 individual_gradient = self._get_vector_of_values(
                     gradient=individual_gradient,
                     unique=unique_indices,
-                    parameters=parameters
+                    parameters=parameters,
                 )
 
             angle = self._compute_angular_change(
                 full_gradient=full_grad,
                 full_norm=full_grad_norm,
-                individual_gradient=individual_gradient
+                individual_gradient=individual_gradient,
             )
             angular_changes[event] = angle
             event_quality[event] = 0.0
@@ -269,25 +265,26 @@ class BatchComponent(Component):
                 iteration=iteration,
                 event=redundant_gradient,
                 smooth=True,
-                inversion_grid=True
+                inversion_grid=True,
             )
             with h5py.File(gradient, "r") as f:
                 removal_grad = self._get_vector_of_values(
                     gradient=f["MODEL/data"][()],
                     unique=unique_indices,
-                    parameters=parameters)
+                    parameters=parameters,
+                )
                 test_batch_grad -= removal_grad
             angle = self._angle_between(full_grad, batch_grad)
-            #TODO: Figure out problem with small angle.
+            # TODO: Figure out problem with small angle.
             print(f"Angle: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
                 break
             else:
                 batch_grad = np.copy(test_batch_grad)
                 del angular_changes[redundant_gradient]
-                event_quality[redundant_gradient] = 1/len(ctrl_group)
+                event_quality[redundant_gradient] = 1 / len(ctrl_group)
                 ctrl_group.remove(redundant_gradient)
-        
+
         grads_dropped = self._dropout(ctrl_group)
         tmp_event_qual = event_quality
         best_non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
@@ -328,8 +325,7 @@ class BatchComponent(Component):
         ctrl_group.append(add_to_ctrl_group)
         print(f"\n Event: {add_to_ctrl_group} added to control group \n")
         self.comm.project.change_attribute(
-            attribute="new_control_group",
-            new_value=ctrl_group
+            attribute="new_control_group", new_value=ctrl_group
         )
         self.comm.project.update_control_group_toml(new=True)
         self.comm.project.update_iteration_toml()
@@ -415,11 +411,11 @@ class BatchComponent(Component):
                 `:::o++yhdNMMMMMMNNNmmmddhddNMMNmmhhyhhhdmmNMMMMMMMNNmmmhys++++-                    
               `-.::::++/oydNNNMNNMMMNNNNNNNNMMMMNNNmdmmNMMMMMMMNMNNNmmdsss//+++/o+:`                
         ``:ohmh/----..://:/sdNMNddmmmNMMMMMMMMMMMMMMMNMMNNMMNmdmmmdhso//////++o+/smMdo-"""
-        
+
         print(Fore.BLACK + "\n =================== \n")
         print(Back.WHITE)
         print(Style.DIM)
-        
+
         # for line in string:
         #     sys.stdout.write(line)
         #     time.sleep(.1)
@@ -429,8 +425,8 @@ class BatchComponent(Component):
         print(Fore.YELLOW)
         print(Back.BLACK)
         print("Now Dirk-Philip will select a control group for you!")
-        #time.sleep(2)
+        # time.sleep(2)
         print("van Herwaarden et al. 2019!")
-        #time.sleep(2)
-        
+        # time.sleep(2)
+
         # print(string)

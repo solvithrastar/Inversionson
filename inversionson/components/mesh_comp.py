@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 from .component import Component
 import numpy as np
+
 # import os
 
 
@@ -14,6 +15,7 @@ class SalvusMeshComponent(Component):
     :param infodict: Information related to inversion project
     :type infodict: Dictionary
     """
+
     def __init__(self, communicator, component_name):
         super(SalvusMeshComponent, self).__init__(communicator, component_name)
 
@@ -43,21 +45,22 @@ class SalvusMeshComponent(Component):
         import shutil
         import os
         import h5py
+
         # TODO: Make the smoothing fields be a different mesh.
         from salvus_mesh.unstructured_mesh import UnstructuredMesh
+
         iteration = self.comm.project.current_iteration
         gradient = self.comm.lasif.find_gradient(
-            iteration=iteration,
-            event=event,
-            smooth=False)
+            iteration=iteration, event=event, smooth=False
+        )
 
         # grad_folder, _ = os.path.split(gradient)
         # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
-        
+
         # shutil.copyfile(gradient, smoothing_fields_mesh)
-        smoothing_length = 500.0 * 1000.0  # Hardcoded for now
+        smoothing_length = 350.0 * 1000.0 # Hardcoded for now
         # dimstr = '[ ' + ' | '.join(["M0", "M1"]) + ' ]'
-        
+
         # with h5py.File(smoothing_fields_mesh, "r+") as fh:
         #     if "MODEL/data" in fh:
         #         M0 = np.ones(shape=(fh["MODEL/data"].shape[0], 1, fh["MODEL/data"].shape[2]))
@@ -71,23 +74,27 @@ class SalvusMeshComponent(Component):
         #         fh['MODEL/data'].dims[0].label = 'element'
         #         fh['MODEL/data'].dims[1].label = dimstr
         #         fh['MODEL/data'].dims[2].label = 'point'
-                
 
         mesh = UnstructuredMesh.from_h5(gradient)
         mesh.elemental_fields = {}
         smooth_gradient = UnstructuredMesh.from_h5(gradient)
         smooth_gradient.elemental_fields = {}
 
-        mesh.attach_field('M0', np.ones_like(mesh.get_element_nodes()[:, :, 0]))
-        mesh.attach_field('M1', 0.5 * smoothing_length ** 2 * np.ones_like(mesh.get_element_nodes()[:, :, 0]))
-        mesh.attach_field('fluid', np.ones(mesh.nelem))
+        mesh.attach_field("M0", np.ones_like(mesh.get_element_nodes()[:, :, 0]))
+        mesh.attach_field(
+            "M1",
+            0.5
+            * smoothing_length ** 2
+            * np.ones_like(mesh.get_element_nodes()[:, :, 0]),
+        )
+        mesh.attach_field("fluid", np.ones(mesh.nelem))
 
-        print(f"Smoothing fields M0 and M1 added to gradient for "
-              f"event {event}")
+        print(f"Smoothing fields M0 and M1 added to gradient for " f"event {event}")
         return mesh, smooth_gradient
 
-    def add_field_from_one_mesh_to_another(self, from_mesh: str, to_mesh: str,
-                                           field_name: str):
+    def add_field_from_one_mesh_to_another(
+        self, from_mesh: str, to_mesh: str, field_name: str
+    ):
         """
         Add one field from a specific mesh to another mesh. The two meshes
         need to have identical discretisations
@@ -99,7 +106,7 @@ class SalvusMeshComponent(Component):
         :param field_name: Name of the field to copy between them.
         :type field_name: str
         """
-        from salvus_mesh.unstructred_mesh import UnstructuredMesh
+        from salvus_mesh.unstructured_mesh import UnstructuredMesh
         import os
         import shutil
 
@@ -107,13 +114,14 @@ class SalvusMeshComponent(Component):
             print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
             tm = UnstructuredMesh.from_h5(to_mesh)
-            tm.nodal_fields = {}
+            tm.elemental_nodal_fields = {}
         else:
             tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
 
-        field = fm.nodal_fields[field_name]
+        field = fm.element_nodal_fields[field_name]
         tm.attach_field(field_name, field)
+        tm.write_h5(to_mesh)
         print(f"Attached field {field_name} to mesh {to_mesh}")
 
     def write_xdmf(self, filename: str):
@@ -138,28 +146,25 @@ class SalvusMeshComponent(Component):
         import os
         import numpy as np
 
-        initial_model = os.path.join(self.comm.project.lasif_root,
-                                     "MODELS",
-                                     "Globe3D_csem_100.h5")
+        initial_model = os.path.join(
+            self.comm.project.lasif_root, "MODELS", "Globe3D_csem_100.h5"
+        )
         iteration = self.comm.project.current_iteration
         opt_mesh = os.path.join(
-                self.comm.project.paths["salvus_opt"],
-                "PHYSICAL_MODELS",
-                f"{iteration}.h5")
+            self.comm.project.paths["salvus_opt"], "PHYSICAL_MODELS", f"{iteration}.h5"
+        )
         m_opt = UnstructuredMesh.from_h5(opt_mesh)
         m_init = UnstructuredMesh.from_h5(initial_model)
-        
-        fluid = m_init.elemental_fields['fluid']
+
+        fluid = m_init.elemental_fields["fluid"]
         roi = np.abs(1.0 - fluid)
 
         m_opt.attach_field(name="fluid", data=fluid)
         m_opt.attach_field(name="ROI", data=roi)
 
         iteration_mesh = os.path.join(
-                self.comm.project.lasif_root,
-                "MODELS",
-                f"ITERATION_{iteration}",
-                "mesh.h5")
+            self.comm.project.lasif_root, "MODELS", f"ITERATION_{iteration}", "mesh.h5"
+        )
         if not os.path.exists(os.path.dirname(iteration_mesh)):
             os.makedirs(os.path.dirname(iteration_mesh))
         m_opt.write_h5(iteration_mesh)

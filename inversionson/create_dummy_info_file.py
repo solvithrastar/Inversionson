@@ -26,16 +26,13 @@ def create_info(root=None):
     info["HPC"]["wave_propagation"] = {
         "site_name": "daint",
         "wall_time": 3600,
-        "ranks": 1024
+        "ranks": 1024,
     }
-    info["HPC"]["wave_propagation"] = {
+    info["HPC"]["diffusion_equation"] = {
         "site_name": "daint",
         "wall_time": 1000,
-        "ranks": 512
+        "ranks": 512,
     }
-    info["site_name"] = "daint"
-    info["wall_time"] = 3600
-    info["ranks"] = 1024
     info["inversion_parameters"] = ["VP", "VS", "RHO"]
     info["modelling_parameters"] = ["VP", "VS", "RHO"]
     info["n_random_events"] = 2
@@ -61,7 +58,7 @@ def create_info(root=None):
 
 if __name__ == "__main__":
     cwd = os.getcwd()
-    info = create_info
+    info = create_info()
     filename = os.path.join(cwd, "inversion_info.toml")
     with open(filename, "w+") as fh:
         toml.dump(info, fh)

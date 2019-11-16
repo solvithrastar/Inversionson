@@ -27,22 +27,24 @@ class SalvusOptComponent(Component):
         self.task_toml = os.path.join(self.path, "task.toml")
         self.models = os.path.join(self.path, "PHYSICAL_MODELS")
         self.inv_models = os.path.join(self.path, "INVERSION_MODELS")
-    
+
     def run_salvus_opt(self):
         """
         Run salvus opt to get next task. I think this should work well enough.
         """
         run_script = os.path.join(self.path, "run_salvus_opt.sh")
         if not os.path.exists(run_script):
-            raise InversionsonError("Please create a shell script to run "
-                                    "Salvus opt in your opt folder.")
+            raise InversionsonError(
+                "Please create a shell script to run " "Salvus opt in your opt folder."
+            )
         os.chdir(self.path)
         run_script = f"sh {run_script}"
         process = subprocess.Popen(
-            run_script, shell=True, stdout=subprocess.PIPE, bufsize=1)
+            run_script, shell=True, stdout=subprocess.PIPE, bufsize=1
+        )
         for line in process.stdout:
             print(line, end="\n", flush=True)
-            #sys.stdout.write(line)
+            # sys.stdout.write(line)
         process.wait()
         print(process.returncode)
         os.chdir(self.comm.project.inversion_root)
@@ -60,7 +62,7 @@ class SalvusOptComponent(Component):
             return task
         else:
             raise InversionsonError("no_task_toml")
-    
+
     def read_salvus_opt_task(self) -> str:
         """
         Read the task from salvus opt. See what to do next
@@ -112,8 +114,12 @@ class SalvusOptComponent(Component):
         """
         iteration = self.comm.project.current_iteration
         model_path = os.path.join(self.models, iteration + ".e")
-        lasif_path = os.path.join(self.comm.project.lasif_root, "MODELS", "ITERATION_" +
-                                  iteration, iteration + ".e")
+        lasif_path = os.path.join(
+            self.comm.project.lasif_root,
+            "MODELS",
+            "ITERATION_" + iteration,
+            iteration + ".e",
+        )
 
         shutil.copy(model_path, lasif_path)
 
@@ -137,19 +143,20 @@ class SalvusOptComponent(Component):
         iteration = self.comm.project.current_iteration
         if not events:
             events = self.comm.project.events_in_iteration
-        misfits = toml.load(os.path.join(self.comm.project.lasif_root,
-                                         "ITERATIONS",
-                                         f"ITERATION_{iteration}",
-                                         "misfits.toml"))
+        misfits = toml.load(
+            os.path.join(
+                self.comm.project.lasif_root,
+                "ITERATIONS",
+                f"ITERATION_{iteration}",
+                "misfits.toml",
+            )
+        )
         events_list = []
         task = self.read_salvus_opt()
 
         for event in events:
             misfit = misfits["event_misfits"][event]
-            events_list.append({
-                "misfit": float(misfit),
-                "name": event
-            })
+            events_list.append({"misfit": float(misfit), "name": event})
         task["task"][0]["output"]["event"] = events_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
@@ -179,15 +186,9 @@ class SalvusOptComponent(Component):
         task = self.read_salvus_opt()
         for event in events_used:
             grad_path = self.comm.lasif.find_gradient(
-                iteration=iteration,
-                event=event,
-                smooth=True,
-                inversion_grid=True
+                iteration=iteration, event=event, smooth=True, inversion_grid=True
             )
-            events_list.append({
-                "gradient": grad_path,
-                "name": event
-            })
+            events_list.append({"gradient": grad_path, "name": event})
         task["task"][0]["output"]["event"] = events_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
@@ -199,30 +200,33 @@ class SalvusOptComponent(Component):
         """
         iteration = self.comm.project.current_iteration
         events_used = self.comm.project.events_in_iteration
-        misfits = toml.load(os.path.join(self.comm.project.lasif_root,
-                                         "ITERATIONS",
-                                         f"ITERATION_{iteration}",
-                                         "misfits.toml"))
+        misfits = toml.load(
+            os.path.join(
+                self.comm.project.lasif_root,
+                "ITERATIONS",
+                f"ITERATION_{iteration}",
+                "misfits.toml",
+            )
+        )
         events_list = []
         task = self.read_salvus_opt()
         for event in events_used:
             grad_path = self.comm.lasif.find_gradient(
-                iteration=iteration,
-                event=event,
-                smooth=True,
-                inversion_grid=True
+                iteration=iteration, event=event, smooth=True, inversion_grid=True
             )
 
-            events_list.append({
-                "gradient": grad_path,
-                "misfit": float(misfits["event_misfits"][event]),
-                "name": event
-            })
+            events_list.append(
+                {
+                    "gradient": grad_path,
+                    "misfit": float(misfits["event_misfits"][event]),
+                    "name": event,
+                }
+            )
         task["task"][0]["output"]["event"] = events_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
-    
+
     def write_control_group_to_task_toml(self, control_group: list):
         """
         Report the optimally selected control group to salvus opt
@@ -234,16 +238,13 @@ class SalvusOptComponent(Component):
         events_used = self.comm.project.events_in_iteration
         task = self.read_salvus_opt()
         print(f"Events used: {events_used}")
-        
+
         events_list = []
         ctrl = False
         for event in events_used:
             if event in control_group:
                 ctrl = True
-            events_list.append({
-                "control-group": ctrl,
-                "name": event
-            })
+            events_list.append({"control-group": ctrl, "name": event})
             ctrl = False
         task["task"][0]["output"]["event"] = events_list
 
@@ -260,7 +261,7 @@ class SalvusOptComponent(Component):
         models = []
         for r, d, f in os.walk(self.models):
             for file in f:
-                if 'gradient' not in file:
+                if "gradient" not in file:
                     models.append(file)
 
         if len(models) == 0:
@@ -268,10 +269,12 @@ class SalvusOptComponent(Component):
         iterations = self._parse_model_files(models)
 
         new_it_number = max(iterations)
+        if len(iterations[new_it_number]) > 4:
+            raise InversionsonError("Looks like model has been rejected too often")
         new_it_tr_region = min(iterations[new_it_number])
 
         return self._create_iteration_name(new_it_number, new_it_tr_region)
-    
+
     def get_previous_iteration_name(self, tr_region=False):
         """
         Get the name of the previous iteration in order to find
@@ -280,7 +283,7 @@ class SalvusOptComponent(Component):
         models = []
         for r, d, f in os.walk(self.models):
             for file in f:
-                if 'gradient' not in file:
+                if "gradient" not in file:
                     models.append(file)
 
         if len(models) == 0:
@@ -312,7 +315,7 @@ class SalvusOptComponent(Component):
         models = []
         for r, d, f in os.walk(self.models):
             for file in f:
-                if 'gradient' not in file:
+                if "gradient" not in file:
                     models.append(file)
 
         if len(models) == 0:
@@ -398,7 +401,7 @@ class SalvusOptComponent(Component):
                 if len(model) < 17:
                     # The first iteration is shorter
                     iteration = int(model[2:6])
-                    tr_region = 9.999999
+                    tr_region = 999.999999
                     if iteration in iterations:
                         iterations[iteration].append(tr_region)
                     else:
@@ -411,7 +414,7 @@ class SalvusOptComponent(Component):
                         iterations[iteration].append(tr_region)
                     else:
                         iterations[iteration] = [tr_region]
-        
+
         return iterations
 
     def _create_iteration_name(self, number: int, tr_region: float) -> str:
@@ -428,14 +431,14 @@ class SalvusOptComponent(Component):
         """
         num_part = str(number)
         while len(num_part) < 4:
-            num_part = '0' + num_part
+            num_part = "0" + num_part
         if tr_region == 9.999999:
             return "it" + num_part + "_model"
-        
+
         tr_region_part = str(tr_region)
         region_parts = tr_region_part.split(".")
         while len(region_parts[1]) < 6:
-            region_parts[1] = region_parts[1] + '0'
+            region_parts[1] = region_parts[1] + "0"
         tr_region_part = f"{region_parts[0]}.{region_parts[1]}"
 
         return "it" + num_part + "_model_TrRadius_" + tr_region_part
