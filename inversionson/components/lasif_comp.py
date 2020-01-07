@@ -519,7 +519,7 @@ class LasifComponent(Component):
 
         lapi.process_data(self.lasif_comm, events=[event])
 
-    def select_windows(self, window_set_name: str, event: str, mpi=True, n=6):
+    def select_windows(self, window_set_name: str, event: str, mpi=True, n=12):
         """
         Select window for a certain event in an iteration.
 
@@ -542,7 +542,7 @@ class LasifComponent(Component):
 
         if mpi:
             os.chdir(self.comm.project.lasif_root)
-            command = f"mpirun -n 8 lasif select_windows "
+            command = f"mpirun -n {n} lasif select_windows "
             command += f"{self.comm.project.current_iteration} "
             command += f"{window_set_name} {event}"
             process = subprocess.Popen(

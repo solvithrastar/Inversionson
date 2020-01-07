@@ -14,7 +14,7 @@ class MultiMeshComponent(Component):
         super(MultiMeshComponent, self).__init__(communicator, component_name)
         self.physical_models = self.comm.salvus_opt.models
 
-    def interpolate_to_simulation_mesh(self, event: str):
+    def interpolate_to_simulation_mesh(self, event: str, interp_folder=None):
         """
         Interpolate current master model to a simulation mesh.
 
@@ -39,6 +39,7 @@ class MultiMeshComponent(Component):
                 from_coordinates_path="MODEL/coordinates",
                 to_coordinates_path="MODEL/coordinates",
                 parameters=self.comm.project.modelling_params,
+                stored_array=interp_folder
             )
         elif mode == "exodus_2_gll":
             model = os.path.join(self.physical_models, iteration + ".e")
@@ -49,7 +50,8 @@ class MultiMeshComponent(Component):
         else:
             raise ValueError(f"Mode: {mode} not supported")
 
-    def interpolate_gradient_to_model(self, event: str, smooth=True):
+    def interpolate_gradient_to_model(self, event: str, smooth=True,
+                                      interp_folder=None):
         """
         Interpolate gradient parameters from simulation mesh to master
         dicretisation. In minibatch approach gradients are not summed,
@@ -60,6 +62,9 @@ class MultiMeshComponent(Component):
         :type event: str
         :param smooth: Whether the smoothed gradient should be used
         :type smooth: bool, optional
+        :param interp_folder: Pass a path if you want the matrix of the
+        interpolation to be saved and then it can be used later on. Also
+        pass this if the directory exists and you want to use the matrices
         """
         iteration = self.comm.project.current_iteration
         mode = self.comm.project.gradient_interpolation_mode
@@ -80,7 +85,8 @@ class MultiMeshComponent(Component):
                 to_gll=master_disc_gradient,
                 nelem_to_search=300,
                 parameters=self.comm.project.inversion_params,
-                gradient=True,  # This is only true if added on top
+                gradient=True,
+                stored_array=interp_folder
             )
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
         elif mode == "gll2exo":  # This will probably be removed soon

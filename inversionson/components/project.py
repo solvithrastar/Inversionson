@@ -402,7 +402,8 @@ class ProjectComponent(Component):
         last_control_group = []
         if iteration != "it0000_model":
             ctrl_grps = toml.load(self.comm.project.paths["control_group_toml"])
-            last_control_group = ctrl_grps[iteration]["old"]
+            prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
+            last_control_group = ctrl_grps[prev_iter]["new"]
 
         it_dict["last_control_group"] = last_control_group
         it_dict["new_control_group"] = []

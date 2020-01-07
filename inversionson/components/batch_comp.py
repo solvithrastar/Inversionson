@@ -278,6 +278,7 @@ class BatchComponent(Component):
             # TODO: Figure out problem with small angle.
             print(f"Angle: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
+                # How holy do I want this to be? More important than max angle?
                 break
             else:
                 batch_grad = np.copy(test_batch_grad)
@@ -286,7 +287,7 @@ class BatchComponent(Component):
                 ctrl_group.remove(redundant_gradient)
 
         grads_dropped = self._dropout(ctrl_group)
-        tmp_event_qual = event_quality
+        tmp_event_qual = event_quality.copy()
         best_non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
         for grad in grads_dropped:
             non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)

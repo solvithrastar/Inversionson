@@ -135,7 +135,15 @@ class AutoInverter(object):
                 "Will not do interpolation."
             )
             return
-        self.comm.multi_mesh.interpolate_to_simulation_mesh(event)
+        interp_folder = os.path.join(
+            self.comm.project.inversion_root,
+            "INTERPOLATION",
+            event,
+            "model"
+        )
+        if not os.path.exists(interp_folder):
+            os.makedirs(interp_folder)
+        self.comm.multi_mesh.interpolate_to_simulation_mesh(event, interp_folder=interp_folder)
         self.comm.project.change_attribute(
             attribute=f'forward_job["{event}"]["interpolated"]', new_value=True
         )
@@ -154,7 +162,18 @@ class AutoInverter(object):
                 f"Will not do interpolation."
             )
             return
-        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=True)
+        interp_folder = os.path.join(
+            self.comm.project.inversion_root,
+            "INTERPOLATION",
+            event,
+            "gradient"
+        )
+        if not os.path.exists(interp_folder):
+            os.makedirs(interp_folder)
+        self.comm.multi_mesh.interpolate_gradient_to_model(
+            event,
+            smooth=True,
+            interp_folder=interp_folder)
         self.comm.project.change_attribute(
             attribute=f'adjoint_job["{event}"]["interpolated"]', new_value=True
         )
@@ -184,6 +203,10 @@ class AutoInverter(object):
                     print(f"Forward job for event {event} is running ")
                     print("Will not resubmit. ")
                     print("You can work with jobs using salvus-flow")
+                    return
+                elif status == "JobStatus.pending":
+                    print(f"Forward job for event {event} is pending ")
+                    print("Will not resubmit. ")
                     return
                 elif status == "JobStatus.unknown":
                     print(f"Status of job for event {event} is unknown")
@@ -251,6 +274,10 @@ class AutoInverter(object):
                     print(f"Adjoint job for event {event} is running ")
                     print("Will not resubmit. ")
                     print("You can work with jobs using salvus-flow")
+                    return
+                elif status == "JobStatus.pending":
+                    print(f"Adjoint job for event {event} is pending ")
+                    print("Will not resubmit. ")
                     return
                 elif status == "JobStatus.unknown":
                     print(f"Status of job for event {event} is unknown")
@@ -536,7 +563,7 @@ class AutoInverter(object):
             self.comm.salvus_flow.submit_smoothing_job(event, simulation, par)
             self.comm.project.update_iteration_toml()
 
-    def monitor_jobs(self, sim_type: str, events=None):
+    def monitor_jobs(self, sim_type: str, events=None, reposts=None):
         """
         Takes events in iteration and monitors its job statuses
         Can return a list of events which have been retrieved.
@@ -549,12 +576,15 @@ class AutoInverter(object):
         :type events: list
         """
         import time
-
+        if not reposts:
+            reposts = {}
         events_retrieved_now = []
         events_already_retrieved = []
         if not events:
             events = self.comm.project.events_in_iteration
         for event in events:
+            if event not in reposts.keys():
+                reposts[event] = 0
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["retrieved"]:
                     events_already_retrieved.append(event)
@@ -577,11 +607,23 @@ class AutoInverter(object):
                         print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.failed":
                         print(f"Status = {status}, event: {event}")
-                        print("Job failed. Need to implement something here")
+                        print("Job failed. Will resubmit")
+                        if reposts[event] >=3:
+                            print("No, I've actually reposted this too often")
+                            print("Something must be wrong")
+                            raise InversionsonError("Too many reposts")
+                        self.run_forward_simulation(event)
+                        reposts[event] += 1
                         print("Probably resubmit or something like that")
                     elif status == "JobStatus.unknown":
                         print(f"Status = {status}, event: {event}")
-                        print("Job unknown. Need to implement something here")
+                        print("Job unknown. Will resubmit")
+                        if reposts[event] >=3:
+                            print("No, I've actually reposted this too often")
+                            print("Something must be wrong")
+                            raise InversionsonError("Too many reposts")
+                        self.run_forward_simulation(event)
+                        reposts[event] += 1
                     elif status == "JobStatus.cancelled":
                         print("What to do here?")
                     else:
@@ -608,11 +650,22 @@ class AutoInverter(object):
                         print(f"Status = {status}, event: {event}")
                     elif status == "JobStatus.failed":
                         print(f"Status = {status}, event: {event}")
-                        print("Job failed. Need to implement something here")
-                        print("Probably resubmit or something like that")
+                        print("Job failed. Will be resubmitted")
+                        if reposts[event] >=3:
+                            print("No, I've actually reposted this too often")
+                            print("Something must be wrong")
+                            raise InversionsonError("Too many reposts")
+                        self.run_adjoint_simulation(event)
+                        reposts[event] += 1
                     elif status == "JobStatus.unknown":
                         print(f"Status = {status}, event: {event}")
-                        print("Job unknown. Need to implement something here")
+                        print("Job unknown. Will be resubmitted")
+                        if reposts[event] >=3:
+                            print("No, I've actually reposted this too often")
+                            print("Something must be wrong")
+                            raise InversionsonError("Too many reposts")
+                        self.run_adjoint_simulation(event)
+                        reposts[event] += 1
                     elif status == "JobStatus.cancelled":
                         print(f"Status = {status}, event: {event}")
                         print("What to do here?")
@@ -687,7 +740,8 @@ class AutoInverter(object):
                     f"{len(events)} events."
                 )
                 time.sleep(60)
-                return self.monitor_jobs(sim_type, events=events)
+                return self.monitor_jobs(sim_type, events=events,
+                                         reposts=reposts)
 
         for event in events_retrieved_now:
             if sim_type == "smoothing":
