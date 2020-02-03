@@ -32,7 +32,7 @@ class SalvusSmoothComponent(Component):
         :param movie: If a movie should be saved, defaults to False
         :type movie: bool
         """
-        import salvus_flow.simple_config as sc
+        import salvus.flow.simple_config as sc
 
         seperator = "/"
         # grad_folder, _ = os.path.split(gradient)

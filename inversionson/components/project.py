@@ -109,6 +109,13 @@ class ProjectComponent(Component):
                 f" {allowed_interp_modes}"
             )
 
+        if "meshes" not in self.info.keys():
+            raise InversionsonError(
+                "We need information on which sorts of meshes you use. "
+                "Options are multi-mesh or mono-mesh. "
+                "Key: meshes"
+            )
+
         if "gradient_interpolation_mode" not in self.info.keys():
             raise InversionsonError(
                 "We need information on how you want to interpolate "
@@ -116,7 +123,10 @@ class ProjectComponent(Component):
                 "Key: gradient_interpolation_mode "
             )
 
-        if self.info["gradient_interpolation_mode"] not in allowed_interp_modes:
+        if (
+            self.info["gradient_interpolation_mode"]
+            not in allowed_interp_modes
+        ):
             raise InversionsonError(
                 f"The allowable model_interpolation_modes are: "
                 f" {allowed_interp_modes}"
@@ -209,9 +219,9 @@ class ProjectComponent(Component):
                 "We need information on inversion mode. mini-batch or normal"
             )
 
-        if self.info["inversion_mode"] not in ["mini-batch", "normal"]:
+        if self.info["inversion_mode"] not in ["mini-batch", "mono-batch"]:
             raise InversionsonError(
-                "Only implemented inversion modes are mini-batch or normal"
+                "Only implemented inversion modes are mini-batch or mono-batch"
             )
 
         # # Salvus Opt
@@ -264,11 +274,19 @@ class ProjectComponent(Component):
         LasifComponent(communicator=self.comm, component_name="lasif")
         SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
         MultiMeshComponent(communicator=self.comm, component_name="multi_mesh")
-        SalvusFlowComponent(communicator=self.comm, component_name="salvus_flow")
-        SalvusMeshComponent(communicator=self.comm, component_name="salvus_mesher")
-        StoryTellerComponent(communicator=self.comm, component_name="storyteller")
+        SalvusFlowComponent(
+            communicator=self.comm, component_name="salvus_flow"
+        )
+        SalvusMeshComponent(
+            communicator=self.comm, component_name="salvus_mesher"
+        )
+        StoryTellerComponent(
+            communicator=self.comm, component_name="storyteller"
+        )
         BatchComponent(communicator=self.comm, component_name="minibatch")
-        SalvusSmoothComponent(communicator=self.comm, component_name="smoother")
+        SalvusSmoothComponent(
+            communicator=self.comm, component_name="smoother"
+        )
 
     def arrange_params(self, parameters: list) -> list:
         """
@@ -282,7 +300,9 @@ class ProjectComponent(Component):
         :type parameters: list
         """
         case_tti_inv = set(["VSV", "VSH", "VPV", "VPH", "RHO"])
-        case_tti_mod = set(["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
+        case_tti_mod = set(
+            ["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"]
+        )
         case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
         case_iso_inv = set(["VP", "VS"])
         case_iso_inv_dens = set(["VP", "VS", "RHO"])
@@ -290,7 +310,16 @@ class ProjectComponent(Component):
         if set(parameters) == case_tti_inv:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
         elif set(parameters) == case_tti_mod:
-            parameters = ["VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "QMU", "ETA"]
+            parameters = [
+                "VPV",
+                "VPH",
+                "VSV",
+                "VSH",
+                "RHO",
+                "QKAPPA",
+                "QMU",
+                "ETA",
+            ]
         elif set(parameters) == case_iso_inv:
             parameters = ["VP", "VS"]
         elif set(parameters) == case_iso_inv_dens:
@@ -299,7 +328,8 @@ class ProjectComponent(Component):
             parameters = ["QKAPPA", "QMU", "RHO", "VP", "VS"]
         else:
             raise InversionsonError(
-                f"Parameter list {parameters} not " f"a recognized set of parameters"
+                f"Parameter list {parameters} not "
+                f"a recognized set of parameters"
             )
         return parameters
 
@@ -324,16 +354,26 @@ class ProjectComponent(Component):
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
-        self.gradient_interpolation_mode = self.info["gradient_interpolation_mode"]
-        self.cut_source_radius = self.info["cut_source_region_from_gradient_in_km"]
-        self.cut_receiver_radius = self.info["cut_receiver_region_from_gradient_in_km"]
+        self.gradient_interpolation_mode = self.info[
+            "gradient_interpolation_mode"
+        ]
+        self.cut_source_radius = self.info[
+            "cut_source_region_from_gradient_in_km"
+        ]
+        self.cut_receiver_radius = self.info[
+            "cut_receiver_region_from_gradient_in_km"
+        ]
         self.clip_gradient = self.info["clip_gradient"]
         self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
         self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
-        self.smoothing_site_name = self.info["HPC"]["diffusion_equation"]["site_name"]
+        self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
+            "site_name"
+        ]
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
-        self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
+        self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"][
+            "wall_time"
+        ]
 
         self.initial_batch_size = self.info["initial_batch_size"]
         self.n_random_events_picked = self.info["n_random_events"]
@@ -342,23 +382,35 @@ class ProjectComponent(Component):
         self.maximum_grad_divergence_angle = self.info["max_angular_change"]
         self.dropout_probability = self.info["dropout_probability"]
         if not first:
-            self.current_iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            self.current_iteration = (
+                self.comm.salvus_opt.get_newest_iteration_name()
+            )
             print(f"Current Iteration: {self.current_iteration}")
-            self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
-        self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
-        self.modelling_params = self.arrange_params(self.info["modelling_parameters"])
+            self.event_quality = toml.load(
+                self.comm.storyteller.events_quality_toml
+            )
+        self.inversion_params = self.arrange_params(
+            self.info["inversion_parameters"]
+        )
+        self.modelling_params = self.arrange_params(
+            self.info["modelling_parameters"]
+        )
 
         # Some useful paths
         self.paths = {}
         self.paths["inversion_root"] = self.inversion_root
         self.paths["lasif_root"] = self.lasif_root
-        self.paths["salvus_opt"] = os.path.join(self.inversion_root, "SALVUS_OPT")
+        self.paths["salvus_opt"] = os.path.join(
+            self.inversion_root, "SALVUS_OPT"
+        )
         if not os.path.exists(self.paths["salvus_opt"]):
             raise InversionsonError(
                 "Please make a folder for Salvus opt and initialize it in there"
             )
 
-        self.paths["documentation"] = os.path.join(self.inversion_root, "DOCUMENTATION")
+        self.paths["documentation"] = os.path.join(
+            self.inversion_root, "DOCUMENTATION"
+        )
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
             os.mkdir(os.path.join(self.paths["documentation"], "BACKUP"))
@@ -401,7 +453,9 @@ class ProjectComponent(Component):
 
         last_control_group = []
         if iteration != "it0000_model":
-            ctrl_grps = toml.load(self.comm.project.paths["control_group_toml"])
+            ctrl_grps = toml.load(
+                self.comm.project.paths["control_group_toml"]
+            )
             prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
             last_control_group = ctrl_grps[prev_iter]["new"]
 
@@ -421,18 +475,33 @@ class ProjectComponent(Component):
         }
         s_job_dict = {}
         for parameter in self.inversion_params:
-            s_job_dict[parameter] = {"name": "", "submitted": False, "retrieved": False}
-        for event in self.comm.lasif.list_events(iteration=iteration):
-            it_dict["events"][event] = {
-                "misfit": 0.0,
-                "usage_updated": False,
-                "jobs": {
-                    "forward": f_job_dict,
-                    "adjoint": a_job_dict,
-                    "smoothing": s_job_dict,
-                },
+            s_job_dict[parameter] = {
+                "name": "",
+                "submitted": False,
+                "retrieved": False,
             }
-
+        for event in self.comm.lasif.list_events(iteration=iteration):
+            if self.meshes == "multi-mesh":
+                it_dict["events"][event] = {
+                    "misfit": 0.0,
+                    "usage_updated": False,
+                    "jobs": {
+                        "forward": f_job_dict,
+                        "adjoint": a_job_dict,
+                        "smoothing": s_job_dict,
+                    },
+                }
+            else:
+                it_dict["events"][event] = {
+                    "misfit": 0.0,
+                    "usage_updated": False,
+                    "jobs": {
+                        "forward": f_job_dict,
+                        "adjoint": a_job_dict,
+                    },
+                }
+        if self.meshes == "mono-mesh":
+            it_dict["smoothing"] = s_job_dict
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
@@ -459,7 +528,9 @@ class ProjectComponent(Component):
         elif isinstance(new_value, int):
             command = f"self.{attribute} = {new_value}"
         else:
-            raise InversionsonError(f"Method not implemented for type {new_value.type}")
+            raise InversionsonError(
+                f"Method not implemented for type {new_value.type}"
+            )
         exec(command)
 
     def update_control_group_toml(self, new=False, first=False):
@@ -526,15 +597,27 @@ class ProjectComponent(Component):
         it_dict["new_control_group"] = control_group_dict["new"]
 
         for event in self.comm.lasif.list_events(iteration=iteration):
-            it_dict["events"][event] = {
-                "misfit": self.misfits[event],
-                "usage_updated": self.updated[event],
-                "jobs": {
-                    "forward": self.forward_job[event],
-                    "adjoint": self.adjoint_job[event],
-                    "smoothing": self.smoothing_job[event],
-                },
-            }
+            if self.meshes == "multi-mesh":
+                it_dict["events"][event] = {
+                    "misfit": self.misfits[event],
+                    "usage_updated": self.updated[event],
+                    "jobs": {
+                        "forward": self.forward_job[event],
+                        "adjoint": self.adjoint_job[event],
+                        "smoothing": self.smoothing_job[event],
+                    },
+                }
+            else:
+                it_dict["events"][event] = {
+                    "misfit": self.misfits[event],
+                    "usage_updated": self.updated[event],
+                    "jobs": {
+                        "forward": self.forward_job[event],
+                        "adjoint": self.adjoint_job[event],
+                    },
+                }
+        if self.meshes == "mono-mesh":
+            it_dict["smoothing"] == self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -551,7 +634,9 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml"
         )
         if not os.path.exists(iteration_toml):
-            raise InversionsonError(f"No toml file exists for iteration: {iteration}")
+            raise InversionsonError(
+                f"No toml file exists for iteration: {iteration}"
+            )
 
         it_dict = toml.load(iteration_toml)
 
@@ -569,9 +654,18 @@ class ProjectComponent(Component):
         for event in self.events_in_iteration:
             self.updated[event] = it_dict["events"][event]["usage_updated"]
             self.misfits[event] = it_dict["events"][event]["misfit"]
-            self.forward_job[event] = it_dict["events"][event]["jobs"]["forward"]
-            self.adjoint_job[event] = it_dict["events"][event]["jobs"]["adjoint"]
-            self.smoothing_job[event] = it_dict["events"][event]["jobs"]["smoothing"]
+            self.forward_job[event] = it_dict["events"][event]["jobs"][
+                "forward"
+            ]
+            self.adjoint_job[event] = it_dict["events"][event]["jobs"][
+                "adjoint"
+            ]
+            if self.meshes == "multi-mesh":
+                self.smoothing_job[event] = it_dict["events"][event]["jobs"][
+                    "smoothing"
+                ]
+        if self.meshes == "mono-mesh":
+            self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:
         """
@@ -586,7 +680,9 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml"
         )
         if not os.path.exists(iteration_toml):
-            raise InversionsonError(f"No toml file eists for iteration: {iteration}")
+            raise InversionsonError(
+                f"No toml file eists for iteration: {iteration}"
+            )
 
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)

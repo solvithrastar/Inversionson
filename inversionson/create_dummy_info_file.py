@@ -18,8 +18,9 @@ def create_info(root=None):
     info["lasif_root"] = os.path.join(root, "LASIF_PROJECT")
     info["inversion_id"] = "MY_INVERSION"
     info["inversion_mode"] = "mini-batch"
-    info["meshes"] = "wavefield-adapted"
-    meshes_comment = "Pick between 'wavefield-adapted' or 'single'"
+    inversion_mode_comment = "Pick between mini-batch and mono-batch"
+    info["meshes"] = "multi-mesh"
+    meshes_comment = "Pick between 'multi-mesh' or 'mono-mesh'"
     info["model_interpolation_mode"] = "gll_2_gll"
     info["gradient_interpolation_mode"] = "gll_2_gll"
     info["HPC"] = {}
@@ -52,6 +53,7 @@ def create_info(root=None):
     info["comments"]["clip_gradient"] = clip_grad_comment
     info["comments"]["cut_gradient"] = cut_stuff_gradient
     info["comments"]["meshes"] = meshes_comment
+    info["comments"]["inversion_mode"] = inversion_mode_comment
 
     return info
 

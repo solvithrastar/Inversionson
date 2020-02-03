@@ -1,5 +1,5 @@
 from .component import Component
-import salvus_flow.api as sapi
+import salvus.flow.api as sapi
 from inversionson import InversionsonError
 import os
 import time
@@ -106,20 +106,36 @@ class SalvusFlowComponent(Component):
             )
 
         if sim_type == "smoothing":
-            destination = self.comm.lasif.find_gradient(
-                iteration=self.comm.project.current_iteration,
-                event=event_name,
-                smooth=True,
-                inversion_grid=False,
-                just_give_path=True,
-            )
-            smooth_grad = self.comm.lasif.find_gradient(
-                iteration=self.comm.project.current_iteration,
-                event=event_name,
-                smooth=True,
-                inversion_grid=False,
-                just_give_path=True,
-            )
+            if self.comm.project.meshes == "mono-mesh":
+                destination = self.comm.lasif.find_gradient(
+                    iteration=self.comm.project.current_iteration,
+                    event=None,
+                    smooth=True,
+                    summed=True,
+                    just_give_path=True
+                )
+                smooth_grad = self.comm.lasif.find_gradient(
+                    iteration=self.comm.project.current_iteration,
+                    event=None,
+                    smooth=True,
+                    summed=True,
+                    just_give_path=True
+                )
+            else:
+                destination = self.comm.lasif.find_gradient(
+                    iteration=self.comm.project.current_iteration,
+                    event=event_name,
+                    smooth=True,
+                    inversion_grid=False,
+                    just_give_path=True,
+                )
+                smooth_grad = self.comm.lasif.find_gradient(
+                    iteration=self.comm.project.current_iteration,
+                    event=event_name,
+                    smooth=True,
+                    inversion_grid=False,
+                    just_give_path=True,
+                )
 
             destination = os.path.join(
                 os.path.dirname(destination), "smoother_output", "smooth_gradient.h5"
@@ -143,8 +159,8 @@ class SalvusFlowComponent(Component):
         :type event_name: str
         """
 
-        from salvus_flow.simple_config import source
-        from salvus_flow.simple_config import stf
+        from salvus.flow.simple_config import source
+        from salvus.flow.simple_config import stf
 
         src_info = self.comm.lasif.get_source(event_name)
         if isinstance(src_info, list):
@@ -180,8 +196,8 @@ class SalvusFlowComponent(Component):
         :rtype: object
         """
         import h5py
-        from salvus_flow.simple_config import source
-        from salvus_flow.simple_config import stf
+        from salvus.flow.simple_config import source
+        from salvus.flow.simple_config import stf
 
         iteration = self.comm.project.current_iteration
         receivers = self.comm.lasif.get_receivers(event_name)
@@ -245,7 +261,7 @@ class SalvusFlowComponent(Component):
         :param event: Name of event to get the receivers for
         :type event: str
         """
-        from salvus_flow.simple_config import receiver
+        from salvus.flow.simple_config import receiver
 
         recs = self.comm.lasif.get_receivers(event)
         # TODO: Find out how the smoothiesem side sets work.
@@ -274,7 +290,7 @@ class SalvusFlowComponent(Component):
         :type receivers: list of receiver objects
         """
 
-        from salvus_flow.simple_config import simulation
+        from salvus.flow.simple_config import simulation
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
 
@@ -306,7 +322,7 @@ class SalvusFlowComponent(Component):
         :return: Simulation object
         :rtype: object
         """
-        from salvus_flow.simple_config import simulation
+        from salvus.flow.simple_config import simulation
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
         forward_job_name = self.comm.project.forward_job[event]["name"]
@@ -341,7 +357,7 @@ class SalvusFlowComponent(Component):
         site="daint",
         wall_time=3600,
         ranks=1024,
-    ):
+        ):
         """
         Submit a job with some information. Salvus flow returns an object
         which can be used to interact with job.
@@ -401,7 +417,7 @@ class SalvusFlowComponent(Component):
 
     def get_job_status(
         self, event: str, sim_type: str, par="VS", iteration="current"
-    ) -> str:
+        ) -> str:
         """
         Check the status of a salvus opt job
 
