@@ -224,6 +224,64 @@ class ProjectComponent(Component):
                 "Only implemented inversion modes are mini-batch or mono-batch"
             )
 
+        # Smoothing
+        if "Smoothing" not in self.info.keys():
+            raise InversionsonError(
+                "Please specify smoothing parameters in info file. "
+                "Key: Smoothing"
+            )
+
+        if "smoothing_mode" not in self.info["Smoothing"].keys():
+            raise InversionsonError(
+                "Please specify smoothing mode under Smoothing in info file. "
+                "Key: Smoothing.smoothing_mode"
+            )
+
+        if self.info["Smoothing"]["smoothing_mode"] not in [
+            "anisotropic",
+            "isotropic",
+            "none",
+        ]:
+            raise InversionsonError(
+                "Only implemented smoothing modes are 'anisotropic', "
+                "'isotropic' and 'none'"
+            )
+        if not self.info["Smoothing"]["smoothing_mode"] == "none":
+            if "smoothing_lengths" not in self.info["Smoothing"].keys():
+                raise InversionsonError(
+                    "Please specify smoothing lengths under Smoothing in info "
+                    "file. Key: Smoothing.smoothing_lengths"
+                )
+
+        if self.info["Smoothing"]["smoothing_mode"] == "anisotropic":
+            if not isinstance(
+                self.info["Smoothing"]["smoothing_lengts"], list
+            ):
+                raise InversionsonError(
+                    "Make sure you input a list as smoothing_lengths if you "
+                    "want to smooth anisotropically. List of length 3. "
+                    "Order: r, theta, phi."
+                )
+            if not len(self.info["Smoothing"]["smoothing_lengths"]) == 3:
+                raise InversionsonError(
+                    "Make sure your smoothing_lengths are a list of length 3."
+                    "Order: r, theta, phi."
+                )
+
+        if self.info["Smoothing"]["smoothing_mode"] == "isotropic":
+            if isinstance(self.info["Smoothing"]["smoothing_lengths"], list):
+                if len(self.info["Smoothing"]["smoothing_lengths"]) == 1:
+                    self.info["Smoothing"]["smoothing_lengths"] = self.info[
+                        "Smoothing"
+                    ]["smoothing_lengths"][0]
+                else:
+                    raise InversionsonError(
+                        "If you give a list of isotropic lengths, you can only"
+                        " give a list of length one, as all dimensions will "
+                        "be smoothed with equally many wavelengths. You can "
+                        "also just give a number."
+                    )
+
         # # Salvus Opt
         # if "salvus_opt_dir" not in self.info.keys():
         #     raise InversionsonError(
@@ -374,6 +432,8 @@ class ProjectComponent(Component):
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"][
             "wall_time"
         ]
+        self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
+        self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
 
         self.initial_batch_size = self.info["initial_batch_size"]
         self.n_random_events_picked = self.info["n_random_events"]
@@ -465,23 +525,28 @@ class ProjectComponent(Component):
             "name": "",
             "submitted": False,
             "retrieved": False,
-            "interpolated": False,
         }
         a_job_dict = {
             "name": "",
             "submitted": False,
             "retrieved": False,
-            "interpolated": False,
         }
-        s_job_dict = {}
-        for parameter in self.inversion_params:
-            s_job_dict[parameter] = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False,
-            }
+        s_job_dict = {
+            "name": "",
+            "submitted": False,
+            "retrieved": False,
+        }
+        if self.meshes == "multi-mesh":
+            f_job_dict["interpolated"] = False
+            a_job_dict["interpolated"] = False
+        # for parameter in self.inversion_params:
+        #     s_job_dict[parameter] = {
+        #         "name": "",
+        #         "submitted": False,
+        #         "retrieved": False,
+        #     }
         for event in self.comm.lasif.list_events(iteration=iteration):
-            if self.meshes == "multi-mesh":
+            if self.inversion_mode == "mini-batch":
                 it_dict["events"][event] = {
                     "misfit": 0.0,
                     "usage_updated": False,
@@ -495,12 +560,9 @@ class ProjectComponent(Component):
                 it_dict["events"][event] = {
                     "misfit": 0.0,
                     "usage_updated": False,
-                    "jobs": {
-                        "forward": f_job_dict,
-                        "adjoint": a_job_dict,
-                    },
+                    "jobs": {"forward": f_job_dict, "adjoint": a_job_dict},
                 }
-        if self.meshes == "mono-mesh":
+        if self.inversion_mode == "mono-batch":
             it_dict["smoothing"] = s_job_dict
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)

@@ -6,6 +6,8 @@ import toml
 import os
 import subprocess
 import sys
+import pathlib
+from salvus.opt import smoothing
 
 
 class SalvusSmoothComponent(Component):
@@ -16,7 +18,9 @@ class SalvusSmoothComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        super(SalvusSmoothComponent, self).__init__(communicator, component_name)
+        super(SalvusSmoothComponent, self).__init__(
+            communicator, component_name
+        )
         # self.smoother_path = self.comm.project.paths["salvus_smoother"]
 
     def generate_diffusion_object(
@@ -58,6 +62,61 @@ class SalvusSmoothComponent(Component):
 
         return sim
 
+    # Now I need to make some stuff based on the new salvus.opt and it's smoothing configurations
+
+    def generate_smoothing_config(
+        self, event: str, gradient: bool = True, iteration: str = None,
+    ) -> dict:
+        """
+        Generate a dictionary which contains smoothing objects for each 
+        parameter to be smoothed.
+
+        :param event: Name of event
+        :type event: str
+        :param gradient: We are smoothing the gradient right?, defaults to True
+        :type gradient: bool
+        :param iteration: Name of iteration, if none, current is used,
+            defaults to None
+        :type iteration: str, optional
+        :return: Dictonary which points each parameter to a smoothing object
+        :rtype: dict
+        """
+
+        if not iteration:
+            iteration_name = self.comm.project.current_iteration
+        if gradient:
+            gradient_file = self.comm.lasif.find_gradient(
+                iteration=iteration_name, event=event,
+            )
+        # The mesh used as diffusion model is the event_mesh with the 1D model
+        diff_model = self.comm.lasif.find_event_mesh(event=event)
+        smoothing_config = {}
+        freq = 1.0 / self.comm.project.period_low
+        smoothing_lengths = self.comm.project.smoothing_lengths
+
+        # Loop through parameters to assign smoothing objects to parameters.
+        for param in self.comm.project.inversion_params:
+            if param.startswith("V"):
+                reference_velocity = param
+            elif param == "RHO":
+                if "VP" in self.comm.project.inversion_params:
+                    reference_velocity = "VP"
+                elif "VPV" in self.comm.project.inversion_params:
+                    reference_velocity = "VPV"
+                else:
+                    raise InversionsonError(
+                        f"Unexpected case while smoothing {param}. "
+                        f"Take a closer look"
+                    )
+            smooth = smoothing.AnisotropicModelDependent(
+                reference_frequency_in_hertz=freq,
+                smoothing_lengths_in_wavelengths=smoothing_lengths,
+                reference_model=diff_model,
+                reference_velocity=reference_velocity,
+            )
+            smoothing_config[param] = smooth
+        return smooth
+
     def generate_input_toml(self, gradient: str, movie=False):
         """
         Generate the input file that the smoother requires
@@ -76,7 +135,9 @@ class SalvusSmoothComponent(Component):
         output_file += "/smooth_gradient.h5"
 
         grad_folder, _ = os.path.split(gradient)
-        smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
+        smoothing_fields_mesh = os.path.join(
+            grad_folder, "smoothing_fields.h5"
+        )
         # Domain dictionary
         mesh = {"filename": gradient, "format": "hdf5"}
         domain = {
@@ -124,33 +185,37 @@ class SalvusSmoothComponent(Component):
         with open(toml_path, "w+") as fh:
             toml.dump(input_dict, fh)
 
-    def run_smoother(self, gradient: str):
+    def run_smoother(
+        self, smoothing_config: dict, event: str, iteration: str = None
+    ):
         """
-        A method which runs the salvus smoother and waits until it is
-        done. Currently this is always run on a local computer. If things
-        get heavy, this can be modified to run on a supercomputer.
-
-        :param gradient: Path to gradient file
-        :type gradient: str
+        Run the Smoother, the settings are specified in inversion toml. Make
+        sure that the smoothing config has already been generated
+        
+        :param smoothing_config: Dictionary with objects for each parameter
+        :type smoothing_config: dict
+        :param event: Name of event
+        :type event: str
+        :param iteration: Name of iteration, if None it will give the 
+            current iteration, defaults to None
+        :type iteration: str, optional
         """
-        seperator = "/"
-        input_toml = seperator.join(gradient.split(seperator)[:-1])
-        input_toml = os.path.join(input_toml, "input.toml")
-        if not os.path.exists(input_toml):
-            self.generate_input_toml(gradient)
-
-        # Add something to make it run on more cores.
-        command = f"{self.smoother_path} --input {input_toml}"
-
-        process = subprocess.Popen(
-            command, shell=True, stdout=subprocess.PIPE, bufsize=1
+        if not iteration:
+            iteration = self.comm.project.current_iteration
+        mesh = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=event
         )
-        print("Smoother is running")
-        # This is to print out to command line, what salvus smooth prints
-        for line in process.stdout:
-            print(line, end="\n", flush=True)
-            # sys.stdout.write(line)
-
-        process.wait()
-        print("Smoother is done")
-        print(process.returncode)
+        job = smoothing.run_async(
+            model=mesh,
+            smoothing_config=smoothing_config,
+            ranks=self.comm.project.smoothing_ranks,
+            wall_time_in_seconds=self.comm.project.smoothing_wall_time
+        )
+        
+        self.comm.project.change_attribute(
+            f'smoothing_job["{event}"]["name"]', job.job_array_name
+        )
+        self.comm.project.change_attribute(
+            f'smoothing_job["{event}"]["submitted"]', True
+        )

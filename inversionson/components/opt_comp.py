@@ -194,7 +194,7 @@ class SalvusOptComponent(Component):
         events_used = self.comm.project.events_in_iteration
         events_list = []
         task = self.read_salvus_opt()
-        if self.comm.project.inversion_mode = "mono-batch":
+        if self.comm.project.inversion_mode == "mini-batch":
             for event in events_used:
                 grad_path = self.comm.lasif.find_gradient(
                     iteration=iteration, event=event, smooth=True, inversion_grid=True

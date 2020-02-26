@@ -8,6 +8,8 @@ import warnings
 import subprocess
 import sys
 import toml
+from typing import Union
+import pathlib
 
 
 class LasifComponent(Component):
@@ -24,7 +26,7 @@ class LasifComponent(Component):
         """
         Get lasif communicator.
         """
-        import pathlib
+
         from lasif.components.project import Project
 
         folder = pathlib.Path(self.lasif_root).absolute()
@@ -170,6 +172,22 @@ class LasifComponent(Component):
 
         return has
 
+    def find_event_mesh(self, event: str) -> Pathlib.Path:
+        """
+        Find the path for an event mesh
+        
+        :param event: Name of event
+        :type event: str
+        :return: Path to where the mesh is stored.
+        :rtype: Pathlib.Path
+        """
+        has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
+        if not has:
+            raise InversionsonError(
+                f"Mesh for event: {event} can not be found."
+            )
+        return pathlib.Path(mesh)
+
     def move_mesh(self, event: str, iteration: str):
         """
         Move mesh to simulation mesh path, where model will be added to it
@@ -203,7 +221,7 @@ class LasifComponent(Component):
                     f"correct path for iteration {iteration}. "
                     f"Will not move new one."
                 )
-
+    # TODO: Write find_gradient for Pathlib
     def find_gradient(
         self,
         iteration: str,
