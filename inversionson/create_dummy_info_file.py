@@ -40,7 +40,6 @@ def create_info(root=None):
     info["Smoothing"]["smoothing_mode"] = "anisotropic"
     info["Smoothing"]["smoothing_lengths"] = [0.5, 1.0, 1.0]
     info["n_random_events"] = 2
-    info["max_ctrl_group_size"] = 4
     info["min_ctrl_group_size"] = 2
     info["max_angular_change"] = 30.0
     info["dropout_probability"] = 0.15

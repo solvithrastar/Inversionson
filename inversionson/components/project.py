@@ -202,12 +202,6 @@ class ProjectComponent(Component):
                 "Key: n_random_events"
             )
 
-        if "max_ctrl_group_size" not in self.info.keys():
-            raise InversionsonError(
-                "We need information regarding maximum control group size."
-                " Key: max_ctrl_group_size"
-            )
-
         if "min_ctrl_group_size" not in self.info.keys():
             raise InversionsonError(
                 "We need information regarding minimum control group size."
@@ -437,7 +431,6 @@ class ProjectComponent(Component):
 
         self.initial_batch_size = self.info["initial_batch_size"]
         self.n_random_events_picked = self.info["n_random_events"]
-        self.max_ctrl_group_size = self.info["max_ctrl_group_size"]
         self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
         self.maximum_grad_divergence_angle = self.info["max_angular_change"]
         self.dropout_probability = self.info["dropout_probability"]
