@@ -473,4 +473,3 @@ class SalvusOptComponent(Component):
         tr_region_part = f"{region_parts[0]}.{region_parts[1]}"
 
         return "it" + num_part + "_model_TrRadius_" + tr_region_part
-]
