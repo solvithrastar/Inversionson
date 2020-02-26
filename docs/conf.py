@@ -52,7 +52,15 @@ pygments_style = 'sphinx'
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
 #
-html_theme = 'sphinxdoc'
+html_theme = 'classic'
+# html_theme_options = {
+#         "sidebarbgcolor":"#000000",
+#         "sidebartextcolor":"#EE82EE",
+#         "sidebarlinkcolor":"#40E0D0",
+#         "relbarbgcolor":"#000000",
+#         "relbartextcolor":"#EE82EE",
+#         "relbarlinkcolor":"#40E0D0"
+#}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
