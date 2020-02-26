@@ -403,11 +403,17 @@ class StoryTellerComponent(Component):
             # with the first iteration
             # This is the absolute first iteration
             # We need to create all necessary files
+            iteration = self.comm.project.current_iteration
+            if iteration.startswith("it0000_model"):
+                iteration_number = 0
+            else:
+                iteration_number = 1
             self._create_story_file()
             self._start_entry_for_iteration()
-            self._write_list_of_all_events()
-            self._update_usage_of_events()
-            self._add_image_of_data_coverage()
+            if self.comm.project.inversion_mode == "mini-batch" or iteration_number == 0:
+                self._write_list_of_all_events()
+                self._update_usage_of_events()
+                self._add_image_of_data_coverage()
             self._add_table_of_events_and_misfits(task=task)
             # self._report_control_group()
             # self._update_event_quality()
@@ -419,10 +425,12 @@ class StoryTellerComponent(Component):
             else:
                 if first_try:
                     self._start_entry_for_iteration()
-                    self._add_image_of_data_coverage()
+                    if self.comm.project.inversion_mode == "mini-batch":
+                        self._add_image_of_data_coverage()
                 if not first_try:
                     self._report_shrinking_of_trust_region()
-            self._add_table_of_events_and_misfits(verbose)
+            if self.comm.project.inversion_mode == "mini-batch":
+                self._add_table_of_events_and_misfits(verbose)
 
         if task == "compute_gradient":
             self._initiate_gradient_computation_task()
@@ -434,7 +442,8 @@ class StoryTellerComponent(Component):
             self._update_event_quality()
 
         if task == "finalize_iteration":
-            self._report_number_of_used_events()
+            if self.comm.project.inversion_mode == "mini-batch":
+                self._report_number_of_used_events()
             self._backup_files()
 
 

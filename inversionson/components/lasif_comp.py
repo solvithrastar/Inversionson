@@ -8,6 +8,8 @@ import warnings
 import subprocess
 import sys
 import toml
+from typing import Union
+import pathlib
 
 
 class LasifComponent(Component):
@@ -24,7 +26,7 @@ class LasifComponent(Component):
         """
         Get lasif communicator.
         """
-        import pathlib
+
         from lasif.components.project import Project
 
         folder = pathlib.Path(self.lasif_root).absolute()
@@ -65,7 +67,9 @@ class LasifComponent(Component):
         iterations = lapi.list_iterations(self.lasif_comm, output=True)
         if isinstance(iterations, list):
             if name in iterations:
-                warnings.warn(f"Iteration {name} already exists", InversionsonWarning)
+                warnings.warn(
+                    f"Iteration {name} already exists", InversionsonWarning
+                )
 
         lapi.set_up_iteration(self.lasif_root, iteration=name, events=events)
 
@@ -88,11 +92,17 @@ class LasifComponent(Component):
             # count = count["task"][0]["input"]["num_events"]
             events = self.list_events()
             batch = lapi.get_subset(
-                self.lasif_comm, count=count, events=events, existing_events=None
+                self.lasif_comm,
+                count=count,
+                events=events,
+                existing_events=None,
             )
             return batch
         else:
-            blocked_events, use_these = self.comm.salvus_opt.find_blocked_events()
+            (
+                blocked_events,
+                use_these,
+            ) = self.comm.salvus_opt.find_blocked_events()
             count = self.comm.salvus_opt.get_batch_size()
         events = self.list_events()
         prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
@@ -105,24 +115,32 @@ class LasifComponent(Component):
         if use_these:
             count -= len(use_these)
             batch = list(set(use_these + existing))
-            avail_events = list(set(events) - set(blocked_events) - set(use_these))
+            avail_events = list(
+                set(events) - set(blocked_events) - set(use_these)
+            )
             existing = list(set(existing + use_these))
             avail_events = list(set(avail_events) - set(existing))
         else:
             batch = existing
             if len(blocked_events) == 0:
                 rand_batch = self.comm.minibatch.get_random_event(
-                    n=self.comm.project.n_random_events_picked, existing=existing
+                    n=self.comm.project.n_random_events_picked,
+                    existing=existing,
                 )
                 batch = list(batch + rand_batch)
                 existing = batch
-            avail_events = list(set(events) - set(blocked_events) - set(existing))
+            avail_events = list(
+                set(events) - set(blocked_events) - set(existing)
+            )
         # TODO: existing events should only be the control group.
         # events should exclude the blocked events because that's what
         # are the options to choose from. The existing go into the poisson disc
         print(f"count: {count}")
         add_batch = lapi.get_subset(
-            self.lasif_comm, count=count, events=avail_events, existing_events=existing
+            self.lasif_comm,
+            count=count,
+            events=avail_events,
+            existing_events=existing,
         )
         batch = list(set(batch + add_batch))
         print(f"Picked batch: {batch}")
@@ -153,6 +171,22 @@ class LasifComponent(Component):
         has, _ = lapi.find_event_mesh(self.lasif_comm, event)
 
         return has
+
+    def find_event_mesh(self, event: str) -> Pathlib.Path:
+        """
+        Find the path for an event mesh
+        
+        :param event: Name of event
+        :type event: str
+        :return: Path to where the mesh is stored.
+        :rtype: Pathlib.Path
+        """
+        has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
+        if not has:
+            raise InversionsonError(
+                f"Mesh for event: {event} can not be found."
+            )
+        return pathlib.Path(mesh)
 
     def move_mesh(self, event: str, iteration: str):
         """
@@ -187,11 +221,12 @@ class LasifComponent(Component):
                     f"correct path for iteration {iteration}. "
                     f"Will not move new one."
                 )
-
+    # TODO: Write find_gradient for Pathlib
     def find_gradient(
         self,
         iteration: str,
         event: str,
+        summed=False,
         smooth=False,
         inversion_grid=False,
         just_give_path=False,
@@ -201,34 +236,62 @@ class LasifComponent(Component):
 
         :param iteration: Name of iteration
         :type iteration: str
-        :param event: Name of event
+        :param event: Name of event, None if mono-batch
         :type event: str
+        :param summed: Do you want it to be a sum of many gradients,
+        defaults to False
+        :type summed: bool
         :param smooth: Do you want the smoothed gradient, defaults to False
         :type smooth: bool
         :param inversion_grid: Do you want the gradient on inversion 
             discretization?, defaults to False
         :type inversion_grid: bool
+        :param just_give_path: If True, the gradient does not have to exist,
+        defaults to False
+        :type just_give_path: bool
         :return: Path to a gradient
         :rtype: str
         """
         gradients = self.lasif_comm.project.paths["gradients"]
         if smooth:
             gradient = os.path.join(
-                gradients, f"ITERATION_{iteration}", event, "smooth_gradient.h5"
+                gradients,
+                f"ITERATION_{iteration}",
+                event,
+                "smooth_gradient.h5",
             )
             if inversion_grid:
                 gradient = os.path.join(
-                    gradients, f"ITERATION_{iteration}", event, "smooth_grad_master.h5"
+                    gradients,
+                    f"ITERATION_{iteration}",
+                    event,
+                    "smooth_grad_master.h5",
                 )
-                if self.comm.project.meshes == "single":
+        if self.comm.project.meshes == "mono-mesh":
+            if summed:
+                if smooth:
                     gradient = os.path.join(
-                        gradients, f"ITERATION_{iteration}", event, "smooth_gradient.h5"
+                        gradients,
+                        f"ITERATION_{iteration}",
+                        "smooth_gradient.h5",
                     )
+                else:
+                    gradient = os.path.join(
+                        gradients,
+                        f"ITERATION_{iteration}",
+                        "summed_gradient.h5",
+                    )
+            else:
+                gradient = os.path.join(
+                    gradients, f"ITERATION_{iteration}", event, "gradient.h5",
+                )
         else:
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):
-                os.makedirs(os.path.join(gradients, f"ITERATION_{iteration}", event))
+                os.makedirs(
+                    os.path.join(gradients, f"ITERATION_{iteration}", event)
+                )
 
             gradient = os.path.join(
                 gradients, f"ITERATION_{iteration}", event, "gradient.h5"
@@ -332,7 +395,9 @@ class LasifComponent(Component):
         """
         if self.comm.project.info["meshes"] == "wavefield-adapted":
             return lapi.get_simulation_mesh(
-                self.lasif_comm, event_name, self.comm.project.current_iteration
+                self.lasif_comm,
+                event_name,
+                self.comm.project.current_iteration,
             )
         else:
             iteration = self.comm.project.current_iteration
@@ -362,7 +427,9 @@ class LasifComponent(Component):
             print(f"Weight set already exists for event {event}")
             return
 
-        lapi.compute_station_weights(self.lasif_comm, weight_set=event, events=[event])
+        lapi.compute_station_weights(
+            self.lasif_comm, weight_set=event, events=[event]
+        )
 
     def misfit_quantification(self, event: str, mpi=True, n=8):
         """
@@ -376,14 +443,17 @@ class LasifComponent(Component):
         :type n: int
         """
         iteration = self.comm.project.current_iteration
-        window_set = iteration + "_" + event
+        if self.comm.project.inversion_mode == "mini-batch":
+            window_set = iteration + "_" + event
+        else:
+            window_set = event
         # Check if adjoint sources exist:
         adjoint_path = os.path.join(
             self.lasif_root,
             "ADJOINT_SOURCES",
             f"ITERATION_{iteration}",
             event,
-            "custom_stf.h5",
+            "stf.h5",
         )
         if os.path.exists(adjoint_path):
             print(f"Adjoint source exists for event: {event} ")
@@ -411,14 +481,12 @@ class LasifComponent(Component):
                 iteration=iteration,
                 window_set=window_set,
                 weight_set=event,
-                events=[event]
+                events=[event],
             )
         # See if misfit has already been written into iteration toml
         if self.comm.project.misfits[event] == 0.0:
             misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
-                event=event,
-                weight_set_name=event,
-                iteration=iteration
+                event=event, weight_set_name=event, iteration=iteration
             )
         else:
             misfit = self.comm.project.misfits[event]
@@ -439,7 +507,7 @@ class LasifComponent(Component):
         :return: Path to adjoint source file
         :rtype: str
         """
-        adjoint_filename = "custom_stf.h5"
+        adjoint_filename = "stf.h5"
         adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
@@ -452,7 +520,10 @@ class LasifComponent(Component):
         print("Writing Misfit")
         iteration = self.comm.project.current_iteration
         misfit_path = os.path.join(
-            self.lasif_root, "ITERATIONS", f"ITERATION_{iteration}", "misfits.toml"
+            self.lasif_root,
+            "ITERATIONS",
+            f"ITERATION_{iteration}",
+            "misfits.toml",
         )
         if os.path.exists(misfit_path):
             if details and "compute additional" in details:
@@ -501,7 +572,9 @@ class LasifComponent(Component):
             + str(int(high_period))
             + "s.h5"
         )
-        processed_data_folder = self.lasif_comm.project.paths["preproc_eq_data"]
+        processed_data_folder = self.lasif_comm.project.paths[
+            "preproc_eq_data"
+        ]
 
         return os.path.exists(
             os.path.join(processed_data_folder, event, processed_filename)

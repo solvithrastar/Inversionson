@@ -11,7 +11,9 @@ import os
 import h5py
 
 
-def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
+def latlondepth_to_cartesian(
+    lat: float, lon: float, depth_in_km=0.0
+) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates
 
@@ -88,7 +90,7 @@ def cut_source_region_from_gradient(
     s_x, s_y, s_z = latlondepth_to_cartesian(
         lat=source_location["latitude"],
         lon=source_location["longitude"],
-        depth_in_km=source_location["depth_in_m"] * 1000.0,
+        depth_in_km=source_location["depth_in_m"] / 1000.0,
     )
 
     dist = np.sqrt(
@@ -193,3 +195,33 @@ def clip_gradient(mesh: str, percentile: float):
         )
     data[:, :, :] = clipped_data
     gradient.close()
+
+
+def sum_gradients(mesh: str, gradients: list):
+    """
+    Sum the parameters on gradients for a list of events in an iteration
+    
+    :param mesh: Path to a mesh to be used to store the summed gradients on
+    make sure it exists and is of the same dimensions as the others.
+    :type mesh: str
+    :param gradients: List of paths to gradients to be summed
+    :type gradients: list
+    """
+    # Read in the fields for these gradients and sum them accordingly
+    # store on a single mesh.
+    from salvus.mesh.unstructured_mesh import UnstructuredMesh
+    m = UnstructuredMesh.from_h5(mesh)
+    m.element_nodal_fields = {}
+    fields = UnstructuredMesh.from_h5(gradients[0]).element_nodal_fields.keys()
+
+    for _i, gradient in enumerate(gradients):
+        grad = UnstructuredMesh.from_h5(gradient)
+        for field in fields:
+            if _i == 0:
+                m.attach_field(
+                    field,
+                    np.zeros_like(grad.element_nodal_fields[field])
+                )
+            m.element_nodal_fields[field] += grad.element_nodal_fields[field]
+
+    m.write_h5(mesh)

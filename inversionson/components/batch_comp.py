@@ -60,8 +60,12 @@ class BatchComponent(Component):
         #       remember to raise a warning when it doesn't fit with
         #       what is expected.
         with h5py.File(mesh, "r") as mesh:
-            params = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1].decode()
-            params = params[2:-2].replace(" ", "").replace("grad", "").split("|")
+            params = (
+                mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1].decode()
+            )
+            params = (
+                params[2:-2].replace(" ", "").replace("grad", "").split("|")
+            )
         # Not sure if I should replace the "grad" in this case
         msg = "Parameters in gradient are not the same as inversion perameters"
         assert params == self.comm.project.inversion_params, msg
@@ -105,7 +109,9 @@ class BatchComponent(Component):
         test_grad = np.copy(full_gradient) - individual_gradient
         test_grad_norm = np.linalg.norm(test_grad)
         angle = (
-            np.arccos(np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm))
+            np.arccos(
+                np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm)
+            )
             / np.pi
             * 180.0
         )
@@ -149,10 +155,15 @@ class BatchComponent(Component):
         gradient = np.swapaxes(a=gradient, axis1=1, axis2=2)
         gradient = np.reshape(
             a=gradient,
-            newshape=(gradient.shape[0] * gradient.shape[1], gradient.shape[2]),
+            newshape=(
+                gradient.shape[0] * gradient.shape[1],
+                gradient.shape[2],
+            ),
         )
         gradient = gradient[unique]
-        gradient = self._sum_relevant_values(grad=gradient, parameters=parameters)
+        gradient = self._sum_relevant_values(
+            grad=gradient, parameters=parameters
+        )
         return gradient
 
     def get_random_event(self, n: int, existing: list) -> list:
@@ -175,7 +186,9 @@ class BatchComponent(Component):
         list_of_probabilities /= np.sum(list_of_probabilities)
 
         chosen_events = list(
-            np.random.choice(list_of_events, n, replace=False, p=list_of_probabilities)
+            np.random.choice(
+                list_of_events, n, replace=False, p=list_of_probabilities
+            )
         )
         return chosen_events
 
@@ -198,13 +211,15 @@ class BatchComponent(Component):
         events = self.comm.project.events_in_iteration
         print(f"Control batch events: {events}")
         ctrl_group = events.copy()
-        max_ctrl = self.comm.project.max_ctrl_group_size
         min_ctrl = self.comm.project.min_ctrl_group_size
         iteration = self.comm.project.current_iteration
         gradient_paths = []
         for _i, event in enumerate(events):
             gradient = self.comm.lasif.find_gradient(
-                iteration=iteration, event=event, smooth=True, inversion_grid=True
+                iteration=iteration,
+                event=event,
+                smooth=True,
+                inversion_grid=True,
             )
             gradient_paths.append(gradient)
             with h5py.File(gradient, "r") as f:
@@ -212,13 +227,19 @@ class BatchComponent(Component):
                 if _i == 0:
                     parameters = grad.attrs.get("DIMENSION_LABELS")[1].decode()
                     parameters = (
-                        parameters[2:-2].replace(" ", "").replace("grad", "").split("|")
+                        parameters[2:-2]
+                        .replace(" ", "")
+                        .replace("grad", "")
+                        .split("|")
                     )
                     coordinates = f["MODEL/coordinates"][()]
                     init_shape = coordinates.shape
                     coordinates = np.reshape(
                         a=coordinates,
-                        newshape=(init_shape[0] * init_shape[1], init_shape[2]),
+                        newshape=(
+                            init_shape[0] * init_shape[1],
+                            init_shape[2],
+                        ),
                     )
                     _, unique_indices = np.unique(
                         ar=coordinates, return_index=True, axis=0
@@ -239,7 +260,10 @@ class BatchComponent(Component):
         event_quality = {}
         for event in events:
             gradient = self.comm.lasif.find_gradient(
-                iteration=iteration, event=event, smooth=True, inversion_grid=True
+                iteration=iteration,
+                event=event,
+                smooth=True,
+                inversion_grid=True,
             )
             with h5py.File(gradient, "r") as f:
                 individual_gradient = f["MODEL/data"][()]
@@ -259,7 +283,7 @@ class BatchComponent(Component):
         batch_grad = np.copy(full_grad)
         test_batch_grad = np.copy(batch_grad)
 
-        while len(ctrl_group) > min_ctrl or len(ctrl_group) > max_ctrl:
+        while len(ctrl_group) > min_ctrl:
             redundant_gradient = min(angular_changes, key=angular_changes.get)
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,

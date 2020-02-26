@@ -1,4 +1,4 @@
-["""
+"""
 A class which takes care of all salvus opt communication.
 Currently I have only used salvus opt in exodus mode so I'll
 initialize it as such but change into hdf5 once I can.
@@ -112,7 +112,8 @@ class SalvusOptComponent(Component):
         """
         Move new model from salvus_opt location to lasif location
         """
-        iteration = self.comm.project.current_iteration
+        if not iteration:
+            iteration = self.comm.project.current_iteration
         model_path = os.path.join(self.models, iteration + ".e")
         lasif_path = os.path.join(
             self.comm.project.lasif_root,
@@ -123,14 +124,17 @@ class SalvusOptComponent(Component):
 
         shutil.copy(model_path, lasif_path)
 
-    def get_model_path(self, gradient=False) -> str:
+    def get_model_path(self, gradient=False, iteration=None) -> str:
         """
         Get path of model related to iteration
 
         :param gradient: Is it a gradient?
         :type gradient: bool
+        :param iteration: Name of iteration, if none given will use newest.
+        :type iteration: str
         """
-        iteration = self.comm.project.current_iteration
+        if not iteration:
+            iteration = self.comm.project.current_iteration
         if gradient:
             return os.path.join(self.models, "gradient_" + iteration + ".e")
         else:
@@ -151,13 +155,21 @@ class SalvusOptComponent(Component):
                 "misfits.toml",
             )
         )
-        events_list = []
         task = self.read_salvus_opt()
-
+        if self.comm.project.inversion_mode == "mono-batch":
+            total_misfit = 0
+        else:
+            event_list = []
         for event in events:
-            misfit = misfits["event_misfits"][event]
-            events_list.append({"misfit": float(misfit), "name": event})
-        task["task"][0]["output"]["event"] = events_list
+            if self.comm.project.inversion_mode == "mono-batch":
+                total_misfit += misfits["event_misfits"][event]
+            else:
+                misfit = misfits["event_misfits"][event]
+                event_list.append({"misfit": float(misfit), "name": event})
+        if self.comm.project.inversion_mode == "mono-batch":
+            task["task"][0]["output"]["event"] = total_misfit
+        else:
+            task["task"][0]["output"]["event"] = event_list
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
@@ -177,19 +189,23 @@ class SalvusOptComponent(Component):
     def write_gradient_to_task_toml(self):
         """
         Give salvus opt the path to the iteration gradient.
-        Currently only for a single summed gradient, might change.
-        Make sure you move gradient to salvus opt directory first.
         """
         iteration = self.comm.project.current_iteration
         events_used = self.comm.project.events_in_iteration
         events_list = []
         task = self.read_salvus_opt()
-        for event in events_used:
+        if self.comm.project.inversion_mode == "mini-batch":
+            for event in events_used:
+                grad_path = self.comm.lasif.find_gradient(
+                    iteration=iteration, event=event, smooth=True, inversion_grid=True
+                )
+                events_list.append({"gradient": grad_path, "name": event})
+            task["task"][0]["output"]["event"] = events_list
+        else:
             grad_path = self.comm.lasif.find_gradient(
-                iteration=iteration, event=event, smooth=True, inversion_grid=True
+                iteration=iteration, event=None, smooth=True, inversion_grid=True
             )
-            events_list.append({"gradient": grad_path, "name": event})
-        task["task"][0]["output"]["event"] = events_list
+            task["task"][0]["output"]["gradient"] = grad_path
 
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
@@ -258,14 +274,7 @@ class SalvusOptComponent(Component):
         and if there are multiple we look at the one with the smallest
         trust region.
         """
-        models = []
-        for r, d, f in os.walk(self.models):
-            for file in f:
-                if "gradient" not in file:
-                    models.append(file)
-
-        if len(models) == 0:
-            raise InversionsonOptError("Please initialize inversion in Salvus Opt")
+        models = self._get_all_model_names()
         iterations = self._parse_model_files(models)
 
         new_it_number = max(iterations)
@@ -280,14 +289,7 @@ class SalvusOptComponent(Component):
         Get the name of the previous iteration in order to find
         information needed from previous iteration.
         """
-        models = []
-        for r, d, f in os.walk(self.models):
-            for file in f:
-                if "gradient" not in file:
-                    models.append(file)
-
-        if len(models) == 0:
-            raise InversionsonError("Please initialize inversion in Salvus Opt")
+        models = self._get_all_model_names()
         iterations = self._parse_model_files(models)
 
         if not tr_region:
@@ -306,20 +308,32 @@ class SalvusOptComponent(Component):
             tr_region = max(iterations[it_number])
             return self._create_iteration_name(it_number, tr_region)
 
+    def get_name_for_accepted_iteration_number(self, number: int):
+        """
+        Can be used to get the full name of an iteration with a specific
+        number. If one wants iteration number 5 the input parameter
+        should be 5 and the full iteration number will be given. If there
+        are many iterations with that number, the smallest trust region
+        will be given.
+        
+        :param number: Number of iteration
+        :type number: int
+        """
+        models = self._get_all_model_names()
+        iterations = self._parse_model_files(models)
+        if not number in iterations.keys():
+            raise InversionsonError(f"Iteration number {number} does "
+                                    "not exist.")
+        tr_region = min(iterations[number])
+        return self._create_iteration_name(it_number, tr_region)
+
     def first_trial_model_of_iteration(self) -> bool:
         """
         In order to distinguish between the first trust region test and the
         coming ones, this function returns true if there is only one model
         existing for the newest.
         """
-        models = []
-        for r, d, f in os.walk(self.models):
-            for file in f:
-                if "gradient" not in file:
-                    models.append(file)
-
-        if len(models) == 0:
-            raise InversionsonError("Please initialize inversion in Salvus Opt")
+        models = self._get_all_model_names()
         iterations = self._parse_model_files(models)
         if len(iterations[max(iterations)]) == 1:
             return True
@@ -384,6 +398,24 @@ class SalvusOptComponent(Component):
         #         blocked_events.append(key)
         return blocked_events, use_these
 
+    def _get_all_model_names(self) -> list:
+        """
+        Get name of all the existing models
+        
+        :return: list of model names
+        :rtype: list
+        """
+        models = []
+        for r, d, f in os.walk(self.models):
+            for file in f:
+                if "gradient" not in file:
+                    if not file.endswith(".xdmf"):
+                        models.append(file[:-3])
+
+        if len(models) == 0:
+            raise InversionsonOptError("Please initialize inversion in Salvus Opt")
+        return models
+        
     def _parse_model_files(self, models: list) -> dict:
         """
         Read model file names from salvus opt and return a dict
@@ -397,23 +429,22 @@ class SalvusOptComponent(Component):
         iterations = {}
 
         for model in models:
-            if not model[-4:] == "xdmf":
-                if len(model) < 17:
-                    # The first iteration is shorter
-                    iteration = int(model[2:6])
-                    tr_region = 999.999999
-                    if iteration in iterations:
-                        iterations[iteration].append(tr_region)
-                    else:
-                        iterations[iteration] = [tr_region]
+            if len(model) < 17:
+                # The first iteration is shorter
+                iteration = int(model[2:6])
+                tr_region = 99999.999999
+                if iteration in iterations:
+                    iterations[iteration].append(tr_region)
                 else:
-                    iteration = int(model[2:6])
-                    tr_region = float(model[22:-3])
+                    iterations[iteration] = [tr_region]
+            else:
+                iteration = int(model[2:6])
+                tr_region = float(model[22:])
 
-                    if iteration in iterations:
-                        iterations[iteration].append(tr_region)
-                    else:
-                        iterations[iteration] = [tr_region]
+                if iteration in iterations:
+                    iterations[iteration].append(tr_region)
+                else:
+                    iterations[iteration] = [tr_region]
 
         return iterations
 
@@ -442,4 +473,3 @@ class SalvusOptComponent(Component):
         tr_region_part = f"{region_parts[0]}.{region_parts[1]}"
 
         return "it" + num_part + "_model_TrRadius_" + tr_region_part
-]

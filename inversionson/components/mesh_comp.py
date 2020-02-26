@@ -1,6 +1,9 @@
 from __future__ import absolute_import
 from .component import Component
 import numpy as np
+import sys
+from pathlib import Path
+import os
 
 # import os
 
@@ -18,22 +21,62 @@ class SalvusMeshComponent(Component):
 
     def __init__(self, communicator, component_name):
         super(SalvusMeshComponent, self).__init__(communicator, component_name)
+        self.meshes = Path(self.comm.project.lasif_root) / "MODELS"
+        self.event_meshes = self.meshes / "EVENT_MESHES"
+        self.average_meshes = self.meshes / "AVERAGE_MESHES"
 
-    def create_mesh(self, lasif: object, event: str):
+    def create_mesh(self, event: str, n_lat: int):
         """
-        Create a smoothiesem mesh for an event
+        Create a smoothiesem mesh for an event. I'll keep refinements fixed
+        for now.
         
-        :param lasif: lasif communicator
-        :type lasif: object
         :param event: Name of event
         :type event: str
+        :param n_lat: Elements per quarter in azimuthal dimension
+        :type n_lat: int
         """
-        # Get relavant information from lasif. Use mesher to make a mesh
-        # Put it into the correct directory.
-        # I need to import something from a private code.
-        # How do I do that?
+        sys.path.append("/home/solvi/workspace/Meshing/inversionson_smoothie/")
+        from global_mesh_smoothiesem import mesh as tmp_mesher
+        from salvus.mesh import simple_mesh
 
-    def add_smoothing_fields(self, event: str) -> object:
+        info = {}
+        info["period"] = self.comm.project.period_low
+        source_info = self.comm.lasif.get_source(event_name=event)
+        if isinstance(source_info, list):
+            source_info = source_info[0]
+        info["latitude"] = source_info["latitude"]
+        info["longitude"] = source_info["longitude"]
+        info["n_lat"] = n_lat
+        info["event_name"] = event
+        sm = simple_mesh.AxiSEM()
+        sm.basic_model = "prem_ani_no_crust"  # Maybe set as an import param
+        sm.basic.period = self.comm.project.period_low
+        sm.advanced.elements_per_wavelength = 1.5
+        sm.validate()
+        print(sm)
+
+        m = tmp_mesher(sm.get_dictionary(), tensor_order=1)
+
+        theta_min_lat_refine = [40.0]
+        theta_max_lat_refine = [140.0]
+        r_min_lat_refine = [6250.0 / 6371.0]  # Should adapt this to 1D model
+
+        m = tmp_mesher(
+            sm.get_dictionary(),
+            tensor_order=4,
+            theta_max_lat_refine=theta_max_lat_refine,
+            theta_min_lat_refine=theta_min_lat_refine,
+            r_min_lat_refine=r_min_lat_refine,
+            n_lat=n_lat,
+            src_lat=source_info["latitude"],
+            src_lon=source_info["longitude"],
+        )
+        mesh_file = self.event_meshes / event / "mesh.h5"
+        if not os.path.exists(os.path.dirname(mesh_file)):
+            os.makedirs(os.path.dirname(mesh_file))
+        m.write_h5(mesh_file)
+
+    def add_smoothing_fields(self, event: str) -> object: # @TODO: Need to rewrite this whole thing for new smoothing interface
         """
         The diffusion equation smoothing needs certain parameters for
         smoothing. These parameters need to be appended to the mesh as fields.
@@ -47,7 +90,7 @@ class SalvusMeshComponent(Component):
         import h5py
 
         # TODO: Make the smoothing fields be a different mesh.
-        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         iteration = self.comm.project.current_iteration
         gradient = self.comm.lasif.find_gradient(
@@ -58,7 +101,7 @@ class SalvusMeshComponent(Component):
         # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
 
         # shutil.copyfile(gradient, smoothing_fields_mesh)
-        smoothing_length = 350.0 * 1000.0 # Hardcoded for now
+        smoothing_length = 350.0 * 1000.0  # Hardcoded for now
         # dimstr = '[ ' + ' | '.join(["M0", "M1"]) + ' ]'
 
         # with h5py.File(smoothing_fields_mesh, "r+") as fh:
@@ -80,7 +123,9 @@ class SalvusMeshComponent(Component):
         smooth_gradient = UnstructuredMesh.from_h5(gradient)
         smooth_gradient.elemental_fields = {}
 
-        mesh.attach_field("M0", np.ones_like(mesh.get_element_nodes()[:, :, 0]))
+        mesh.attach_field(
+            "M0", np.ones_like(mesh.get_element_nodes()[:, :, 0])
+        )
         mesh.attach_field(
             "M1",
             0.5
@@ -89,7 +134,10 @@ class SalvusMeshComponent(Component):
         )
         mesh.attach_field("fluid", np.ones(mesh.nelem))
 
-        print(f"Smoothing fields M0 and M1 added to gradient for " f"event {event}")
+        print(
+            f"Smoothing fields M0 and M1 added to gradient for "
+            f"event {event}"
+        )
         return mesh, smooth_gradient
 
     def add_field_from_one_mesh_to_another(
@@ -106,7 +154,7 @@ class SalvusMeshComponent(Component):
         :param field_name: Name of the field to copy between them.
         :type field_name: str
         """
-        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import os
         import shutil
 
@@ -130,7 +178,7 @@ class SalvusMeshComponent(Component):
         :param filename: path to hdf5 file
         :return:
         """
-        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         mesh = UnstructuredMesh.from_h5(filename)
         mesh.write_h5(filename)
@@ -142,7 +190,7 @@ class SalvusMeshComponent(Component):
         lasif folder afterwards.
         As this is a quickfix, I will make it for my specific case.
         """
-        from salvus_mesh.unstructured_mesh import UnstructuredMesh
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import os
         import numpy as np
 
@@ -151,7 +199,9 @@ class SalvusMeshComponent(Component):
         )
         iteration = self.comm.project.current_iteration
         opt_mesh = os.path.join(
-            self.comm.project.paths["salvus_opt"], "PHYSICAL_MODELS", f"{iteration}.h5"
+            self.comm.project.paths["salvus_opt"],
+            "PHYSICAL_MODELS",
+            f"{iteration}.h5",
         )
         m_opt = UnstructuredMesh.from_h5(opt_mesh)
         m_init = UnstructuredMesh.from_h5(initial_model)
@@ -163,8 +213,65 @@ class SalvusMeshComponent(Component):
         m_opt.attach_field(name="ROI", data=roi)
 
         iteration_mesh = os.path.join(
-            self.comm.project.lasif_root, "MODELS", f"ITERATION_{iteration}", "mesh.h5"
+            self.comm.project.lasif_root,
+            "MODELS",
+            f"ITERATION_{iteration}",
+            "mesh.h5",
         )
         if not os.path.exists(os.path.dirname(iteration_mesh)):
             os.makedirs(os.path.dirname(iteration_mesh))
         m_opt.write_h5(iteration_mesh)
+
+    def get_average_model(self, iteration_range: tuple) -> Path:
+        """
+        Get an average model between a list of iteration numbers.
+        Can be used to get a smoother misfit curve for validation
+        data set.
+        
+        :param iteration_range: From iteration to iteration tuple
+        :type iterations: tuple
+        """
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
+
+        folder_name = f"it_{iteration_range[0]}_to_{iteration_range[1]}"
+        full_path = self.average_meshes / folder_name / "mesh.h5"
+        if not os.path.exists(os.path.dirname(full_path)):
+            os.makedirs(os.path.dirname(full_path))
+        # We copy the newest mesh from SALVUS_OPT to LASIF and write the
+        # average fields onto those.
+        model = self.comm.salvus_opt.get_model_path()
+        shutil.copy(model, full_path)
+
+        m = UnstructuredMesh.from_h5(full_path)
+        fields = m.element_nodal_fields
+        new_fields = {}
+        for field in fields.keys():
+            new_fields[field] = np.zeros_like(fields[field])
+        m.element_nodal_fields = {}
+        for iteration in range(iteration_range[0], iteration_range[1]):
+            it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
+                number=iteration
+            )
+            model_path = self.comm.salvus_opt.get_model_path(iteration=it)
+            m_tmp = UnstructuredMesh.from_h5(model_path)
+            for field_name, field in new_fields.items():
+                field += m_tmp.element_nodal_fields[field_name]
+
+        for field_name, field in new_fields.items():
+            field /= len(range(iteration_range[0], iteration_range[1]))
+            m.attach_field(field_name, field)
+        m.write_h5(full_path)
+        print(
+            f"Wrote and average model of iteration {iteration_range[0]} to"
+            f" iteration {iteration_range[1]} onto mesh: {full_path}"
+        )
+
+        return full_path
+
+        # Save similar looking fields as zeros
+        # Delete fields
+        # Sequentially go through old models and get fields
+        # Add them to the fields of zeros
+        # Divide all the new fields by len(range(iteration_range))
+        # Add fields to mesh object
+        # Write mesh out as hdf5.
