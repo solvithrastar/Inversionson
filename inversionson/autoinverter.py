@@ -540,23 +540,22 @@ class AutoInverter(object):
         :type event: str
         """
         job = self.comm.project.smoothing_job
-        for param in self.comm.project.inversion_params:
-            if self.comm.project.meshes == "mono-mesh":
-                condition = job[param]["retrieved"]
-                message = "Summed gradient already smoothed."
-            else:
-                condition = job[event][param]["retrived"]
-                message = f"Gradient for event {event} already smoothed."
-            if condition:
-                print(
-                    message +
-                    f" Will not repeat. Change its status in iteration toml "
-                    f"if you want to smooth gradient again"
-                )
-                return
+        if self.comm.project.inversion_mode == "mono-batch":
+            condition = job["retrieved"]
+            message = "Summed gradient already smoothed."
+        else:
+            condition = job[event]["retrived"]
+            message = f"Gradient for event {event} already smoothed."
+        if condition:
+            print(
+                message +
+                f" Will not repeat. Change its status in iteration toml "
+                f"if you want to smooth gradient again"
+            )
+            return
         iteration = self.comm.project.current_iteration
         
-        if self.comm.project.meshes == "mono-mesh":
+        if self.comm.project.inversion_mode == "mono-batch":
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=None,
@@ -569,55 +568,121 @@ class AutoInverter(object):
                 event=event,
                 smooth=False
             )
-        for _i, par in enumerate(self.comm.project.inversion_params):
-            if job[event][par]["submitted"]:
-                if job[event][par]["retrieved"]:
-                    print(f"Simulation for event {event} already done.")
-                    print("If you want it redone, change its status in iteration toml")
-                    continue
-                else:
-                    status = str(
-                        self.comm.salvus_flow.get_job_status(
-                            event=event, sim_type="smoothing", par=par
-                        )
-                    )
-                    if status == "JobStatus.running":
-                        print(f"Adjoint job for event {event} is running ")
-                        print("Will not resubmit. ")
-                        print("You can work with jobs using salvus-flow")
-                        return
-                    elif status == "JobStatus.unknown":
-                        print(f"Status of job for event {event} is unknown")
-                        print(f"Will resubmit")
-                    elif status == "JobStatus.cancelled":
-                        print(f"Status of job for event {event} is cancelled")
-                        print(f"Will resubmit")
-                    elif status == "JobStatus.finished":
-                        print(f"Status of job for event {event} is finished")
-                        print("Will retrieve and update toml")
-                        self.retrieve_gradient(event, smooth=True, par=par)
-                        self.comm.project.change_attribute(
-                            attribute=f'smoothing_job["{event}"]["{par}"]["retrieved"]',
-                            new_value=True,
-                        )
-                        self.comm.project.update_iteration_toml()
-                        continue
-                    else:
-                        print("Jobstatus unknown for event {event}")
-                        print("Will resubmit")
+        if job[event]["submitted"]:
+            if job[event]["retrieved"]:
+                print(f"Simulation for event {event} already done.")
+                print("If you want it redone, change its status in iteration toml")
+                continue
+            else:
+                status = self.comm.salvus_flow.get_job_status(
+                                event, sim_type
+                                )
+                if all(x.name == 'finished' for x in status):
                     print(
-                        f"Gradient for event {event} already smooth."
-                        f" Will not repeat. Change its status in iteration toml "
-                        f"if you want to smooth gradient again"
+                        f"All parameters have been smoothed for event {event}."
+                        " Will retrieve gradient.")
+                    self.retrieve_gradient(event, smooth=True)
+                    self.comm.project.change_attribute(
+                        attribute=f'smoothing_job["{event}"]["retrieved"]',
+                        new_value=True,
                     )
-                    continue
-            if _i == 0:
-                mesh, smoothed_gradient = self.prepare_gradient_for_smoothing(event)
-            simulation = self.comm.smoother.generate_diffusion_object(
-                gradient=gradient, par=par, mesh=mesh
-            )
-            self.comm.salvus_flow.submit_smoothing_job(event, simulation, par)
-            self.comm.project.update_iteration_toml()
+                    self.comm.project.update_iteration_toml()
+                    return
+                # If they are not all finished we check to see what's going on
+                params = []
+
+                for _i, s in enumerate(status):
+                    if s.name == 'finished':
+                        params.append(s)
+                    else:
+                        print(
+                            f"Status = {s.name}, event: {event} "
+                            f"for smoothing job {_i}/{len(status)}")
+                        if s.name == "pending" or s.name == "running":
+                            continue
+                        else:
+                            print("Job failed. Will resubmit")
+                            # We don't have the reposts included here for now
+                            # if reposts[event] >= 3:
+                            #     print(
+                            #         "No, I've actually reposted "
+                            #         "this too often Something must "
+                            #         "be wrong"
+                            #         )
+
+                            #     raise InversionsonError(
+                            #         "Too many reposts"
+                            #         )
+                            # TODO: Make this a bit smoother, should work though.
+                            self.comm.project.change_attribute(
+                            attribute=f'smoothing_job["{event}"]["submitted"]',
+                            new_value=False,
+                            )
+                            self.comm.project.update_iteration_toml()
+                            self.smooth_gradient(event)
+                            # reposts[event] += 1
+
+                if len(params) == len(status):
+                    print(
+                        f"All parameters for event {event} have "
+                        "now been smoothed"
+                        )
+                    self.retrieve_gradient(event, smooth=True)
+                    self.comm.project.change_attribute(
+                        attribute=f'smoothing_job["{event}"]["retrieved"]',
+                        new_value=True
+                    )
+                # I'll keep the old version in here for now, just for later reference when things don't work
+                # status = str(
+                #     self.comm.salvus_flow.get_job_status(
+                #         event=event, sim_type="smoothing"
+                #     )
+                # )
+                # if status == "JobStatus.running":
+                #     print(f"Adjoint job for event {event} is running ")
+                #     print("Will not resubmit. ")
+                #     print("You can work with jobs using salvus-flow")
+                #     return
+                # elif status == "JobStatus.unknown":
+                #     print(f"Status of job for event {event} is unknown")
+                #     print(f"Will resubmit")
+                # elif status == "JobStatus.cancelled":
+                #     print(f"Status of job for event {event} is cancelled")
+                #     print(f"Will resubmit")
+                # elif status == "JobStatus.finished":
+                #     print(f"Status of job for event {event} is finished")
+                #     print("Will retrieve and update toml")
+                #     self.retrieve_gradient(event, smooth=True, par=par)
+                #     self.comm.project.change_attribute(
+                #         attribute=f'smoothing_job["{event}"]["{par}"]["retrieved"]',
+                #         new_value=True,
+                #     )
+                #     self.comm.project.update_iteration_toml()
+                #     continue
+                # else:
+                #     print("Jobstatus unknown for event {event}")
+                #     print("Will resubmit")
+                # print(
+                #     f"Gradient for event {event} already smooth."
+                #     f" Will not repeat. Change its status in iteration toml "
+                #     f"if you want to smooth gradient again"
+                # )
+                # continue
+        # Don't think this is needed anymore but I'll keep it there for now
+        # if _i == 0:
+        #     mesh, smoothed_gradient = self.prepare_gradient_for_smoothing(event)
+        # simulation = self.comm.smoother.generate_diffusion_object(
+        #     gradient=gradient, par=par, mesh=mesh
+        # )
+        smoothing_config = self.comm.smoother.generate_smoothing_config(
+            event=event
+        )
+        run_smoother = self.comm.smoother.run_smoother(
+            smoothing_config=smoothing_config,
+            event=event
+        )
+
+        self.comm.project.update_iteration_toml()
 
     def monitor_jobs(self, sim_type: str, events=None, reposts=None):
         """
