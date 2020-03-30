@@ -309,20 +309,24 @@ class BatchComponent(Component):
                 del angular_changes[redundant_gradient]
                 event_quality[redundant_gradient] = 1 / len(ctrl_group)
                 ctrl_group.remove(redundant_gradient)
-
-        grads_dropped = self._dropout(ctrl_group)
-        tmp_event_qual = event_quality.copy()
-        best_non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
-        for grad in grads_dropped:
-            non_ctrl_group_event = max(tmp_event_qual, key=tmp_event_qual.get)
-            print(f"Best non: {best_non_ctrl_group_event}")
-            print(f"Event Quality: {event_quality}")
-            event_quality[grad] = event_quality[best_non_ctrl_group_event]
-            ctrl_group.remove(grad)
-            ctrl_group.append(non_ctrl_group_event)
-            del tmp_event_qual[non_ctrl_group_event]
-            print(f"Event: {grad} randomly dropped from control group.\n")
-            print(f"Replaced by event: {non_ctrl_group_event} \n")
+        if "it0000" not in iteration:
+            grads_dropped = self._dropout(ctrl_group)
+            tmp_event_qual = event_quality.copy()
+            best_non_ctrl_group_event = max(
+                tmp_event_qual, key=tmp_event_qual.get
+            )
+            for grad in grads_dropped:
+                non_ctrl_group_event = max(
+                    tmp_event_qual, key=tmp_event_qual.get
+                )
+                print(f"Best non: {best_non_ctrl_group_event}")
+                print(f"Event Quality: {event_quality}")
+                event_quality[grad] = event_quality[best_non_ctrl_group_event]
+                ctrl_group.remove(grad)
+                ctrl_group.append(non_ctrl_group_event)
+                del tmp_event_qual[non_ctrl_group_event]
+                print(f"Event: {grad} randomly dropped from control group.\n")
+                print(f"Replaced by event: {non_ctrl_group_event} \n")
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val

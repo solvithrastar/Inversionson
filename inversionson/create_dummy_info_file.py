@@ -20,6 +20,8 @@ def create_info(root=None):
     info["inversion_mode"] = "mini-batch"
     inversion_mode_comment = "Pick between mini-batch and mono-batch"
     info["meshes"] = "multi-mesh"
+    info["Meshing"] = {}
+    info["Meshing"]["elements_per_azimuthal_quarter"] = 4
     meshes_comment = "Pick between 'multi-mesh' or 'mono-mesh'"
     info["model_interpolation_mode"] = "gll_2_gll"
     info["gradient_interpolation_mode"] = "gll_2_gll"
@@ -72,6 +74,13 @@ def create_info(root=None):
     info["comments"]["Smoothing"][
         "smoothing_lengths"
     ] = smoothing_lengths_comment
+    info["comments"]["Meshing"] = {}
+    epaq_comment = (
+        "Only used for multi-mesh. Needs to be higher for "
+        "more complex models."
+        )
+
+    info["comments"]["Meshing"]["elements_per_azimuthal_quarter"] epaq_comment
 
     return info
 

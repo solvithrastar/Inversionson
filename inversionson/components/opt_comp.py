@@ -35,7 +35,8 @@ class SalvusOptComponent(Component):
         run_script = os.path.join(self.path, "run_salvus_opt.sh")
         if not os.path.exists(run_script):
             raise InversionsonError(
-                "Please create a shell script to run " "Salvus opt in your opt folder."
+                "Please create a shell script to run "
+                "Salvus opt in your opt folder."
             )
         os.chdir(self.path)
         run_script = f"sh {run_script}"
@@ -182,9 +183,15 @@ class SalvusOptComponent(Component):
         opt to work its magic.
         """
         for event in self.comm.project.events_in_iteration:
-            if os.path.exists(os.path.join(self.inv_models, f"gradient_{event}.h5")):
-                os.remove(os.path.join(self.inv_models, f"gradient_{event}.h5"))
-                os.remove(os.path.join(self.inv_models, f"gradient_{event}.xdmf"))
+            if os.path.exists(
+                os.path.join(self.inv_models, f"gradient_{event}.h5")
+            ):
+                os.remove(
+                    os.path.join(self.inv_models, f"gradient_{event}.h5")
+                )
+                os.remove(
+                    os.path.join(self.inv_models, f"gradient_{event}.xdmf")
+                )
 
     def write_gradient_to_task_toml(self):
         """
@@ -197,13 +204,19 @@ class SalvusOptComponent(Component):
         if self.comm.project.inversion_mode == "mini-batch":
             for event in events_used:
                 grad_path = self.comm.lasif.find_gradient(
-                    iteration=iteration, event=event, smooth=True, inversion_grid=True
+                    iteration=iteration,
+                    event=event,
+                    smooth=True,
+                    inversion_grid=True,
                 )
                 events_list.append({"gradient": grad_path, "name": event})
             task["task"][0]["output"]["event"] = events_list
         else:
             grad_path = self.comm.lasif.find_gradient(
-                iteration=iteration, event=None, smooth=True, inversion_grid=True
+                iteration=iteration,
+                event=None,
+                smooth=True,
+                inversion_grid=True,
             )
             task["task"][0]["output"]["gradient"] = grad_path
 
@@ -228,7 +241,10 @@ class SalvusOptComponent(Component):
         task = self.read_salvus_opt()
         for event in events_used:
             grad_path = self.comm.lasif.find_gradient(
-                iteration=iteration, event=event, smooth=True, inversion_grid=True
+                iteration=iteration,
+                event=event,
+                smooth=True,
+                inversion_grid=True,
             )
 
             events_list.append(
@@ -279,7 +295,9 @@ class SalvusOptComponent(Component):
 
         new_it_number = max(iterations)
         if len(iterations[new_it_number]) > 4:
-            raise InversionsonError("Looks like model has been rejected too often")
+            raise InversionsonError(
+                "Looks like model has been rejected too often"
+            )
         new_it_tr_region = min(iterations[new_it_number])
 
         return self._create_iteration_name(new_it_number, new_it_tr_region)
@@ -322,8 +340,9 @@ class SalvusOptComponent(Component):
         models = self._get_all_model_names()
         iterations = self._parse_model_files(models)
         if not number in iterations.keys():
-            raise InversionsonError(f"Iteration number {number} does "
-                                    "not exist.")
+            raise InversionsonError(
+                f"Iteration number {number} does " "not exist."
+            )
         tr_region = min(iterations[number])
         return self._create_iteration_name(it_number, tr_region)
 
@@ -413,9 +432,11 @@ class SalvusOptComponent(Component):
                         models.append(file[:-3])
 
         if len(models) == 0:
-            raise InversionsonOptError("Please initialize inversion in Salvus Opt")
+            raise InversionsonOptError(
+                "Please initialize inversion in Salvus Opt"
+            )
         return models
-        
+
     def _parse_model_files(self, models: list) -> dict:
         """
         Read model file names from salvus opt and return a dict
@@ -463,7 +484,7 @@ class SalvusOptComponent(Component):
         num_part = str(number)
         while len(num_part) < 4:
             num_part = "0" + num_part
-        if tr_region == 9.999999:
+        if tr_region == 99999.999999:
             return "it" + num_part + "_model"
 
         tr_region_part = str(tr_region)

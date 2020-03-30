@@ -40,7 +40,7 @@ class SalvusMeshComponent(Component):
         from salvus.mesh import simple_mesh
 
         info = {}
-        info["period"] = self.comm.project.period_low
+        info["period"] = self.comm.project.min_period
         source_info = self.comm.lasif.get_source(event_name=event)
         if isinstance(source_info, list):
             source_info = source_info[0]
@@ -49,9 +49,9 @@ class SalvusMeshComponent(Component):
         info["n_lat"] = n_lat
         info["event_name"] = event
         sm = simple_mesh.AxiSEM()
-        sm.basic_model = "prem_ani_no_crust"  # Maybe set as an import param
-        sm.basic.period = self.comm.project.period_low
-        sm.advanced.elements_per_wavelength = 1.5
+        sm.basic.model = "prem_ani_one_crust"  # Maybe set as an import param
+        sm.basic.min_period_in_seconds = self.comm.project.min_period
+        sm.basic.elements_per_wavelength = 1.5
         sm.validate()
         print(sm)
 
@@ -76,7 +76,9 @@ class SalvusMeshComponent(Component):
             os.makedirs(os.path.dirname(mesh_file))
         m.write_h5(mesh_file)
 
-    def add_smoothing_fields(self, event: str) -> object: # @TODO: Need to rewrite this whole thing for new smoothing interface
+    def add_smoothing_fields(
+        self, event: str
+    ) -> object:  # @TODO: Need to rewrite this whole thing for new smoothing interface
         """
         The diffusion equation smoothing needs certain parameters for
         smoothing. These parameters need to be appended to the mesh as fields.
@@ -275,3 +277,22 @@ class SalvusMeshComponent(Component):
         # Divide all the new fields by len(range(iteration_range))
         # Add fields to mesh object
         # Write mesh out as hdf5.
+
+    def add_region_of_interest(self, event: str):
+        """
+        Region of interest is the region where the gradient is computed
+        and outside the region, it is not computed.
+        Currently we add the region of interest as an elemental field
+        which is the oposite of the fluid field.
+        
+        :param event: Name of event
+        :type event: str
+        """
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
+
+        mesh = self.comm.lasif.find_event_mesh(event)
+        m = UnstructuredMesh.from_h5(mesh)
+        fluid = m.elemental_fields["fluid"]
+        roi = 1.0 - fluid
+        m.attach_field("ROI", roi)
+        m.write_h5(mesh)

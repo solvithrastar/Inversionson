@@ -53,22 +53,19 @@ class ProjectComponent(Component):
             config_dict = toml.load(fh)
 
         simulation_info = {}
-        solver_settings = config_dict["solver_settings"]
-        simulation_info["start_time"] = -solver_settings["time_increment"]
+        solver_settings = config_dict["simulation_settings"]
+        simulation_info["start_time"] = solver_settings["start_time_in_s"]
         simulation_info["number_of_time_steps"] = int(
             round(
-                (solver_settings["end_time"] - simulation_info["start_time"])
-                / solver_settings["time_increment"]
+                (solver_settings["end_time_in_s"] - simulation_info["start_time"])
+                / solver_settings["time_step_in_s"]
             )
         )
-        simulation_info["end_time"] = solver_settings["end_time"]
-        simulation_info["time_step"] = solver_settings["time_increment"]
-        simulation_info["period_low"] = config_dict["data_processing"][
-            "highpass_period"
-        ]
-        simulation_info["period_high"] = config_dict["data_processing"][
-            "lowpass_period"
-        ]
+        simulation_info["end_time"] = solver_settings["end_time_in_s"]
+        simulation_info["time_step"] = solver_settings["time_step_in_s"]
+        simulation_info["min_period"] = solver_settings["minimum_period_in_s"]
+        simulation_info["max_period"] = solver_settings["maximum_period_in_s"]
+        simulation_info["attenuation"] = config_dict["salvus_settings"]["attenuation"]
 
         return simulation_info
 
@@ -218,6 +215,19 @@ class ProjectComponent(Component):
                 "Only implemented inversion modes are mini-batch or mono-batch"
             )
 
+        if "meshes" not in self.info.keys():
+            raise InversionsonError(
+                "We need to know what sorts of meshes you use. "
+                "Either mono-mesh for simulation mesh = inversion mesh "
+                "or multi-mesh for wavefield adapted meshes. "
+                "Key: meshes"
+            )
+
+        if self.info["meshes"] not in ["mono-mesh", "multi-mesh"]:
+            raise InversionsonError(
+                "We only accept 'mono-mesh' or 'multi-mesh'"
+            )
+
         # Smoothing
         if "Smoothing" not in self.info.keys():
             raise InversionsonError(
@@ -249,7 +259,7 @@ class ProjectComponent(Component):
 
         if self.info["Smoothing"]["smoothing_mode"] == "anisotropic":
             if not isinstance(
-                self.info["Smoothing"]["smoothing_lengts"], list
+                self.info["Smoothing"]["smoothing_lengths"], list
             ):
                 raise InversionsonError(
                     "Make sure you input a list as smoothing_lengths if you "
@@ -275,7 +285,28 @@ class ProjectComponent(Component):
                         "be smoothed with equally many wavelengths. You can "
                         "also just give a number."
                     )
+        if (
+            "Meshing" not in self.info.keys()
+            and self.info["meshes"] == "multi-mesh"
+        ):
+            raise InversionsonError(
+                "We need some information regarding your meshes. "
+                "We need to know how many elements you want per azimuthal "
+                "quarter. Key: Meshing"
+            )
 
+        if "elements_per_azimuthal_quarter" not in self.info["Meshing"].keys():
+            raise InversionsonError(
+                "We need to know how many elements you need per azimuthal "
+                "quarter. Key: Meshing.elements_per_azimuthal_quarter"
+            )
+
+        if not isinstance(
+            self.info["Meshing"]["elements_per_azimuthal_quarter"], int
+        ):
+            raise InversionsonError(
+                "Elements per azimuthal quarter need to be an integer."
+            )
         # # Salvus Opt
         # if "salvus_opt_dir" not in self.info.keys():
         #     raise InversionsonError(
@@ -396,8 +427,9 @@ class ProjectComponent(Component):
         self.time_step = self.simulation_dict["time_step"]
         self.start_time = self.simulation_dict["start_time"]
         self.end_time = self.simulation_dict["end_time"]
-        self.period_low = self.simulation_dict["period_low"]
-        self.period_high = self.simulation_dict["period_high"]
+        self.min_period = self.simulation_dict["min_period"]
+        self.max_period = self.simulation_dict["max_period"]
+        self.attenuation = self.simulation_dict["attenuation"]
 
         # Inversion attributes
         self.inversion_root = self.info["inversion_path"]
@@ -405,6 +437,10 @@ class ProjectComponent(Component):
         self.inversion_id = self.info["inversion_id"]
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
+        if self.meshes == "multi-mesh":
+            self.elem_per_quarter = self.info["Meshing"][
+                "elements_per_azimuthal_quarter"
+            ]
         self.model_interpolation_mode = self.info["model_interpolation_mode"]
         self.gradient_interpolation_mode = self.info[
             "gradient_interpolation_mode"
@@ -518,16 +554,19 @@ class ProjectComponent(Component):
             "name": "",
             "submitted": False,
             "retrieved": False,
+            "reposts": 0,
         }
         a_job_dict = {
             "name": "",
             "submitted": False,
             "retrieved": False,
+            "reposts": 0,
         }
         s_job_dict = {
             "name": "",
             "submitted": False,
             "retrieved": False,
+            "reposts": 0,
         }
         if self.meshes == "multi-mesh":
             f_job_dict["interpolated"] = False
@@ -650,7 +689,6 @@ class ProjectComponent(Component):
         # This definitely needs improvement
         it_dict["last_control_group"] = control_group_dict["old"]
         it_dict["new_control_group"] = control_group_dict["new"]
-
         for event in self.comm.lasif.list_events(iteration=iteration):
             if self.meshes == "multi-mesh":
                 it_dict["events"][event] = {

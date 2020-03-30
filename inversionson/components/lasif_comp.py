@@ -70,8 +70,15 @@ class LasifComponent(Component):
                 warnings.warn(
                     f"Iteration {name} already exists", InversionsonWarning
                 )
-
-        lapi.set_up_iteration(self.lasif_root, iteration=name, events=events)
+        event_specific = False
+        if self.comm.project.meshes == "multi-mesh":
+            event_specific = True
+        lapi.set_up_iteration(
+            self.lasif_root,
+            iteration=name,
+            events=events,
+            event_specific=event_specific,
+        )
 
     def get_minibatch(self, first=False) -> list:
         """
@@ -172,7 +179,7 @@ class LasifComponent(Component):
 
         return has
 
-    def find_event_mesh(self, event: str) -> Pathlib.Path:
+    def find_event_mesh(self, event: str) -> pathlib.Path:
         """
         Find the path for an event mesh
         
@@ -221,6 +228,21 @@ class LasifComponent(Component):
                     f"correct path for iteration {iteration}. "
                     f"Will not move new one."
                 )
+
+    def find_stf(self, iteration: str) -> pathlib.Path:
+        """
+        Get path to source time function file
+        
+        :param iteration: Name of iteration
+        :type iteration: str
+        """
+        long_iter = self.lasif_comm.iterations.get_long_iteration_name(
+            iteration
+        )
+        stfs = pathlib.Path(self.lasif_comm.project.paths["salvus_files"])
+        stf = str(stfs / long_iter / "stf.h5")
+        return stf
+
     # TODO: Write find_gradient for Pathlib
     def find_gradient(
         self,
@@ -253,21 +275,22 @@ class LasifComponent(Component):
         :rtype: str
         """
         gradients = self.lasif_comm.project.paths["gradients"]
-        if smooth:
-            gradient = os.path.join(
-                gradients,
-                f"ITERATION_{iteration}",
-                event,
-                "smooth_gradient.h5",
-            )
-            if inversion_grid:
+        if self.comm.project.meshes == "multi-mesh":
+            if smooth:
                 gradient = os.path.join(
                     gradients,
                     f"ITERATION_{iteration}",
                     event,
-                    "smooth_grad_master.h5",
+                    "smooth_gradient.h5",
                 )
-        if self.comm.project.meshes == "mono-mesh":
+                if inversion_grid:
+                    gradient = os.path.join(
+                        gradients,
+                        f"ITERATION_{iteration}",
+                        event,
+                        "smooth_grad_master.h5",
+                    )
+        elif self.comm.project.meshes == "mono-mesh":
             if summed:
                 if smooth:
                     gradient = os.path.join(
@@ -285,7 +308,7 @@ class LasifComponent(Component):
                 gradient = os.path.join(
                     gradients, f"ITERATION_{iteration}", event, "gradient.h5",
                 )
-        else:
+        if not smooth:
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):
@@ -313,7 +336,7 @@ class LasifComponent(Component):
         """
         lapi.plot_events(
             self.lasif_comm,
-            type="map",
+            type_of_plot="map",
             iteration=self.comm.project.current_iteration,
             save=True,
         )
@@ -338,6 +361,7 @@ class LasifComponent(Component):
             self.lasif_comm,
             iteration=self.comm.project.current_iteration,
             plot_stations=True,
+            save=True,
         )
         filename = os.path.join(
             self.lasif_root,
@@ -355,8 +379,11 @@ class LasifComponent(Component):
         :return: Path to inversion grid
         :rtype: str
         """
-        # TODO: Hardcoded for now but needs fixing
-        path = os.path.join(self.lasif_root, "MODELS", "Globe3D_csem_100.h5")
+        # We assume the lasif domain is the inversion grid
+        path = self.lasif_comm.project.lasif_config["domain_settings"][
+            "domain_file"
+        ]
+
         return path
 
     def get_source(self, event_name: str) -> dict:
@@ -393,7 +420,7 @@ class LasifComponent(Component):
         :return: Path to a mesh
         :rtype: str
         """
-        if self.comm.project.info["meshes"] == "wavefield-adapted":
+        if self.comm.project.info["meshes"] == "multi-mesh":
             return lapi.get_simulation_mesh(
                 self.lasif_comm,
                 event_name,
@@ -563,8 +590,8 @@ class LasifComponent(Component):
         :return: True/False regarding the alreadyness of the processed data.
         :rtype: bool
         """
-        low_period = self.comm.project.period_low
-        high_period = self.comm.project.period_high
+        low_period = self.comm.project.min_period
+        high_period = self.comm.project.max_period
         processed_filename = (
             "preprocessed_"
             + str(int(low_period))

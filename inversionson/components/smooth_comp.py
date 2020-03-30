@@ -64,36 +64,24 @@ class SalvusSmoothComponent(Component):
 
     # Now I need to make some stuff based on the new salvus.opt and it's smoothing configurations
 
-    def generate_smoothing_config(
-        self, event: str, gradient: bool = True, iteration: str = None,
-    ) -> dict:
+    def generate_smoothing_config(self, event: str) -> dict:
         """
         Generate a dictionary which contains smoothing objects for each 
         parameter to be smoothed.
 
         :param event: Name of event
         :type event: str
-        :param gradient: We are smoothing the gradient right?, defaults to True
-        :type gradient: bool
-        :param iteration: Name of iteration, if none, current is used,
-            defaults to None
-        :type iteration: str, optional
         :return: Dictonary which points each parameter to a smoothing object
         :rtype: dict
         """
 
-        if not iteration:
-            iteration_name = self.comm.project.current_iteration
-        if gradient:
-            gradient_file = self.comm.lasif.find_gradient(
-                iteration=iteration_name, event=event,
-            )
         # The mesh used as diffusion model is the event_mesh with the 1D model
         diff_model = self.comm.lasif.find_event_mesh(event=event)
-        smoothing_config = {}
-        freq = 1.0 / self.comm.project.period_low
-        smoothing_lengths = self.comm.project.smoothing_lengths
 
+        smoothing_config = {}
+        freq = 1.0 / self.comm.project.min_period
+        smoothing_lengths = self.comm.project.smoothing_lengths
+        import toml
         # Loop through parameters to assign smoothing objects to parameters.
         for param in self.comm.project.inversion_params:
             if param.startswith("V"):
@@ -115,7 +103,53 @@ class SalvusSmoothComponent(Component):
                 reference_velocity=reference_velocity,
             )
             smoothing_config[param] = smooth
-        return smooth
+        with open("./smoothing_config.toml", "w") as fh:
+            toml.dump(smoothing_config, fh)
+        return smoothing_config
+
+    def retrieve_smooth_gradient(self, event_name: str, iteration=None):
+        """
+        Retrieve the smoothed gradient from a specific event and iteration.
+        
+        :param event_name: Name of event, can be None if mono-batch
+        :type event_name: str
+        :param iteration: Name of iteration, defaults to None (current)
+        :type iteration: str, optional
+        """
+        from salvus.opt.smoothing import get_smooth_model
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
+        import salvus.flow.api
+
+        if iteration is None:
+            iteration = self.comm.project.current_iteration
+        job_name = self.comm.salvus_flow.get_job_name(
+            event=event_name, sim_type="smoothing", iteration=iteration,
+        )
+        salvus_job = salvus.flow.api.get_job_array(
+            site_name=self.comm.project.site_name, job_array_name=job_name,
+        )
+
+        if self.comm.project.inversion_mode == "mono-batch":
+            smooth_grad = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=None,
+                smooth=True,
+                summed=True,
+                just_give_path=True,
+            )
+        else:
+            smooth_grad = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event_name,
+                smooth=True,
+                inversion_grid=False,
+                just_give_path=True,
+            )
+        smooth_gradient = get_smooth_model(
+            job=salvus_job,
+            model=self.comm.lasif.find_event_mesh(event=event_name),
+        )
+        smooth_gradient.write_h5(smooth_grad)
 
     def generate_input_toml(self, gradient: str, movie=False):
         """
@@ -200,19 +234,30 @@ class SalvusSmoothComponent(Component):
             current iteration, defaults to None
         :type iteration: str, optional
         """
-        if not iteration:
+        from salvus.flow.sites import SiteConfig
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
+
+        if iteration is None:
             iteration = self.comm.project.current_iteration
-        mesh = self.comm.lasif.find_gradient(
-            iteration=iteration,
-            event=event
+        mesh = UnstructuredMesh.from_h5(
+            self.comm.lasif.find_gradient(iteration=iteration, event=event)
         )
+        mesh.attach_global_variable(name="reference_frame", data="spherical")
+        # site_config = SiteConfig(
+        #     site_name=self.comm.project.smoothing_site_name,
+        #     ranks=self.comm.project.smoothing_ranks,
+        #     wall_time_in_seconds=self.comm.project.smoothing_wall_time,
+        # )
         job = smoothing.run_async(
             model=mesh,
             smoothing_config=smoothing_config,
-            ranks=self.comm.project.smoothing_ranks,
-            wall_time_in_seconds=self.comm.project.smoothing_wall_time
+            # site_config=site_config,
+            time_step_in_seconds=1.0e-5,
+            site_name=self.comm.project.smoothing_site_name,
+            ranks_per_job=self.comm.project.smoothing_ranks,
+            wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-        
+
         self.comm.project.change_attribute(
             f'smoothing_job["{event}"]["name"]', job.job_array_name
         )
