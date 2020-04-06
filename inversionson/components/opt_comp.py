@@ -163,9 +163,9 @@ class SalvusOptComponent(Component):
             event_list = []
         for event in events:
             if self.comm.project.inversion_mode == "mono-batch":
-                total_misfit += misfits["event_misfits"][event]
+                total_misfit += misfits[event]["event_misfit"]
             else:
-                misfit = misfits["event_misfits"][event]
+                misfit = misfits[event]["event_misfit"]
                 event_list.append({"misfit": float(misfit), "name": event})
         if self.comm.project.inversion_mode == "mono-batch":
             task["task"][0]["output"]["event"] = total_misfit
@@ -250,7 +250,7 @@ class SalvusOptComponent(Component):
             events_list.append(
                 {
                     "gradient": grad_path,
-                    "misfit": float(misfits["event_misfits"][event]),
+                    "misfit": float(misfits[event]["event_misfit"]),
                     "name": event,
                 }
             )

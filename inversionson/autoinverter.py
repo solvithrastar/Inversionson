@@ -1844,6 +1844,9 @@ if __name__ == "__main__":
             use_aliases=True,
         )
     )
+    branch = input("Did you switch to the master branch yet? [Y]/n:  ")
+    if branch == "n":
+        sys.exit("Switch to master branch before continuing")
     info_toml = input("Give me a path to your information_toml \n\n")
     # Tired of writing it in, I'll do this quick mix for now
     # print("Give me a path to your information_toml \n\n")
