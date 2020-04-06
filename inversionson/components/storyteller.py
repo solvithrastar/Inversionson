@@ -32,13 +32,17 @@ class StoryTellerComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        super(StoryTellerComponent, self).__init__(communicator, component_name)
+        super(StoryTellerComponent, self).__init__(
+            communicator, component_name
+        )
         self.root, self.backup = self._create_root_folder()
         self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
-        self.events_quality_toml = os.path.join(self.root, "events_quality.toml")
+        self.events_quality_toml = os.path.join(
+            self.root, "events_quality.toml"
+        )
         if os.path.exists(self.events_used_toml):
             self.events_used = toml.load(self.events_used_toml)
         else:
@@ -185,7 +189,9 @@ class StoryTellerComponent(Component):
             iteration_number = 0
         else:
             iteration_number = int(iteration.split("_")[0][2:].strip("0"))
-        self.markdown.add_header(header_style=2, text=f"Iteration: {iteration_number}")
+        self.markdown.add_header(
+            header_style=2, text=f"Iteration: {iteration_number}"
+        )
         text = f"Here you can read all about what happened in iteration "
         text += f"{iteration_number}."
 
@@ -197,6 +203,8 @@ class StoryTellerComponent(Component):
         """
         self.markdown.add_header(header_style=3, text="Data Used")
         im_file = self.comm.lasif.plot_iteration_events()
+        text = "Data coverage:"
+        self.markdown.add_paragraph(text=text)
         self.markdown.add_image(
             image_url=im_file,
             image_title=f"Event distribution for "
@@ -204,13 +212,32 @@ class StoryTellerComponent(Component):
             alt_text="text",
         )
         print("Preparing Ray density image")
+        text = "Ray density plot"
         ray_file = self.comm.lasif.plot_iteration_raydensity()
+        self.markdown.add_paragraph(text=text)
         self.markdown.add_image(
             image_url=ray_file,
             image_title=f"Ray density plot for "
             f"{self.comm.project.current_iteration}",
             alt_text="text",
         )
+
+    def _add_image_of_event_misfits(self):
+        """
+        Include and image for each event of misfits of stations.
+        """
+        self.markdown.add_header(header_style=3, text="Event misfits")
+        iteration = self.comm.project.current_iteration
+        for event in self.comm.project.events_in_iteration:
+            im_file = self.comm.lasif.plot_event_misfits(
+                event=event, iteration=iteration,
+            )
+            self.markdown.add_paragraph(text=f"Misfits for {event}")
+            self.markdown.add_image(
+                image_url=im_file,
+                image_title=f"Station misfits for {event}",
+                alt_text="failed event misfit picture",
+            )
 
     def _report_acceptance_of_model(self):
         """
@@ -258,8 +285,8 @@ class StoryTellerComponent(Component):
         prev_cg_misfit = 0.0
         for key in prev_it_dict["events"].keys():
             prev_total_misfit += prev_it_dict["events"][key]["misfit"]
-            for key in prev_it_dict["new_control_group"]:
-                prev_cg_misfit += prev_it_dict["events"][key]["misfit"]
+            for event in prev_it_dict["new_control_group"]:
+                prev_cg_misfit += prev_it_dict["events"][event]["misfit"]
 
         current_total_misfit = 0.0
         current_cg_misfit = 0.0
@@ -268,7 +295,9 @@ class StoryTellerComponent(Component):
             if key in self.comm.project.old_control_group:
                 current_cg_misfit += value
 
-        tot_red = (prev_total_misfit - current_total_misfit) / prev_total_misfit
+        tot_red = (
+            prev_total_misfit - current_total_misfit
+        ) / prev_total_misfit
         cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
 
         return tot_red, cg_red
@@ -302,7 +331,7 @@ class StoryTellerComponent(Component):
             total_misfit = 0.0
             for key in self.comm.project.misfits.keys():
                 total_misfit += self.comm.project.misfits[key]
-            text = f"Total misfit for iteration: {total_misfit} \n"
+            text = f"Total misfit for iteration: {total_misfit:.3f} \n"
             self.markdown.add_paragraph(text=text)
             return
 
@@ -316,10 +345,13 @@ class StoryTellerComponent(Component):
 
             _, cg_red = self._get_misfit_reduction()
 
-            text = f"Total misfit for iteration: {total_misfit} \n"
+            text = f"Total misfit for iteration: {total_misfit:.3f} \n"
             text += f"Misfit for the old control group: "
             text += f"{old_control_group_misfit}"
-            text += f"\n Misfit reduction between the iterations: {cg_red}"
+            cg_red *= 100.0  # Get percentages
+            text += (
+                f"\n Misfit reduction between the iterations: {cg_red:.3f} %"
+            )
 
         if verbose and "additional" not in verbose:
             old_control_group_misfit = 0.0
@@ -330,11 +362,12 @@ class StoryTellerComponent(Component):
             _, cg_red = self._get_misfit_reduction()
 
             text = f"Misfit for the old control group: "
-            text += f"{old_control_group_misfit}"
-            if cg_red >= 0.0:
-                text += f"\n Misfit increase between the iterations: {cg_red}%"
+            text += f"{old_control_group_misfit:.3f}"
+            cg_red *= 100.0
+            if cg_red <= 0.0:
+                text += f"\n Misfit increase between the iterations: {cg_red:.3f} %"
             else:
-                text += f"\n Misfit reduction between the iterations: {cg_red}%"
+                text += f"\n Misfit reduction between the iterations: {cg_red:.3f} %"
 
         self.markdown.add_paragraph(text=text)
 
@@ -342,7 +375,9 @@ class StoryTellerComponent(Component):
         """
         Report what the new control group is and what the current misfit is.
         """
-        self.markdown.add_header(header_style=4, text="Selection of New Control Group")
+        self.markdown.add_header(
+            header_style=4, text="Selection of New Control Group"
+        )
         text = "The events which will continue on to the next iteration are "
         text += "listed below."
 
@@ -354,7 +389,7 @@ class StoryTellerComponent(Component):
             if key in self.comm.project.new_control_group:
                 cg_misfit += value
 
-        text = f"The current misfit for the control group is {cg_misfit}"
+        text = f"The current misfit for the control group is {cg_misfit:.3f}"
         self.markdown.add_paragraph(text=text)
 
     def _report_increase_in_control_group_size(self):
@@ -371,7 +406,9 @@ class StoryTellerComponent(Component):
         At the end of each iteration we report how many events have been
         uses in inversion.
         """
-        num_events = len([x for x in list(self.events_used.values()) if x != 0])
+        num_events = len(
+            [x for x in list(self.events_used.values()) if x != 0]
+        )
 
         text = f"We have now used {num_events} events during the inversion."
 
@@ -410,10 +447,14 @@ class StoryTellerComponent(Component):
                 iteration_number = 1
             self._create_story_file()
             self._start_entry_for_iteration()
-            if self.comm.project.inversion_mode == "mini-batch" or iteration_number == 0:
+            if (
+                self.comm.project.inversion_mode == "mini-batch"
+                or iteration_number == 0
+            ):
                 self._write_list_of_all_events()
                 self._update_usage_of_events()
                 self._add_image_of_data_coverage()
+                self._add_image_of_event_misfits()
             self._add_table_of_events_and_misfits(task=task)
             # self._report_control_group()
             # self._update_event_quality()
@@ -422,6 +463,7 @@ class StoryTellerComponent(Component):
             if "additional" in verbose:
                 self._report_acceptance_of_model()
                 self._update_usage_of_events()
+                self._add_image_of_event_misfits()
             else:
                 if first_try:
                     self._start_entry_for_iteration()
@@ -564,7 +606,7 @@ class MarkDown(StoryTellerComponent):
         :param alt_text: Text when pic doesn't appear, defaults to "text"
         :type alt_text: str, optional
         """
-        self.stream = f"![Alt {alt_text}]"
+        self.stream = f'!["{alt_text}"]'
         self.stream += f'({image_url} "{image_title}")'
         self._add_line_break()
         self._append_to_file()

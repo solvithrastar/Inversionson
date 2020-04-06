@@ -456,11 +456,20 @@ class SalvusFlowComponent(Component):
         #         "EARTHQUAKES",
         #         f"ITERATION_{iteration}",
         #         event)
+
+        # Adjoint simulation takes longer and seems to be less predictable
+        # we thus give it a longer wall time.
+
+        if sim_type == "adjoint":
+            wall_time = self.comm.project.wall_time * 2
+        else:
+            wall_time = self.comm.project.wall_time
+
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
             ranks=ranks,
-            wall_time_in_seconds=self.comm.project.wall_time
+            wall_time_in_seconds=wall_time,
             # output_folder=output_folder
         )
         # sapi.run(

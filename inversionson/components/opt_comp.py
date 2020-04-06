@@ -344,7 +344,7 @@ class SalvusOptComponent(Component):
                 f"Iteration number {number} does " "not exist."
             )
         tr_region = min(iterations[number])
-        return self._create_iteration_name(it_number, tr_region)
+        return self._create_iteration_name(number, tr_region)
 
     def first_trial_model_of_iteration(self) -> bool:
         """
@@ -386,7 +386,12 @@ class SalvusOptComponent(Component):
         available than needed. Otherwise the second output is None
         :rtype: list, list
         """
-        blocked_events = []
+        blocked_events = list(
+            set(
+                self.comm.project.validation_dataset
+                + self.comm.project.test_dataset
+            )
+        )
         events_used = self.comm.storyteller.events_used  # Usage of all events
         needed_events = int(round(self.get_batch_size() / 2))
         for key, val in events_used.items():
@@ -396,25 +401,30 @@ class SalvusOptComponent(Component):
             # We still have plenty of events to choose from.
             use_these = None
             return blocked_events, use_these
-        # else:
-        #     # We have fewer events to choose from
-        #     prev_iter = self.get_previous_iteration_name()
-        #     prev_it_toml = os.path.join(
-        #         self.comm.project.paths["iteration_tomls"],
-        #         f"{prev_iter}.toml"
-        #     )
-        #     prev_it_dict = toml.load(prev_it_toml)
+
         if len(blocked_events) == len(events_used.keys()):
             use_these = None
         else:
             use_these = list(set(events_used.keys()) - set(blocked_events))
-        # The only blocked events are the events used in last iteration.
-        # Lets remove that feature and keep them available for selection
 
-        blocked_events = []
-        # for key in prev_it_dict["events"]:
-        #     if key not in prev_it_dict["new_control_group"]:
-        #         blocked_events.append(key)
+        # Now the only constraint on event selection is that we don't want
+        # to select a non-control group event we used in the previous
+        # iteration and we don't want to use the test and validation set.
+        # Se we find these events and add them to the blocked events
+        blocked_events = list(
+            set(
+                self.comm.project.validation_dataset
+                + self.comm.project.test_dataset
+            )
+        )
+        prev_iter = self.get_previous_iteration_name()
+        prev_it_dict = self.comm.project.get_old_iteration_info(
+            iteration=prev_iter
+        )
+        for event in prev_it_dict["events"].keys():
+            if event not in prev_it_dict["new_control_group"]:
+                blocked_events.append(key)
+
         return blocked_events, use_these
 
     def _get_all_model_names(self) -> list:

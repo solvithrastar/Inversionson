@@ -196,9 +196,9 @@ class SalvusMeshComponent(Component):
         import os
         import numpy as np
 
-        initial_model = os.path.join(
-            self.comm.project.lasif_root, "MODELS", "Globe3D_csem_100.h5"
-        )
+        initial_model = self.comm.lasif.lasif_comm.project.lasif_config[
+            "domain_settings"
+        ]["domain_file"]
         iteration = self.comm.project.current_iteration
         opt_mesh = os.path.join(
             self.comm.project.paths["salvus_opt"],

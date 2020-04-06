@@ -57,7 +57,10 @@ class ProjectComponent(Component):
         simulation_info["start_time"] = solver_settings["start_time_in_s"]
         simulation_info["number_of_time_steps"] = int(
             round(
-                (solver_settings["end_time_in_s"] - simulation_info["start_time"])
+                (
+                    solver_settings["end_time_in_s"]
+                    - simulation_info["start_time"]
+                )
                 / solver_settings["time_step_in_s"]
             )
         )
@@ -65,7 +68,9 @@ class ProjectComponent(Component):
         simulation_info["time_step"] = solver_settings["time_step_in_s"]
         simulation_info["min_period"] = solver_settings["minimum_period_in_s"]
         simulation_info["max_period"] = solver_settings["maximum_period_in_s"]
-        simulation_info["attenuation"] = config_dict["salvus_settings"]["attenuation"]
+        simulation_info["attenuation"] = config_dict["salvus_settings"][
+            "attenuation"
+        ]
 
         return simulation_info
 
@@ -470,6 +475,10 @@ class ProjectComponent(Component):
         self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
         self.maximum_grad_divergence_angle = self.info["max_angular_change"]
         self.dropout_probability = self.info["dropout_probability"]
+        self.validation_dataset = self.info["inversion_monitoring"][
+            "validation_dataset"
+        ]
+        self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
             self.current_iteration = (
                 self.comm.salvus_opt.get_newest_iteration_name()
@@ -774,7 +783,7 @@ class ProjectComponent(Component):
         )
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
-                f"No toml file eists for iteration: {iteration}"
+                f"No toml file exists for iteration: {iteration}"
             )
 
         with open(iteration_toml, "r") as fh:

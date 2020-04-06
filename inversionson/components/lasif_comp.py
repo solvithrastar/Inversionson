@@ -90,18 +90,22 @@ class LasifComponent(Component):
         :return: A fresh batch of earthquakes
         :rtype: list
         """
+        # If this is the first time ever that a batch is selected
         if first:
-            blocked_events = []
+            blocked_events = list(
+                set(
+                    self.comm.project.validation_dataset
+                    + self.comm.project.test_dataset
+                )
+            )
             use_these = None
-            # TODO: There must be a better way of defining number of events.
             count = self.comm.project.initial_batch_size
-            # count = self.comm.salvus_opt.read_salvus_opt()
-            # count = count["task"][0]["input"]["num_events"]
             events = self.list_events()
+            avail_events = list(set(events) - set(blocked_events))
             batch = lapi.get_subset(
                 self.lasif_comm,
                 count=count,
-                events=events,
+                events=avail_events,
                 existing_events=None,
             )
             return batch
@@ -349,6 +353,34 @@ class LasifComponent(Component):
         )
         return filename
 
+    def plot_event_misfits(
+        self, event: str, iteration: str = "current"
+    ) -> str:
+        """
+        Make a plot where stations are color coded by their respective misfits
+        
+        :param event: Name of event
+        :type event: str
+        :param iteration: Name of iteration, defaults to "current"
+        :type iteration: str, optional
+        :return: Path to figure
+        :rtype: str
+        """
+        if iteration == "current":
+            iteration = self.comm.project.current_iteration
+
+        lapi.plot_station_misfits(
+            self.lasif_comm, event=event, iteration=iteration, save=True,
+        )
+        filename = os.path.join(
+            self.lasif_root,
+            "OUTPUT",
+            "event_plots",
+            "events",
+            f"misfit_{event}_{iteration}.png",
+        )
+        return filename
+
     def plot_iteration_raydensity(self) -> str:
         """
         Return the path to a file containing an illustration of
@@ -512,9 +544,15 @@ class LasifComponent(Component):
             )
         # See if misfit has already been written into iteration toml
         if self.comm.project.misfits[event] == 0.0:
-            misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
-                event=event, weight_set_name=event, iteration=iteration
+            misfit_toml_path = (
+                self.lasif_comm.project.paths["iterations"]
+                / f"ITERATION_{iteration}"
+                / "misfits.toml"
             )
+            misfit = toml.load(misfit_toml_path)[event]["event_misfit"]
+            # misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
+            #     event=event, weight_set_name=event, iteration=iteration
+            # )
         else:
             misfit = self.comm.project.misfits[event]
             print(f"Misfit for {event} has already been computed. ")
@@ -539,7 +577,7 @@ class LasifComponent(Component):
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
 
-    def write_misfit(self, events=None, details=None):
+    def write_misfit(self, events=None, details=None):  # Not used currently
         """
         Write the iteration's misfit into a toml file.
         TODO: I might want to add this to make it do more statistics
@@ -561,8 +599,8 @@ class LasifComponent(Component):
                 misfits = toml.load(misfit_path)
                 append = False
                 for event in events:
-                    if event in misfits["event_misfits"].keys():
-                        if misfits["event_misfits"][event] == 0.0:
+                    if event in misfits.keys():
+                        if misfits[event]["event_misfit"] == 0.0:
                             append = True
                     else:
                         append = True

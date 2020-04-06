@@ -50,6 +50,10 @@ def create_info(root=None):
     info["cut_receiver_region_from_gradient_in_km"] = 10.0
     cut_stuff_gradient = "Put 0.0 if you don't want to cut anything"
     info["clip_gradient"] = 1.0
+    info["inversion_monitoring"] = {}
+    info["inversion_monitoring"]["validation_dataset"] = []
+    info["inversion_monitoring"]["test_dataset"] = []
+
     clip_grad_comment = "Values between 0.55 - 1.0. The number represents the "
     clip_grad_comment += "quantile where the gradient will be clipped. "
     clip_grad_comment += "If 1.0 nothing will be cut"
@@ -78,9 +82,30 @@ def create_info(root=None):
     epaq_comment = (
         "Only used for multi-mesh. Needs to be higher for "
         "more complex models."
-        )
+    )
 
-    info["comments"]["Meshing"]["elements_per_azimuthal_quarter"] epaq_comment
+    info["comments"]["Meshing"][
+        "elements_per_azimuthal_quarter"
+    ] = epaq_comment
+    info["comments"]["inversion_monitoring"] = {}
+    validation_dataset_comment = (
+        "A validation dataset is used to monitor state of inversion, it is "
+        "used to tune parameters such as smoothing lengths. It is not used "
+        "in the inversion in any other way. This parameter is optional"
+    )
+    test_dataset_comment = (
+        "A test dataset is not used at all in the inversion and can only be "
+        "used at the end of an inversion to test how reliable the inversion "
+        "actually was. The only thing Inveversionson does with these events "
+        "is to make sure they are not used in inversion. "
+        "This parameter is optional."
+    )
+    info["comments"]["inversion_monitoring"][
+        "validation_dataset"
+    ] = validation_dataset_comment
+    info["comments"]["inversion_monitoring"][
+        "test_dataset"
+    ] = test_dataset_comment
 
     return info
 

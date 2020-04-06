@@ -1271,7 +1271,7 @@ class AutoInverter(object):
         )
 
         self.wait_for_all_jobs_to_finish("forward")
-        self.comm.lasif.write_misfit()
+        # self.comm.lasif.write_misfit()
 
         events_retrieved_adjoint = "None retrieved"
         while events_retrieved_adjoint != "All retrieved":
@@ -1411,7 +1411,6 @@ class AutoInverter(object):
                 use_aliases=True,
             )
         )
-
         self.comm.salvus_opt.run_salvus_opt()
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
         if task_2 == task and verbose_2 == verbose:
@@ -1419,7 +1418,6 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        sys.exit("Finished the iteration")
         self.assign_task_to_function(task_2, verbose_2)
 
     def compute_misfit(self, task: str, verbose: str):
@@ -1540,7 +1538,7 @@ class AutoInverter(object):
         self.wait_for_all_jobs_to_finish(
             sim_type="forward", events=events_to_use
         )
-        self.comm.lasif.write_misfit(events=events_to_use, details=verbose)
+        # self.comm.lasif.write_misfit(events=events_to_use, details=verbose)
 
         print(Fore.RED + "\n =================== \n")
         print(
@@ -1784,6 +1782,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
+        sys.exit("Goodbye for now. Testing done.")
         self.assign_task_to_function(task_2, verbose_2)
 
     def assign_task_to_function(self, task: str, verbose: str):
