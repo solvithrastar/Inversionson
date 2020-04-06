@@ -1782,7 +1782,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        sys.exit("Goodbye for now. Testing done.")
+
         self.assign_task_to_function(task_2, verbose_2)
 
     def assign_task_to_function(self, task: str, verbose: str):
