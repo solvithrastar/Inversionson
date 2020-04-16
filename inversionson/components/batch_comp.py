@@ -36,7 +36,12 @@ class BatchComponent(Component):
         :rtype: list
         """
         dropout = []
+        # Find the current control group and if an event was not in it,
+        # we don't want to drop it out. Every event selected for a control
+        # group thus gets a chance to stay in at least once.
         for event in events:
+            if event not in self.comm.project.old_control_group:
+                continue
             if random.random() < self.comm.project.dropout_probability:
                 dropout.append(event)
         return dropout

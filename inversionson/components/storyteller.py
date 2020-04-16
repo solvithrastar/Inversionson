@@ -285,8 +285,8 @@ class StoryTellerComponent(Component):
         prev_cg_misfit = 0.0
         for key in prev_it_dict["events"].keys():
             prev_total_misfit += prev_it_dict["events"][key]["misfit"]
-            for event in prev_it_dict["new_control_group"]:
-                prev_cg_misfit += prev_it_dict["events"][event]["misfit"]
+            if key in prev_it_dict["new_control_group"]:
+                prev_cg_misfit += prev_it_dict["events"][key]["misfit"]
 
         current_total_misfit = 0.0
         current_cg_misfit = 0.0

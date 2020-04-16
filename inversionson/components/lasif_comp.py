@@ -222,6 +222,9 @@ class LasifComponent(Component):
                 if not os.path.exists(os.path.dirname(event_iteration_mesh)):
                     os.makedirs(os.path.dirname(event_iteration_mesh))
                 shutil.copy(event_mesh, event_iteration_mesh)
+                event_xdmf = event_mesh[:-2] + "xdmf"
+                event_iteration_xdmf = event_iteration_mesh[:-2] + "xdmf"
+                shutil.copy(event_xdmf, event_iteration_xdmf)
                 print(
                     f"Mesh for event: {event} has been moved to correct path for "
                     f"iteration: {iteration} and is ready for interpolation."

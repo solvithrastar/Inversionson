@@ -1560,6 +1560,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
+        # sys.exit("Hvernig for thetta segirdu? ")
         self.assign_task_to_function(task_2, verbose_2)
 
     def compute_gradient(self, task: str, verbose: str):
@@ -1743,6 +1744,7 @@ class AutoInverter(object):
                 attribute="new_control_group", new_value=control_group
             )
             self.comm.project.update_control_group_toml(new=True)
+            sys.exit("Hvada event voru valin segirdu?")
             self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
@@ -1772,8 +1774,8 @@ class AutoInverter(object):
         self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
-        # self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
-        # self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
         self._send_whatsapp_announcement()
         self.comm.salvus_opt.run_salvus_opt()
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
@@ -1782,7 +1784,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-
+        # sys.exit("HAHA")
         self.assign_task_to_function(task_2, verbose_2)
 
     def assign_task_to_function(self, task: str, verbose: str):
