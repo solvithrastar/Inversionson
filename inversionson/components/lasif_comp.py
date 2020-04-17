@@ -210,6 +210,17 @@ class LasifComponent(Component):
         """
         import shutil
 
+        # If we use mono-mesh we copy the salvus opt mesh here.
+        if self.comm.project.meshes == "mono-mesh":
+            model = os.path.join(
+                self.comm.project.physical_models, iteration + ".h5"
+            )
+            simulation_mesh = self.get_simulation_mesh(
+                event_name=event, iteration=iteration,
+            )
+            shutil.copy(model, simulation_mesh)
+            return
+
         has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
 
         if not has:
@@ -279,7 +290,7 @@ class LasifComponent(Component):
         :rtype: str
         """
         gradients = self.lasif_comm.project.paths["gradients"]
-        if self.comm.project.meshes == "multi-mesh":
+        if self.comm.project.inversion_mode == "mini-batch":
             if smooth:
                 gradient = os.path.join(
                     gradients,
@@ -288,13 +299,17 @@ class LasifComponent(Component):
                     "smooth_gradient.h5",
                 )
                 if inversion_grid:
+                    if self.comm.project.meshes == "mono-mesh":
+                        raise InversionsonError(
+                            "Inversion grid only exists for multi-mesh"
+                        )
                     gradient = os.path.join(
                         gradients,
                         f"ITERATION_{iteration}",
                         event,
                         "smooth_grad_master.h5",
                     )
-        elif self.comm.project.meshes == "mono-mesh":
+        elif self.comm.project.inversion_mode == "mono-batch":
             if summed:
                 if smooth:
                     gradient = os.path.join(
@@ -443,7 +458,7 @@ class LasifComponent(Component):
         """
         return lapi.get_receivers(self.lasif_comm, event_name)
 
-    def get_simulation_mesh(self, event_name: str) -> str:
+    def get_simulation_mesh(self, event_name: str, iteration="current") -> str:
         """
         Get path to correct simulation mesh for a simulation
 
@@ -452,14 +467,13 @@ class LasifComponent(Component):
         :return: Path to a mesh
         :rtype: str
         """
-        if self.comm.project.info["meshes"] == "multi-mesh":
+        if iteration == "current":
+            iteration = self.comm.project.current_iteration
+        if self.comm.project.meshes == "multi-mesh":
             return lapi.get_simulation_mesh(
-                self.lasif_comm,
-                event_name,
-                self.comm.project.current_iteration,
+                self.lasif_comm, event_name, iteration,
             )
         else:
-            iteration = self.comm.project.current_iteration
             return os.path.join(
                 self.comm.project.lasif_root,
                 "MODELS",
