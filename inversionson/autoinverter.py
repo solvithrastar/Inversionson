@@ -1744,7 +1744,7 @@ class AutoInverter(object):
                 attribute="new_control_group", new_value=control_group
             )
             self.comm.project.update_control_group_toml(new=True)
-            sys.exit("Hvada event voru valin segirdu?")
+            # sys.exit("Hvada event voru valin segirdu?")
             self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
