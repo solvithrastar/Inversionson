@@ -214,12 +214,15 @@ class BatchComponent(Component):
         min_ctrl = self.comm.project.min_ctrl_group_size
         iteration = self.comm.project.current_iteration
         gradient_paths = []
+        inversion_grid = False
+        if self.comm.project.meshes == "multi-mesh":
+            inversion_grid = True
         for _i, event in enumerate(events):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
                 smooth=True,
-                inversion_grid=True,
+                inversion_grid=inversion_grid,
             )
             gradient_paths.append(gradient)
             with h5py.File(gradient, "r") as f:
@@ -263,7 +266,7 @@ class BatchComponent(Component):
                 iteration=iteration,
                 event=event,
                 smooth=True,
-                inversion_grid=True,
+                inversion_grid=inversion_grid,
             )
             with h5py.File(gradient, "r") as f:
                 individual_gradient = f["MODEL/data"][()]
@@ -289,7 +292,7 @@ class BatchComponent(Component):
                 iteration=iteration,
                 event=redundant_gradient,
                 smooth=True,
-                inversion_grid=True,
+                inversion_grid=inversion_grid,
             )
             with h5py.File(gradient, "r") as f:
                 removal_grad = self._get_vector_of_values(

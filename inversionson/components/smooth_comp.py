@@ -82,6 +82,7 @@ class SalvusSmoothComponent(Component):
         freq = 1.0 / self.comm.project.min_period
         smoothing_lengths = self.comm.project.smoothing_lengths
         import toml
+
         # Loop through parameters to assign smoothing objects to parameters.
         for param in self.comm.project.inversion_params:
             if param.startswith("V"):
@@ -96,12 +97,20 @@ class SalvusSmoothComponent(Component):
                         f"Unexpected case while smoothing {param}. "
                         f"Take a closer look"
                     )
-            smooth = smoothing.AnisotropicModelDependent(
-                reference_frequency_in_hertz=freq,
-                smoothing_lengths_in_wavelengths=smoothing_lengths,
-                reference_model=diff_model,
-                reference_velocity=reference_velocity,
-            )
+            if self.comm.project.smoothing_mode == "anisotropic":
+                smooth = smoothing.AnisotropicModelDependent(
+                    reference_frequency_in_hertz=freq,
+                    smoothing_lengths_in_wavelengths=smoothing_lengths,
+                    reference_model=diff_model,
+                    reference_velocity=reference_velocity,
+                )
+            elif self.comm.project.smoothing_mode == "isotropic":
+                smooth = smoothing.IsotropicModelDependent(
+                    reference_frequency_in_hertz=freq,
+                    smoothing_length_in_wavelengths=smoothing_lengths,
+                    reference_model=diff_model,
+                    reference_velocity=reference_velocity,
+                )
             smoothing_config[param] = smooth
         with open("./smoothing_config.toml", "w") as fh:
             toml.dump(smoothing_config, fh)

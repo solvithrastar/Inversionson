@@ -852,10 +852,11 @@ class AutoInverter(object):
         if len(events_retrieved_now) == 0:
             if len(events_already_retrieved) == len(events):
                 return "All retrieved"
-            if self.comm.project.meshes == "mono-mesh":
+            if self.comm.project.inversion_mode == "mono-batch":
                 if sim_type == "smoothing":
                     if "master" in events_already_retrieved:
                         return "All retrieved"
+                    return self.monitor_jobs(sim_type, events=events,)
             else:
                 print(
                     f"Recovered {len(events_already_retrieved)} out of "

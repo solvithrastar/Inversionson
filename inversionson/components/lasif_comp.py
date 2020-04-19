@@ -192,6 +192,11 @@ class LasifComponent(Component):
         :return: Path to where the mesh is stored.
         :rtype: Pathlib.Path
         """
+        if self.comm.project.meshes == "mono-mesh":
+            mesh = self.lasif_comm.project.lasif_config["domain_settings"][
+                "domain_file"
+            ]
+            return mesh
         has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
         if not has:
             raise InversionsonError(
@@ -212,13 +217,7 @@ class LasifComponent(Component):
 
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
-            model = os.path.join(
-                self.comm.project.physical_models, iteration + ".h5"
-            )
-            simulation_mesh = self.get_simulation_mesh(
-                event_name=event, iteration=iteration,
-            )
-            shutil.copy(model, simulation_mesh)
+            self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
             return
 
         has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
@@ -474,17 +473,15 @@ class LasifComponent(Component):
                 self.lasif_comm, event_name, iteration,
             )
         else:
+            # return self.lasif_comm.project.lasif_config["domain_settings"][
+            #     "domain_file"
+            # ]
             return os.path.join(
                 self.comm.project.lasif_root,
                 "MODELS",
                 f"ITERATION_{iteration}",
                 "mesh.h5",
             )
-            # return os.path.join(
-            #    self.comm.project.paths["salvus_opt"],
-            #    "PHYSICAL_MODELS",
-            #    f"{iteration}.h5"
-            # )
 
     def calculate_station_weights(self, event: str):
         """

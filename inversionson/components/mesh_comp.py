@@ -4,8 +4,7 @@ import numpy as np
 import sys
 from pathlib import Path
 import os
-
-# import os
+from inversionson import InversionsonError
 
 
 class SalvusMeshComponent(Component):
@@ -296,3 +295,33 @@ class SalvusMeshComponent(Component):
         roi = 1.0 - fluid
         m.attach_field("ROI", roi)
         m.write_h5(mesh)
+
+    def write_new_opt_fields_to_simulation_mesh(self):
+        """
+        Salvus opt makes a mesh which has the correct velocities but
+        it does not have everything which is needed to run a simulation.
+        We will thus write it's fields on to our simulation mesh.
+        """
+        if self.comm.project.meshes == "multi-mesh":
+            raise InversionsonError(
+                "Multi-mesh inversion should not use this function. Only "
+                "Mono-mesh."
+            )
+        print("Writing new fields to simulation mesh")
+        iteration = self.comm.project.current_iteration
+        opt_model = os.path.join(
+            self.comm.salvus_opt.models,
+            f"{iteration}.h5"
+        )
+        simulation_mesh = self.comm.lasif.get_simulation_mesh(
+            event_name=None,
+            iteration="current"
+        )
+        fields = self.comm.project.inversion_params
+        for field in fields:
+            print(f"Writing field: {field}")
+            self.add_field_from_one_mesh_to_another(
+                from_mesh=opt_model,
+                to_mesh=simulation_mesh,
+                field_name=field,
+            )
