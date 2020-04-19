@@ -239,12 +239,15 @@ class SalvusOptComponent(Component):
         )
         events_list = []
         task = self.read_salvus_opt()
+        inversion_grid = False
+        if self.comm.project.meshes == "multi-mesh":
+            inversion_grid = True
         for event in events_used:
             grad_path = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
                 smooth=True,
-                inversion_grid=True,
+                inversion_grid=inversion_grid,
             )
 
             events_list.append(
@@ -504,3 +507,4 @@ class SalvusOptComponent(Component):
         tr_region_part = f"{region_parts[0]}.{region_parts[1]}"
 
         return "it" + num_part + "_model_TrRadius_" + tr_region_part
+

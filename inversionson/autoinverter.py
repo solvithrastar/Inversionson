@@ -99,6 +99,8 @@ class AutoInverter(object):
                             self.comm.lasif.move_mesh(event, it_name)
                         else:
                             self.comm.lasif.move_mesh(event, it_name)
+                else:
+                    self.comm.lasif.move_mesh(event=None, iteration=it_name)
                 return
         if first_try:
             if self.comm.project.inversion_mode == "mini-batch":
@@ -122,6 +124,8 @@ class AutoInverter(object):
                     self.comm.lasif.move_mesh(event, it_name)
                 else:
                     self.comm.lasif.move_mesh(event, it_name)
+        else:
+            self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
         self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name)
@@ -848,10 +852,11 @@ class AutoInverter(object):
         if len(events_retrieved_now) == 0:
             if len(events_already_retrieved) == len(events):
                 return "All retrieved"
-            if self.comm.project.meshes == "mono-mesh":
+            if self.comm.project.inversion_mode == "mono-batch":
                 if sim_type == "smoothing":
                     if "master" in events_already_retrieved:
                         return "All retrieved"
+                    return self.monitor_jobs(sim_type, events=events,)
             else:
                 print(
                     f"Recovered {len(events_already_retrieved)} out of "
@@ -1308,7 +1313,7 @@ class AutoInverter(object):
                     )
                 )
                 self.preprocess_gradient(event)
-                if self.comm.project.meshes == "multi-mesh":
+                if self.comm.project.inversion_mode == "mini-batch":
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(
                         emoji.emojize(
@@ -1320,7 +1325,7 @@ class AutoInverter(object):
 
                     self.smooth_gradient(event)
 
-        if self.comm.project.meshes == "mono-mesh":
+        if self.comm.project.inversion_mode == "mono-batch":
             print(Fore.GREEN + "\n ===================== \n")
             print(
                 emoji.emojize(

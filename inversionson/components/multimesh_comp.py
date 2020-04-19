@@ -39,7 +39,7 @@ class MultiMeshComponent(Component):
                 from_coordinates_path="MODEL/coordinates",
                 to_coordinates_path="MODEL/coordinates",
                 parameters=self.comm.project.modelling_params,
-                stored_array=interp_folder
+                stored_array=interp_folder,
             )
         elif mode == "exodus_2_gll":
             model = os.path.join(self.physical_models, iteration + ".e")
@@ -50,8 +50,9 @@ class MultiMeshComponent(Component):
         else:
             raise ValueError(f"Mode: {mode} not supported")
 
-    def interpolate_gradient_to_model(self, event: str, smooth=True,
-                                      interp_folder=None):
+    def interpolate_gradient_to_model(
+        self, event: str, smooth=True, interp_folder=None
+    ):
         """
         Interpolate gradient parameters from simulation mesh to master
         dicretisation. In minibatch approach gradients are not summed,
@@ -68,14 +69,24 @@ class MultiMeshComponent(Component):
         """
         iteration = self.comm.project.current_iteration
         mode = self.comm.project.gradient_interpolation_mode
-        gradient = self.comm.lasif.find_gradient(iteration, event, smooth=smooth)
+        gradient = self.comm.lasif.find_gradient(
+            iteration, event, smooth=smooth
+        )
 
         master_model = self.comm.lasif.get_master_model()
         # summed_gradient = self.comm.salvus_opt.get_model_path(
         #     iteration, gradient=True)
-        seperator = "/"
-        master_disc_gradient = (
-            seperator.join(gradient.split(seperator)[:-1]) + "/smooth_grad_master.h5"
+        # seperator = "/"
+        # master_disc_gradient = (
+        #     seperator.join(gradient.split(seperator)[:-1])
+        #     + "/smooth_grad_master.h5"
+        # )
+        master_disc_gradient = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=event,
+            smooth=True,
+            inversion_grid=True,
+            just_give_path=True,
         )
         shutil.copy(master_model, master_disc_gradient)
 
@@ -86,7 +97,7 @@ class MultiMeshComponent(Component):
                 nelem_to_search=300,
                 parameters=self.comm.project.inversion_params,
                 gradient=True,
-                stored_array=interp_folder
+                stored_array=interp_folder,
             )
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
         elif mode == "gll2exo":  # This will probably be removed soon

@@ -699,7 +699,7 @@ class ProjectComponent(Component):
         it_dict["last_control_group"] = control_group_dict["old"]
         it_dict["new_control_group"] = control_group_dict["new"]
         for event in self.comm.lasif.list_events(iteration=iteration):
-            if self.meshes == "multi-mesh":
+            if self.inversion_mode == "mini-batch":
                 it_dict["events"][event] = {
                     "misfit": self.misfits[event],
                     "usage_updated": self.updated[event],
@@ -718,7 +718,7 @@ class ProjectComponent(Component):
                         "adjoint": self.adjoint_job[event],
                     },
                 }
-        if self.meshes == "mono-mesh":
+        if self.inversion_mode == "mono-batch":
             it_dict["smoothing"] == self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
@@ -762,11 +762,11 @@ class ProjectComponent(Component):
             self.adjoint_job[event] = it_dict["events"][event]["jobs"][
                 "adjoint"
             ]
-            if self.meshes == "multi-mesh":
+            if self.inversion_mode == "mini-batch":
                 self.smoothing_job[event] = it_dict["events"][event]["jobs"][
                     "smoothing"
                 ]
-        if self.meshes == "mono-mesh":
+        if self.inversion_mode == "mono-batch":
             self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:
