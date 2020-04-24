@@ -201,13 +201,16 @@ class SalvusOptComponent(Component):
         events_used = self.comm.project.events_in_iteration
         events_list = []
         task = self.read_salvus_opt()
+        inversion_grid = False
+        if self.comm.project.meshes == "multi-mesh":
+            inversion_grid = True
         if self.comm.project.inversion_mode == "mini-batch":
             for event in events_used:
                 grad_path = self.comm.lasif.find_gradient(
                     iteration=iteration,
                     event=event,
                     smooth=True,
-                    inversion_grid=True,
+                    inversion_grid=inversion_grid,
                 )
                 events_list.append({"gradient": grad_path, "name": event})
             task["task"][0]["output"]["event"] = events_list
@@ -215,8 +218,9 @@ class SalvusOptComponent(Component):
             grad_path = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=None,
+                summed=True,
                 smooth=True,
-                inversion_grid=True,
+                inversion_grid=inversion_grid,
             )
             task["task"][0]["output"]["gradient"] = grad_path
 
@@ -239,6 +243,7 @@ class SalvusOptComponent(Component):
         )
         events_list = []
         task = self.read_salvus_opt()
+        # TODO: Implement this for mono-batch
         inversion_grid = False
         if self.comm.project.meshes == "multi-mesh":
             inversion_grid = True
@@ -328,6 +333,16 @@ class SalvusOptComponent(Component):
                 raise InversionsonError(msg)
             tr_region = max(iterations[it_number])
             return self._create_iteration_name(it_number, tr_region)
+
+    def get_number_of_newest_iteration(self):
+        """
+        Get the number of the newest iteration present in Salvus Opt.
+        """
+        models = self._get_all_model_names()
+        iterations = self._parse_model_files(models)
+        new_it_number = max(iterations)
+
+        return new_it_number
 
     def get_name_for_accepted_iteration_number(self, number: int):
         """
@@ -507,4 +522,3 @@ class SalvusOptComponent(Component):
         tr_region_part = f"{region_parts[0]}.{region_parts[1]}"
 
         return "it" + num_part + "_model_TrRadius_" + tr_region_part
-

@@ -71,6 +71,12 @@ class ProjectComponent(Component):
         simulation_info["attenuation"] = config_dict["salvus_settings"][
             "attenuation"
         ]
+        simulation_info["ocean_loading"] = config_dict["salvus_settings"][
+            "ocean_loading"
+        ]
+        simulation_info["absorbing_boundaries_length"] = solver_settings[
+            "absorbing_boundaries_in_km"
+        ]
 
         return simulation_info
 
@@ -354,6 +360,27 @@ class ProjectComponent(Component):
                 "Information regarding start time of simulation missing"
             )
 
+        if "inversion_monitoring" not in self.info.keys():
+            raise InversionsonError(
+                "Information regarding inversion monitoring is missing"
+            )
+            if (
+                self.info["inversion_monitoring"][
+                    "iterations_between_validation_checks"
+                ]
+                != 0
+            ):
+                if (
+                    len(
+                        self.info["inversion_monitoring"]["validation_dataset"]
+                    )
+                    == 0
+                ):
+                    raise InversionsonError(
+                        "You need to specify a validation dataset if you want"
+                        " to check it regularly."
+                    )
+
     def __setup_components(self):
         """
         Setup the different components that need to be used in the inversion.
@@ -435,6 +462,11 @@ class ProjectComponent(Component):
         self.min_period = self.simulation_dict["min_period"]
         self.max_period = self.simulation_dict["max_period"]
         self.attenuation = self.simulation_dict["attenuation"]
+        self.abs_bound_length = self.simulation_dict[
+            "absorbing_boundaries_length"
+        ]
+        self.absorbing_boundaries = self.info["absorbing_boundaries"]
+        self.ocean_loading = self.simulation_dict["ocean_loading"]
 
         # Inversion attributes
         self.inversion_root = self.info["inversion_path"]
@@ -475,6 +507,9 @@ class ProjectComponent(Component):
         self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
         self.maximum_grad_divergence_angle = self.info["max_angular_change"]
         self.dropout_probability = self.info["dropout_probability"]
+        self.when_to_validate = self.info["inversion_monitoring"][
+            "iterations_between_validation_checks"
+        ]
         self.validation_dataset = self.info["inversion_monitoring"][
             "validation_dataset"
         ]
@@ -535,6 +570,9 @@ class ProjectComponent(Component):
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
+        validation = False
+        if "validation" in iteration:
+            validation = True
         if os.path.exists(iteration_toml):
             warnings.warn(
                 f"Iteration toml for iteration: {iteration} already exists. backed it up",
@@ -550,36 +588,41 @@ class ProjectComponent(Component):
         it_dict["events"] = {}
 
         last_control_group = []
-        if iteration != "it0000_model":
+        if iteration != "it0000_model" and not validation:
             ctrl_grps = toml.load(
                 self.comm.project.paths["control_group_toml"]
             )
             prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
             last_control_group = ctrl_grps[prev_iter]["new"]
 
-        it_dict["last_control_group"] = last_control_group
-        it_dict["new_control_group"] = []
+        if not validation:
+            it_dict["last_control_group"] = last_control_group
+            it_dict["new_control_group"] = []
         f_job_dict = {
             "name": "",
             "submitted": False,
             "retrieved": False,
             "reposts": 0,
         }
-        a_job_dict = {
-            "name": "",
-            "submitted": False,
-            "retrieved": False,
-            "reposts": 0,
-        }
-        s_job_dict = {
-            "name": "",
-            "submitted": False,
-            "retrieved": False,
-            "reposts": 0,
-        }
+        if validation:
+            f_job_dict["windows_selected"] = False
+        if not validation:
+            a_job_dict = {
+                "name": "",
+                "submitted": False,
+                "retrieved": False,
+                "reposts": 0,
+            }
+            s_job_dict = {
+                "name": "",
+                "submitted": False,
+                "retrieved": False,
+                "reposts": 0,
+            }
         if self.meshes == "multi-mesh":
             f_job_dict["interpolated"] = False
-            a_job_dict["interpolated"] = False
+            if not validation:
+                a_job_dict["interpolated"] = False
         # for parameter in self.inversion_params:
         #     s_job_dict[parameter] = {
         #         "name": "",
@@ -587,23 +630,28 @@ class ProjectComponent(Component):
         #         "retrieved": False,
         #     }
         for event in self.comm.lasif.list_events(iteration=iteration):
+            if validation:
+                jobs = {"forward": f_job_dict}
             if self.inversion_mode == "mini-batch":
-                it_dict["events"][event] = {
-                    "misfit": 0.0,
-                    "usage_updated": False,
-                    "jobs": {
+                if not validation:
+                    jobs = {
                         "forward": f_job_dict,
                         "adjoint": a_job_dict,
                         "smoothing": s_job_dict,
-                    },
+                    }
+                it_dict["events"][event] = {
+                    "jobs": jobs,
                 }
             else:
+                if not validation:
+                    jobs = {"forward": f_job_dict, "adjoint": a_job_dict}
                 it_dict["events"][event] = {
-                    "misfit": 0.0,
-                    "usage_updated": False,
-                    "jobs": {"forward": f_job_dict, "adjoint": a_job_dict},
+                    "jobs": jobs,
                 }
-        if self.inversion_mode == "mono-batch":
+            if not validation:
+                it_dict["events"][event]["misfit"] = 0.0
+                it_dict["events"][event]["usage_updated"] = False
+        if self.inversion_mode == "mono-batch" and not validation:
             it_dict["smoothing"] = s_job_dict
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -670,7 +718,7 @@ class ProjectComponent(Component):
         with open(self.paths["control_group_toml"], "w") as fh:
             toml.dump(cg_dict, fh)
 
-    def update_iteration_toml(self, iteration="current"):
+    def update_iteration_toml(self, iteration="current", validation=False):
         """
         Use iteration parameters to update iteration toml file
 
@@ -679,6 +727,10 @@ class ProjectComponent(Component):
         """
         if iteration == "current":
             iteration = self.current_iteration
+        if "validation" in iteration:
+            validation = True
+        if validation and "validation" not in iteration:
+            iteration = f"validation_{iteration}"
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
@@ -686,7 +738,7 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 f"Iteration toml for iteration: {iteration} does not exists"
             )
-        if os.path.exists(self.paths["control_group_toml"]):
+        if os.path.exists(self.paths["control_group_toml"]) and not validation:
             control_group_dict = toml.load(self.paths["control_group_toml"])
             control_group_dict = control_group_dict[iteration]
         else:
@@ -696,35 +748,33 @@ class ProjectComponent(Component):
         it_dict["events"] = {}
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
-        it_dict["last_control_group"] = control_group_dict["old"]
-        it_dict["new_control_group"] = control_group_dict["new"]
+        if not validation:
+            it_dict["last_control_group"] = control_group_dict["old"]
+            it_dict["new_control_group"] = control_group_dict["new"]
         for event in self.comm.lasif.list_events(iteration=iteration):
+            jobs = {"forward": self.forward_job[event]}
+            if not validation:
+                jobs["adjoint"] = self.adjoint_job[event]
             if self.inversion_mode == "mini-batch":
+                if not validation:
+                    jobs["smoothing"] = self.smoothing_job[event]
                 it_dict["events"][event] = {
-                    "misfit": self.misfits[event],
-                    "usage_updated": self.updated[event],
-                    "jobs": {
-                        "forward": self.forward_job[event],
-                        "adjoint": self.adjoint_job[event],
-                        "smoothing": self.smoothing_job[event],
-                    },
+                    "jobs": jobs,
                 }
             else:
                 it_dict["events"][event] = {
-                    "misfit": self.misfits[event],
-                    "usage_updated": self.updated[event],
-                    "jobs": {
-                        "forward": self.forward_job[event],
-                        "adjoint": self.adjoint_job[event],
-                    },
+                    "jobs": jobs,
                 }
-        if self.inversion_mode == "mono-batch":
+            if not validation:
+                it_dict["events"][event]["misfit"] = self.misfits[event]
+                it_dict["events"][event]["usage_updated"] = self.updated[event]
+        if self.inversion_mode == "mono-batch" and not validation:
             it_dict["smoothing"] == self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
-    def get_iteration_attributes(self):
+    def get_iteration_attributes(self, validation=False):
         """
         Save the attributes of the current iteration into memory
 
@@ -732,6 +782,8 @@ class ProjectComponent(Component):
         :type iteration: str
         """
         iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        if validation:
+            iteration = f"validation_{iteration}"
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
@@ -745,28 +797,32 @@ class ProjectComponent(Component):
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
         self.events_in_iteration = list(it_dict["events"].keys())
-        self.old_control_group = it_dict["last_control_group"]
-        self.new_control_group = it_dict["new_control_group"]
-        self.misfits = {}
-        self.updated = {}
+        if not validation:
+            self.old_control_group = it_dict["last_control_group"]
+            self.new_control_group = it_dict["new_control_group"]
+            self.adjoint_job = {}
+            self.smoothing_job = {}
+            self.misfits = {}
+            self.updated = {}
         self.forward_job = {}
-        self.adjoint_job = {}
-        self.smoothing_job = {}
+
         # Not sure if it's worth it to include station misfits
         for event in self.events_in_iteration:
-            self.updated[event] = it_dict["events"][event]["usage_updated"]
-            self.misfits[event] = it_dict["events"][event]["misfit"]
+            if not validation:
+                self.updated[event] = it_dict["events"][event]["usage_updated"]
+                self.misfits[event] = it_dict["events"][event]["misfit"]
+
+                self.adjoint_job[event] = it_dict["events"][event]["jobs"][
+                    "adjoint"
+                ]
+                if self.inversion_mode == "mini-batch":
+                    self.smoothing_job[event] = it_dict["events"][event][
+                        "jobs"
+                    ]["smoothing"]
             self.forward_job[event] = it_dict["events"][event]["jobs"][
                 "forward"
             ]
-            self.adjoint_job[event] = it_dict["events"][event]["jobs"][
-                "adjoint"
-            ]
-            if self.inversion_mode == "mini-batch":
-                self.smoothing_job[event] = it_dict["events"][event]["jobs"][
-                    "smoothing"
-                ]
-        if self.inversion_mode == "mono-batch":
+        if self.inversion_mode == "mono-batch" and not validation:
             self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:

@@ -2,6 +2,7 @@ from __future__ import absolute_import
 from .component import Component
 import numpy as np
 import sys
+import shutil
 from pathlib import Path
 import os
 from inversionson import InversionsonError
@@ -309,19 +310,27 @@ class SalvusMeshComponent(Component):
             )
         print("Writing new fields to simulation mesh")
         iteration = self.comm.project.current_iteration
+        if "validation" in iteration:
+            iteration = iteration[11:]  # We don't need a special mesh
         opt_model = os.path.join(
-            self.comm.salvus_opt.models,
-            f"{iteration}.h5"
+            self.comm.salvus_opt.models, f"{iteration}.h5"
         )
         simulation_mesh = self.comm.lasif.get_simulation_mesh(
-            event_name=None,
-            iteration="current"
+            event_name=None, iteration="current"
         )
+        if os.path.exists(simulation_mesh):
+            print("Mesh already exists, will not add fields")
+            return
+        else:
+            shutil.copy(
+                self.comm.lasif.lasif_comm.project.lasif_config[
+                    "domain_settings"
+                ]["domain_file"],
+                simulation_mesh,
+            )
         fields = self.comm.project.inversion_params
         for field in fields:
             print(f"Writing field: {field}")
             self.add_field_from_one_mesh_to_another(
-                from_mesh=opt_model,
-                to_mesh=simulation_mesh,
-                field_name=field,
+                from_mesh=opt_model, to_mesh=simulation_mesh, field_name=field,
             )

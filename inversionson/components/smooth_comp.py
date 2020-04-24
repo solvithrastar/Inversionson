@@ -261,7 +261,7 @@ class SalvusSmoothComponent(Component):
             model=mesh,
             smoothing_config=smoothing_config,
             # site_config=site_config,
-            time_step_in_seconds=1.0e-5,
+            time_step_in_seconds=5.0e-5,
             site_name=self.comm.project.smoothing_site_name,
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,

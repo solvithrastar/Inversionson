@@ -29,15 +29,30 @@ def create_info(root=None):
     info["HPC"]["wave_propagation"] = {
         "site_name": "daint",
         "wall_time": 3600,
-        "ranks": 1024,
+        "ranks": 48,
     }
     info["HPC"]["diffusion_equation"] = {
         "site_name": "daint",
         "wall_time": 1000,
-        "ranks": 512,
+        "ranks": 24,
     }
-    info["inversion_parameters"] = ["VP", "VS", "RHO"]
-    info["modelling_parameters"] = ["VP", "VS", "RHO"]
+    info["inversion_parameters"] = [
+        "VPV",
+        "VPH",
+        "VSV",
+        "VSH",
+        "RHO",
+    ]
+    info["modelling_parameters"] = [
+        "VPV",
+        "VPH",
+        "VSV",
+        "VSH",
+        "RHO",
+        "QKAPPA",
+        "QMU",
+        "ETA",
+    ]
     info["Smoothing"] = {}
     info["Smoothing"]["smoothing_mode"] = "anisotropic"
     info["Smoothing"]["smoothing_lengths"] = [0.5, 1.0, 1.0]
@@ -47,10 +62,16 @@ def create_info(root=None):
     info["dropout_probability"] = 0.15
     info["initial_batch_size"] = 4
     info["cut_source_region_from_gradient_in_km"] = 100.0
-    info["cut_receiver_region_from_gradient_in_km"] = 10.0
+    info["cut_receiver_region_from_gradient_in_km"] = 0.0
     cut_stuff_gradient = "Put 0.0 if you don't want to cut anything"
     info["clip_gradient"] = 1.0
+    info["absorbing_boundaries"] = True
+    absorbing_boundaries = (
+        "You specify the length of the absorbing boundaries in the "
+        "lasif config"
+    )
     info["inversion_monitoring"] = {}
+    info["inversion_monitoring"]["iterations_between_validation_checks"] = 0
     info["inversion_monitoring"]["validation_dataset"] = []
     info["inversion_monitoring"]["test_dataset"] = []
 
@@ -60,6 +81,7 @@ def create_info(root=None):
     info["comments"] = {}
     info["comments"]["clip_gradient"] = clip_grad_comment
     info["comments"]["cut_gradient"] = cut_stuff_gradient
+    info["comments"]["absorbing_boundaries"] = absorbing_boundaries
     info["comments"]["meshes"] = meshes_comment
     info["comments"]["inversion_mode"] = inversion_mode_comment
     info["comments"]["Smoothing"] = {}
@@ -88,10 +110,17 @@ def create_info(root=None):
         "elements_per_azimuthal_quarter"
     ] = epaq_comment
     info["comments"]["inversion_monitoring"] = {}
+    validation_checks_comment = (
+        "If you want to check misfit of validation set every few iterations "
+        "you give a number N here if you want to do a validation check every "
+        "N iterations. Put 0 if you do not want to perform a validation check."
+    )
     validation_dataset_comment = (
         "A validation dataset is used to monitor state of inversion, it is "
         "used to tune parameters such as smoothing lengths. It is not used "
-        "in the inversion in any other way. This parameter is optional"
+        "in the inversion in any other way. This parameter is optional. "
+        "If you keep the above parameter at zero, you can still reserve "
+        "sources for validation without it happening automatically."
     )
     test_dataset_comment = (
         "A test dataset is not used at all in the inversion and can only be "
@@ -100,6 +129,9 @@ def create_info(root=None):
         "is to make sure they are not used in inversion. "
         "This parameter is optional."
     )
+    info["comments"]["inversion_monitoring"][
+        "iterations_between_validation_checks"
+    ] = validation_checks_comment
     info["comments"]["inversion_monitoring"][
         "validation_dataset"
     ] = validation_dataset_comment

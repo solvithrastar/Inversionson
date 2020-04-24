@@ -62,7 +62,7 @@ class AutoInverter(object):
             body=string, from_=from_whatsapp, to=to_whatsapp
         )
 
-    def prepare_iteration(self, first=False):
+    def prepare_iteration(self, first=False, validation=False):
         """
         Prepare iteration.
         Get iteration name from salvus opt
@@ -73,6 +73,8 @@ class AutoInverter(object):
         Update information in iteration dictionary.
         """
         it_name = self.comm.salvus_opt.get_newest_iteration_name()
+        if validation:
+            it_name = f"validation_{it_name}"
         first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
         self.comm.project.change_attribute("current_iteration", it_name)
         it_toml = os.path.join(
@@ -81,7 +83,7 @@ class AutoInverter(object):
         if self.comm.lasif.has_iteration(it_name):
             if not os.path.exists(it_toml):
                 self.comm.project.create_iteration_toml(it_name)
-            self.comm.project.get_iteration_attributes()
+            self.comm.project.get_iteration_attributes(validation=validation)
             # If the iteration toml was just created but
             # not the iteration, we finish making the iteration
             # Should never happen though
@@ -102,11 +104,13 @@ class AutoInverter(object):
                 else:
                     self.comm.lasif.move_mesh(event=None, iteration=it_name)
                 return
-        if first_try:
+        if first_try and not validation:
             if self.comm.project.inversion_mode == "mini-batch":
                 events = self.comm.lasif.get_minibatch(first)
             else:
                 events = self.comm.lasif.list_events()
+        elif validation:
+            events = self.comm.project.validation_dataset
         else:
             prev_try = self.comm.salvus_opt.get_previous_iteration_name(
                 tr_region=True
@@ -127,9 +131,10 @@ class AutoInverter(object):
         else:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
-        self.comm.project.update_control_group_toml(first=first)
+        if not validation:
+            self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name)
-        self.comm.project.get_iteration_attributes()
+        self.comm.project.get_iteration_attributes(validation)
         # mixa inn control group fra gamalli vinkonu
         # Get control group info into iteration attributes
         # ctrl_groups = toml.load(
@@ -342,7 +347,9 @@ class AutoInverter(object):
         )
         self.comm.project.update_iteration_toml()
 
-    def misfit_quantification(self, event: str):
+    def misfit_quantification(
+        self, event: str, validation=False, window_set=None
+    ):
         """
         Compute misfit and adjoint source for iteration
 
@@ -352,12 +359,15 @@ class AutoInverter(object):
         mpi = True
         if self.comm.project.site_name == "swp":
             mpi = False
-        misfit = self.comm.lasif.misfit_quantification(event, mpi=mpi)
-        self.comm.project.change_attribute(
-            attribute=f'misfits["{event}"]', new_value=misfit
+        misfit = self.comm.lasif.misfit_quantification(
+            event, mpi=mpi, validation=validation, window_set=window_set
         )
-        # self.comm.project.misfits[event] = misfit
-        self.comm.project.update_iteration_toml()
+        if not validation:
+            self.comm.project.change_attribute(
+                attribute=f'misfits["{event}"]', new_value=misfit
+            )
+            # self.comm.project.misfits[event] = misfit
+            self.comm.project.update_iteration_toml()
 
     def process_data(self, event: str):
         """
@@ -441,10 +451,28 @@ class AutoInverter(object):
             window_set_name = iteration + "_" + event
         else:
             window_set_name = event
+
         mpi = True
         if self.comm.project.site_name == "swp":
             mpi = False
 
+        if "validation_" in iteration:
+            window_set_name = iteration
+            if self.comm.project.forward_job[event]["windows_selected"]:
+                print(f"Windows already selected for event {event}")
+                return
+            self.comm.lasif.select_windows(
+                window_set_name=window_set_name,
+                event=event,
+                mpi=mpi,
+                validation=True,
+            )
+            self.comm.project.change_attribute(
+                attribute=f"forward_job['{event}']['windows_selected']",
+                new_value=True,
+            )
+            self.comm.project.update_iteration_toml(validation=True)
+            return
         # If event is in control group, we look for newest window set for event
         if event in self.comm.project.old_control_group:
             import glob
@@ -720,7 +748,10 @@ class AutoInverter(object):
             job_array = self.comm.salvus_flow.get_job(
                 event=event, sim_type="smoothing", iteration="current"
             )
-            job_array.cancel()
+            try:
+                job_array.cancel()
+            except:
+                pass
         smoothing_config = self.comm.smoother.generate_smoothing_config(
             event=event
         )
@@ -1116,20 +1147,94 @@ class AutoInverter(object):
             time.sleep(20)
             self.wait_for_all_jobs_to_finish(sim_type, events=events)
 
-    def compute_misfit_on_validation_data(self):  # Not functional
+    def need_misfit_quantification(
+        self, iteration: str, event: str, window_set: str
+    ) -> bool:
+        """
+        Check whether validation misfit needs to be computed or not
+        
+        :param iteration: Name of iteration
+        :type iteration: str
+        :param event: Name of event
+        :type event: str
+        :param window_set: Name of window set
+        :type window_set: str
+        """
+        validation = self.comm.storyteller.validation_dict
+
+        quantify_misfit = True
+        if iteration in validation.keys():
+            if event in validation[iteration]["events"].keys():
+                if window_set in validation[iteration]["events"][event].keys():
+                    if (
+                        validation[iteration]["events"][event][window_set]
+                        != 0.0
+                    ):
+                        quantify_misfit = False
+
+        if not quantify_misfit:
+            message = (
+                f"Will not quantify misfit for event {event}, "
+                f"iteration {iteration} "
+                f"window set {window_set}. If you want it computed, "
+                f"change value in validation toml to 0.0"
+            )
+            print(message)
+
+        return quantify_misfit
+
+    def compute_misfit_on_validation_data(self):
         """
         We define a validation dataset and compute misfits on it for an average
-        model of the past few iterations.
-        Currently not sure whether we should recompute windows. As the
-        increasing window size increases the misfit. But at the same time, we
-        are fitting an increasingly large window sets on the inverted
-        dataset so maybe that should also apply to the validation set.
-        """
-        print(Fore.YELLOW + "\n ================== \n")
-        print("Computing misfit on validation dataset")
+        model of the past few iterations. *Currently we do not average*
+        We will both compute the misfit on the initial window set and two
+        newer sets.
 
-        events = self.comm.project.validation_dataset
-        for event in events:
+        Probably a good idea to only run this after a model has been accepted
+        and on the first one of course.
+        """
+        if self.comm.project.when_to_validate == 0:
+            return
+        run_function = False
+
+        iteration_number = (
+            self.comm.salvus_opt.get_number_of_newest_iteration()
+        )
+        # We execute the validation check if iteration is either:
+        # a) The initial iteration or
+        # b) When #Iteration + 1 mod when_to_validate = 0
+        if self.comm.project.current_iteration == "it0000_model":
+            run_function = True
+        if (iteration_number + 1) % self.comm.project.when_to_validate == 0:
+            run_function = True
+        # I could always call this at the beginning of iterations and
+        # this function figures our whether it is the correct thing to do.
+
+        if not run_function:
+            return
+        print(Fore.GREEN + "\n ================== \n")
+        print(
+            emoji.emojize(
+                ":white_check_mark: | Computing misfit on validation dataset",
+                use_aliases=True,
+            )
+        )
+        print("\n\n")
+        # Prepare validation iteration.
+        # Simple enough, just create an iteration with the validation events
+        print("Preparing iteration for validation set")
+        self.prepare_iteration(validation=True)
+
+        # Prepare simulations and submit them
+        # I need something to monitor them.
+        # There are definitely complications there
+        print(Fore.YELLOW + "\n ============================ \n")
+        print(
+            emoji.emojize(
+                ":rocket: | Run forward simulations", use_aliases=True
+            )
+        )
+        for event in self.comm.project.validation_dataset:
             if self.comm.project.meshes == "multi-mesh":
                 print(Fore.CYAN + "\n ============================= \n")
                 print(
@@ -1142,20 +1247,135 @@ class AutoInverter(object):
                 print(f"{event} interpolation")
 
                 self.interpolate_model(event)
-        # Figure out current iteration.
-        # Look at how many iterations are between checking this.
-        # Take that many iterations back
-        # Average the model for those iterations
-        # Maybe there is no need to average the models.
-        # Now is maybe the time to submit a job array.
-        # Job arrays might be the go to thing later on in the
-        # inversion as the interpolations get really quick.
-        # Enough about that
-        # Do the interpolations
-        # submit a job array.
-        # wait for job to finish
-        # compute misfit
-        # write into documentation
+
+            print(f"Preparing validation simulation for event {event}")
+            self.run_forward_simulation(event=event)
+
+            print(Fore.RED + "\n =========================== \n")
+            print(
+                emoji.emojize(
+                    ":trident: | Calculate station weights", use_aliases=True
+                )
+            )
+
+            self.calculate_station_weights(event)
+
+        # Retrieve waveforms
+        print(Fore.BLUE + "\n ========================= \n")
+
+        events_retrieved = "None retrieved"
+        i = 0
+        while events_retrieved != "All retrieved":
+            print(Fore.BLUE)
+            print(
+                emoji.emojize(
+                    ":hourglass: | Waiting for jobs", use_aliases=True
+                )
+            )
+            i += 1
+            events_retrieved_now = self.monitor_jobs(
+                sim_type="forward", events=self.comm.project.validation_dataset
+            )
+
+            if events_retrieved_now == "All retrieved":
+                events_retrieved_now = self.comm.project.validation_dataset
+                events_retrieved = "All retrieved"
+            for event in events_retrieved_now:
+                print(f"{event} retrieved")
+                print(Fore.GREEN + "\n ===================== \n")
+                print(
+                    emoji.emojize(
+                        ":floppy_disk: | Process data if " "needed",
+                        use_aliases=True,
+                    )
+                )
+
+                self.process_data(event)
+
+                print(Fore.WHITE + "\n ===================== \n")
+                print(
+                    emoji.emojize(":foggy: | Select windows", use_aliases=True)
+                )
+
+                self.select_windows(event)
+
+                print(Fore.MAGENTA + "\n ==================== \n")
+                print(
+                    emoji.emojize(":zap: | Quantify Misfit", use_aliases=True)
+                )
+                validation_iterations = (
+                    self.comm.lasif.get_validation_iteration_numbers()
+                )
+                iteration = self.comm.project.current_iteration
+                if self.need_misfit_quantification(
+                    iteration=iteration, event=event, window_set=iteration
+                ):
+
+                    self.misfit_quantification(
+                        event, validation=True, window_set=iteration,
+                    )
+                    # Use storyteller to report recently computed misfit
+                    self.comm.storyteller.report_validation_misfit(
+                        iteration=iteration,
+                        window_set=iteration,
+                        event=event,
+                        total_sum=False,
+                    )
+
+                if len(validation_iterations.keys()) > 1:
+                    # We have at least two window sets to compute misfit on
+                    last_number = (
+                        max(validation_iterations.keys())
+                        - self.comm.project.when_to_validate
+                    )
+                    last_iteration = validation_iterations[last_number]
+                    # Figure out what the last validation iteration was.
+                    if self.need_misfit_quantification(
+                        iteration=iteration,
+                        event=event,
+                        window_set=last_iteration,
+                    ):
+                        self.misfit_quantification(
+                            event, validation=True, window_set=last_iteration,
+                        )
+                        self.comm.storyteller.report_validation_misfit(
+                            iteration=iteration,
+                            window_set=last_iteration,
+                            event=event,
+                            total_sum=False,
+                        )
+
+                    if last_number != -1:
+                        # We have three window sets to compute misfits on
+                        if self.need_misfit_quantification(
+                            iteration=iteration,
+                            event=event,
+                            window_set=validation_iterations[-1],
+                        ):
+                            self.misfit_quantification(
+                                event,
+                                validation=True,
+                                window_set=validation_iterations[-1],
+                            )
+                            self.comm.storyteller.report_validation_misfit(
+                                iteration=self.comm.project.current_iteration,
+                                window_set=validation_iterations[-1],
+                                event=event,
+                                total_sum=False,
+                            )
+
+                self.comm.storyteller.report_validation_misfit(
+                    iteration=self.comm.project.current_iteration,
+                    window_set=self.comm.project.current_iteration,
+                    event=event,
+                    total_sum=True,
+                )
+        # leave the validation iteration.
+        iteration = iteration[11:]
+        self.comm.project.change_attribute(
+            attribute="current_iteration", new_value=iteration,
+        )
+        self.comm.project.get_iteration_attributes()
 
     def compute_misfit_and_gradient(self, task: str, verbose: str):
         """
@@ -1266,6 +1486,8 @@ class AutoInverter(object):
                     )
                 )
                 self.run_adjoint_simulation(event)
+
+        self.compute_misfit_on_validation_data()
 
         print(Fore.BLUE + "\n ========================= \n")
         print(
@@ -1450,6 +1672,8 @@ class AutoInverter(object):
         if "compute misfit for" in verbose:
             events_to_use = self.comm.project.old_control_group
         else:
+            # If model is accepted we consider looking into validation data.
+            # self.compute_misfit_on_validation_data()
             events_to_use = list(
                 set(self.comm.project.events_in_iteration)
                 - set(self.comm.project.old_control_group)
@@ -1582,6 +1806,7 @@ class AutoInverter(object):
             attribute="current_iteration", new_value=iteration
         )
         self.comm.project.get_iteration_attributes()
+        self.compute_misfit_on_validation_data()
 
         print(Fore.RED + "\n =================== \n")
         print(f"Current Iteration: {self.comm.project.current_iteration}")
@@ -1789,7 +2014,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        # sys.exit("HAHA")
+        sys.exit("HAHA")
         self.assign_task_to_function(task_2, verbose_2)
 
     def assign_task_to_function(self, task: str, verbose: str):

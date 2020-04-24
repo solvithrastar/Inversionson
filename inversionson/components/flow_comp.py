@@ -340,12 +340,11 @@ class SalvusFlowComponent(Component):
         :param receivers: Information regarding receivers
         :type receivers: list of receiver objects
         """
-
-        from salvus.flow.simple_config import simulation
+        import salvus.flow.simple_config as sc
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
 
-        w = simulation.Waveform(
+        w = sc.simulation.Waveform(
             mesh=mesh, sources=sources, receivers=receivers
         )
 
@@ -359,6 +358,21 @@ class SalvusFlowComponent(Component):
             self.comm.project.start_time
         )
         w.physics.wave_equation.attenuation = self.comm.project.attenuation
+        boundaries = []
+        if self.comm.project.absorbing_boundaries:
+            absorbing = sc.boundary.Absorbing(
+                width_in_meters=self.comm.project.abs_bound_length * 1000.0,
+                side_sets=["r0", "t0", "t1", "p0", "p1",],
+                taper_amplitude=1.0
+                / self.comm.lasif.lasif_comm.project.simulation_settings[
+                    "minimum_period_in_s"
+                ],
+            )
+            boundaries.append(absorbing)
+        if self.comm.project.ocean_loading:
+            ocean_loading = sc.boundary.OceanLoading(side_sets=["r1_ol"])
+            boundaries.append(ocean_loading)
+        w.physics.wave_equation.boundaries = boundaries
 
         # For gradient computation
 

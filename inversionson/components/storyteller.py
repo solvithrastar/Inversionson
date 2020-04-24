@@ -43,6 +43,11 @@ class StoryTellerComponent(Component):
         self.events_quality_toml = os.path.join(
             self.root, "events_quality.toml"
         )
+        self.validation_toml = os.path.join(self.root, "validation.toml")
+        if os.path.exists(self.validation_toml):
+            self.validation_dict = toml.load(self.validation_toml)
+        else:
+            self.validation_dict = {}
         if os.path.exists(self.events_used_toml):
             self.events_used = toml.load(self.events_used_toml)
         else:
@@ -424,6 +429,62 @@ class StoryTellerComponent(Component):
 
         self.markdown.add_paragraph(text=text)
 
+    def report_validation_misfit(
+        self,
+        iteration: str,
+        window_set: str,
+        event: str,
+        total_sum: bool = False,
+    ):
+        """
+        We write misfit of validation dataset for a specific window_set
+        
+        :param iteration: Name of validation iteration
+        :type iteration: str
+        :param window_set: Name of window set
+        :type window_set: str
+        :param event: Name of event reported
+        :type event: str
+        :param total_sum: When the total sum for the iteration needs to
+            be reported, default False
+        :type total_sum: bool, Optional
+        """
+        if not os.path.exists(self.validation_toml):
+            validation_dict = {}
+        else:
+            validation_dict = toml.load(self.validation_toml)
+
+        if iteration not in validation_dict.keys():
+            validation_dict[iteration] = {"events": {}, "total": {}}
+
+        if total_sum:
+            total = {}
+            for key in validation_dict[iteration]["events"][event].keys():
+                total[key] = 0.0
+            for event in validation_dict[iteration]["events"].keys():
+                for key, value in validation_dict[iteration]["events"][
+                    event
+                ].items():
+                    total[key] += value
+            validation_dict[iteration]["total"] = total
+        else:
+            misfits_toml = os.path.join(
+                self.comm.lasif.lasif_root,
+                "ITERATIONS",
+                f"ITERATION_{iteration}",
+                "misfits.toml",
+            )
+            misfits_dict = toml.load(misfits_toml)
+            event_misfit = misfits_dict[event]["event_misfit"]
+            if not event in validation_dict[iteration]["events"].keys():
+                validation_dict[iteration]["events"][event] = {}
+            validation_dict[iteration]["events"][event][
+                window_set
+            ] = event_misfit
+        self.validation_dict = validation_dict
+        with open(self.validation_toml, mode="w") as fh:
+            toml.dump(validation_dict, fh)
+
     def document_task(self, task: str, verbose=None):
         """
         Depending on what kind of task it is, the function makes
@@ -442,19 +503,19 @@ class StoryTellerComponent(Component):
             # We need to create all necessary files
             iteration = self.comm.project.current_iteration
             if iteration.startswith("it0000_model"):
-                iteration_number = 0
+                iteration_number = -1
             else:
-                iteration_number = 1
+                iteration_number = 0
             self._create_story_file()
             self._start_entry_for_iteration()
             if (
                 self.comm.project.inversion_mode == "mini-batch"
-                or iteration_number == 0
+                or iteration_number == -1
             ):
                 self._write_list_of_all_events()
                 self._update_usage_of_events()
-                self._add_image_of_data_coverage()
-                self._add_image_of_event_misfits()
+                # self._add_image_of_data_coverage()
+                # self._add_image_of_event_misfits()
             self._add_table_of_events_and_misfits(task=task)
             # self._report_control_group()
             # self._update_event_quality()
@@ -463,13 +524,13 @@ class StoryTellerComponent(Component):
             if "additional" in verbose:
                 self._report_acceptance_of_model()
                 self._update_usage_of_events()
-                self._add_image_of_event_misfits()
+                # self._add_image_of_event_misfits()
             else:
                 if first_try:
                     self._start_entry_for_iteration()
-                    if self.comm.project.inversion_mode == "mini-batch":
-                        self._add_image_of_data_coverage()
-                if not first_try:
+                    # if self.comm.project.inversion_mode == "mini-batch":
+                    # self._add_image_of_data_coverage()
+                else:
                     self._report_shrinking_of_trust_region()
             if self.comm.project.inversion_mode == "mini-batch":
                 self._add_table_of_events_and_misfits(verbose)

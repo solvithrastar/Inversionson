@@ -479,6 +479,8 @@ class LasifComponent(Component):
             # return self.lasif_comm.project.lasif_config["domain_settings"][
             #     "domain_file"
             # ]
+            if "validation" in iteration:
+                iteration = iteration[11:]
             return os.path.join(
                 self.comm.project.lasif_root,
                 "MODELS",
@@ -504,7 +506,9 @@ class LasifComponent(Component):
             self.lasif_comm, weight_set=event, events=[event]
         )
 
-    def misfit_quantification(self, event: str, mpi=True, n=8):
+    def misfit_quantification(
+        self, event: str, mpi=True, n=8, validation=False, window_set=None
+    ):
         """
         Quantify misfit and calculate adjoint sources.
 
@@ -514,12 +518,18 @@ class LasifComponent(Component):
         :type mpi: bool
         :param n: How many ranks to run on
         :type n: int
+        :param validation: Whether this is for a validation set, default False
+        :type validation: bool, optional
+        :param window_set: Name of a window set, if None will select a logical
+            one, default None
+        :type window: str, optional
         """
         iteration = self.comm.project.current_iteration
-        if self.comm.project.inversion_mode == "mini-batch":
-            window_set = iteration + "_" + event
-        else:
-            window_set = event
+        if window_set is None:
+            if self.comm.project.inversion_mode == "mini-batch":
+                window_set = iteration + "_" + event
+            else:
+                window_set = event
         # Check if adjoint sources exist:
         adjoint_path = os.path.join(
             self.lasif_root,
@@ -528,7 +538,7 @@ class LasifComponent(Component):
             event,
             "stf.h5",
         )
-        if os.path.exists(adjoint_path):
+        if os.path.exists(adjoint_path) and not validation:
             print(f"Adjoint source exists for event: {event} ")
             print(
                 "Will not be recalculated. If you want them "
@@ -556,8 +566,11 @@ class LasifComponent(Component):
                 weight_set=event,
                 events=[event],
             )
+
+        if validation:  # We just return some random value as it is not used
+            return 1.1
         # See if misfit has already been written into iteration toml
-        if self.comm.project.misfits[event] == 0.0:
+        if self.comm.project.misfits[event] == 0.0 and not validation:
             misfit_toml_path = (
                 self.lasif_comm.project.paths["iterations"]
                 / f"ITERATION_{iteration}"
@@ -671,7 +684,14 @@ class LasifComponent(Component):
 
         lapi.process_data(self.lasif_comm, events=[event])
 
-    def select_windows(self, window_set_name: str, event: str, mpi=True, n=12):
+    def select_windows(
+        self,
+        window_set_name: str,
+        event: str,
+        mpi=True,
+        n=12,
+        validation=False,
+    ):
         """
         Select window for a certain event in an iteration.
 
@@ -688,7 +708,8 @@ class LasifComponent(Component):
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
         )
-        if os.path.exists(path):
+        # Need to tackle this differently for mono-batch
+        if os.path.exists(path) and not validation:
             print(f"Window set for event {event} exists.")
             return
 
@@ -733,3 +754,37 @@ class LasifComponent(Component):
             os.mkdir(event_folder)
 
         return os.path.join(event_folder, "receivers.h5")
+
+    def get_list_of_iterations(
+        self, include_validation=False, only_validation=False
+    ) -> list:
+        """
+        Filter the list of iterations
+        
+        :return: List of validation iterations
+        :rtype: list
+        """
+        iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        if only_validation:
+            return [x for x in iterations if "validation" in x]
+        if not include_validation:
+            return [x for x in iterations if "validation" not in x]
+        return iterations
+
+    def get_validation_iteration_numbers(self) -> dict:
+        """
+        List lasif iterations, give dict of them with numbers as keys
+        
+        :return: [description]
+        :rtype: dict
+        """
+        iterations = self.get_list_of_iterations(only_validation=True)
+        iteration_dict = {}
+        for iteration in iterations:
+            strip_validation = iteration[11:]
+            if strip_validation == "it0000_model":
+                iteration_dict[-1] = iteration
+            else:
+                iteration_dict[int(strip_validation[2:6])] = iteration
+
+        return iteration_dict
