@@ -1,6 +1,6 @@
 # Inversionson
 
-Inversionson is a workflow manager which automatically performs a Full-waveform inversion of seismic data based on the workflow described in Thrastarson et al, 2020 (accepted) with the addition of the mini-batch implementation of van Herwaarden et al, 2020 (submitted).
+Inversionson is a workflow manager which automatically performs a Full-waveform inversion of seismic data based on the workflow described in [Thrastarson et al, 2020](https://academic.oup.com/gji/article/221/3/1591/5721256) with the addition of the mini-batch implementation of [van Herwaarden et al, 2020](https://academic.oup.com/gji/article/221/2/1427/5743423). It can also work with or without any combinations of the approaches described in the papers.
 
 The workflow uses wavefield adapted meshes for each earthquake which make the simulations much faster than when using a classical cubed sphere mesh and only a fraction of the dataset in each iteration.
 
