@@ -463,7 +463,7 @@ class BatchComponent(Component):
         print(Back.BLACK)
         print("Now Dirk-Philip will select a control group for you!")
         # time.sleep(2)
-        print("van Herwaarden et al. 2019!")
+        print("van Herwaarden et al. 2020!")
         # time.sleep(2)
 
         # print(string)

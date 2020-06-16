@@ -1234,6 +1234,13 @@ class AutoInverter(object):
                 ":rocket: | Run forward simulations", use_aliases=True
             )
         )
+        if self.comm.project.when_to_validate > 1:
+            # Find iteration range
+            to_it = iteration_number
+            from_it = iteration_number - self.comm.project.when_to_validate + 1
+            self.comm.salvus_mesher.get_average_model(
+                iteration_range=(from_it, to_it)
+            )
         for event in self.comm.project.validation_dataset:
             if self.comm.project.meshes == "multi-mesh":
                 print(Fore.CYAN + "\n ============================= \n")
@@ -2014,7 +2021,6 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        sys.exit("HAHA")
         self.assign_task_to_function(task_2, verbose_2)
 
     def assign_task_to_function(self, task: str, verbose: str):

@@ -159,6 +159,10 @@ class SalvusSmoothComponent(Component):
             model=self.comm.lasif.find_event_mesh(event=event_name),
         )
         smooth_gradient.write_h5(smooth_grad)
+        if "VPV" in list(smooth_gradient.elemental_nodal_fields.keys()):
+            self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
+                mesh=smooth_grad, fieldname_1="VPV", fieldname_2="VPH",
+            )
 
     def generate_input_toml(self, gradient: str, movie=False):
         """
@@ -243,7 +247,6 @@ class SalvusSmoothComponent(Component):
             current iteration, defaults to None
         :type iteration: str, optional
         """
-        from salvus.flow.sites import SiteConfig
         from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         if iteration is None:
@@ -261,7 +264,7 @@ class SalvusSmoothComponent(Component):
             model=mesh,
             smoothing_config=smoothing_config,
             # site_config=site_config,
-            time_step_in_seconds=5.0e-5,
+            time_step_in_seconds=1.0e-5,
             site_name=self.comm.project.smoothing_site_name,
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,

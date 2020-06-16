@@ -28,6 +28,18 @@ class MultiMeshComponent(Component):
         )
         if mode == "gll_2_gll":
             model = os.path.join(self.physical_models, iteration + ".h5")
+            if "validation" in iteration:
+                if self.comm.project.when_to_validate > 1:
+                    it_number = (
+                        self.comm.salvus_opt.get_number_of_newest_iteration()
+                    )
+                    old_it = it_number - self.comm.project.when_to_validate + 1
+                    model = (
+                        self.comm.salvus_mesher.average_meshes
+                        / f"it_{old_it}_to_{it_number}"
+                        / "mesh.h5"
+                    )
+
             # There are many more knobs to tune but for now lets stick to
             # defaults.
             mapi.gll_2_gll(

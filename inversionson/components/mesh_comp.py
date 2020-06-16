@@ -233,14 +233,18 @@ class SalvusMeshComponent(Component):
         :param iteration_range: From iteration to iteration tuple
         :type iterations: tuple
         """
+        # I have to make sure the I am consistent with naming of things, might be a bit off there
+
         from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         folder_name = f"it_{iteration_range[0]}_to_{iteration_range[1]}"
         full_path = self.average_meshes / folder_name / "mesh.h5"
         if not os.path.exists(os.path.dirname(full_path)):
             os.makedirs(os.path.dirname(full_path))
+
         # We copy the newest mesh from SALVUS_OPT to LASIF and write the
         # average fields onto those.
+
         model = self.comm.salvus_opt.get_model_path()
         shutil.copy(model, full_path)
 
@@ -250,7 +254,7 @@ class SalvusMeshComponent(Component):
         for field in fields.keys():
             new_fields[field] = np.zeros_like(fields[field])
         m.element_nodal_fields = {}
-        for iteration in range(iteration_range[0], iteration_range[1]):
+        for iteration in range(iteration_range[0], iteration_range[1] + 1):
             it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
                 number=iteration
             )
@@ -260,7 +264,7 @@ class SalvusMeshComponent(Component):
                 field += m_tmp.element_nodal_fields[field_name]
 
         for field_name, field in new_fields.items():
-            field /= len(range(iteration_range[0], iteration_range[1]))
+            field /= len(range(iteration_range[0], iteration_range[1] + 1))
             m.attach_field(field_name, field)
         m.write_h5(full_path)
         print(
@@ -334,3 +338,64 @@ class SalvusMeshComponent(Component):
             self.add_field_from_one_mesh_to_another(
                 from_mesh=opt_model, to_mesh=simulation_mesh, field_name=field,
             )
+
+    def sum_two_fields_on_a_mesh(
+        self,
+        mesh: str,
+        fieldname_1: str,
+        fieldname_2: str,
+        newname: str = None,
+        delete_old_fields: bool = False,
+    ):
+        """
+        Take two fields on a mesh and sum them together. If no newname is
+        given the summed field will be written into both the old fields.
+        If newname is given the summed field will be written in there
+        and if delete_old_fields is true they will be deleted of course.
+
+        :param mesh: Path to mesh to be used
+        :type mesh: str or Path 
+        :param fieldname_1: Name of field to be summed
+        :type fieldname_1: str
+        :param fieldname_2: Name of other field to be summed
+        :type fieldname_2: str
+        :param newname: Name of field to store summed field, defaults to None
+        :type newname: str, optional
+        :param delete_old_fields: Whether old fields should be deleted,
+            defaults to False. Currently not implemented
+        :type delete_old_fields: bool, optional
+        """
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh
+
+        m = UnstructuredMesh.from_h5(mesh)
+
+        available_fields = list(m.element_nodal_fields.keys())
+        if fieldname_1 not in available_fields:
+            raise InversionsonError(
+                f"Field {fieldname_1} not available on mesh {mesh}. "
+                f"Only available fields are: {available_fields}"
+            )
+        if fieldname_2 not in available_fields:
+            raise InversionsonError(
+                f"Field {fieldname_2} not available on mesh {mesh}. "
+                f"Only available fields are: {available_fields}"
+            )
+
+        if delete_old_fields:
+            if newname is not None:
+                raise InversionsonError(
+                    "If you want to delete old fields you need to write the "
+                    "summed one into a new field"
+                )
+
+        summed_field = np.copy(m.elemental_nodal_fields[fieldname_1])
+        summed_field += m.elemental_nodal_fields[fieldname_2]
+
+        if newname is None:
+            m.elemental_nodal_fields[fieldname_1] = summed_field
+            m.elemental_nodal_fields[fieldname_2] = summed_field
+            m.write_h5(mesh)
+
+        else:
+            m.attach_field[newname, summed_field]
+            # if delete_old_fields: Currently not implemented
