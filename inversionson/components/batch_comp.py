@@ -8,7 +8,6 @@ import numpy as np
 import h5py
 import random
 from colorama import Fore, Back, Style
-import sys
 import time
 import toml
 
@@ -44,6 +43,8 @@ class BatchComponent(Component):
                 continue
             if random.random() < self.comm.project.dropout_probability:
                 dropout.append(event)
+                # We don't want to drop more than one gradient
+                return dropout
         return dropout
 
     def _assert_parameter_in_mesh(self, mesh: str):  # Not used
@@ -324,6 +325,7 @@ class BatchComponent(Component):
                 tmp_event_qual, key=tmp_event_qual.get
             )
             for grad in grads_dropped:
+                # We replace one event by two to ensure a good angle.
                 non_ctrl_group_event = max(
                     tmp_event_qual, key=tmp_event_qual.get
                 )
@@ -333,8 +335,14 @@ class BatchComponent(Component):
                 ctrl_group.remove(grad)
                 ctrl_group.append(non_ctrl_group_event)
                 del tmp_event_qual[non_ctrl_group_event]
+                non_ctrl_group_event_2 = max(
+                    tmp_event_qual, key=tmp_event_qual.get
+                )
+                ctrl_group.append(non_ctrl_group_event_2)
+                del tmp_event_qual[non_ctrl_group_event_2]
                 print(f"Event: {grad} randomly dropped from control group.\n")
-                print(f"Replaced by event: {non_ctrl_group_event} \n")
+                print(f"Replaced by events: {non_ctrl_group_event} \n")
+                print(f" and {non_ctrl_group_event_2}")
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val
@@ -453,17 +461,10 @@ class BatchComponent(Component):
         print(Back.WHITE)
         print(Style.DIM)
 
-        # for line in string:
-        #     sys.stdout.write(line)
-        #     time.sleep(.1)
         print(string)
         print(Style.RESET_ALL)
         time.sleep(1)
         print(Fore.YELLOW)
         print(Back.BLACK)
         print("Now Dirk-Philip will select a control group for you!")
-        # time.sleep(2)
         print("van Herwaarden et al. 2020!")
-        # time.sleep(2)
-
-        # print(string)

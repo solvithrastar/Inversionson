@@ -663,26 +663,6 @@ class AutoInverter(object):
                         else:
                             print("Job failed. Will resubmit")
                             need_resubmit = True
-                            # We don't have the reposts included here for now
-                            # if reposts[event] >= 3:
-                            #     print(
-                            #         "No, I've actually reposted "
-                            #         "this too often Something must "
-                            #         "be wrong"
-                            #         )
-
-                            #     raise InversionsonError(
-                            #         "Too many reposts"
-                            #         )
-                            # TODO: Make this a bit smoother, should work though.
-                # if need_resubmit:
-                #     self.comm.project.change_attribute(
-                #         attribute=f'smoothing_job["{event}"]["submitted"]',
-                #         new_value=False,
-                #     )
-                #     self.comm.project.update_iteration_toml()
-                #     self.smooth_gradient(event)
-                #             # reposts[event] += 1
 
                 if len(params) == len(status):
                     print(
@@ -702,48 +682,7 @@ class AutoInverter(object):
                         "but they are still pending so we wait."
                     )
                     return
-                # I'll keep the old version in here for now, just for later reference when things don't work
-                # status = str(
-                #     self.comm.salvus_flow.get_job_status(
-                #         event=event, sim_type="smoothing"
-                #     )
-                # )
-                # if status == "JobStatus.running":
-                #     print(f"Adjoint job for event {event} is running ")
-                #     print("Will not resubmit. ")
-                #     print("You can work with jobs using salvus-flow")
-                #     return
-                # elif status == "JobStatus.unknown":
-                #     print(f"Status of job for event {event} is unknown")
-                #     print(f"Will resubmit")
-                # elif status == "JobStatus.cancelled":
-                #     print(f"Status of job for event {event} is cancelled")
-                #     print(f"Will resubmit")
-                # elif status == "JobStatus.finished":
-                #     print(f"Status of job for event {event} is finished")
-                #     print("Will retrieve and update toml")
-                #     self.retrieve_gradient(event, smooth=True, par=par)
-                #     self.comm.project.change_attribute(
-                #         attribute=f'smoothing_job["{event}"]["{par}"]["retrieved"]',
-                #         new_value=True,
-                #     )
-                #     self.comm.project.update_iteration_toml()
-                #     continue
-                # else:
-                #     print("Jobstatus unknown for event {event}")
-                #     print("Will resubmit")
-                # print(
-                #     f"Gradient for event {event} already smooth."
-                #     f" Will not repeat. Change its status in iteration toml "
-                #     f"if you want to smooth gradient again"
-                # )
-                # continue
-        # Don't think this is needed anymore but I'll keep it there for now
-        # if _i == 0:
-        #     mesh, smoothed_gradient = self.prepare_gradient_for_smoothing(event)
-        # simulation = self.comm.smoother.generate_diffusion_object(
-        #     gradient=gradient, par=par, mesh=mesh
-        # )
+
         if need_resubmit:
             job_array = self.comm.salvus_flow.get_job(
                 event=event, sim_type="smoothing", iteration="current"
