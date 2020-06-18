@@ -74,9 +74,9 @@ class ProjectComponent(Component):
         simulation_info["ocean_loading"] = config_dict["salvus_settings"][
             "ocean_loading"
         ]
-        simulation_info["absorbing_boundaries_length"] = solver_settings[
-            "absorbing_boundaries_in_km"
-        ]
+        simulation_info["absorbing_boundaries_length"] = config_dict[
+            "salvus_settings"
+        ]["absorbing_boundaries_in_km"]
 
         return simulation_info
 
@@ -640,13 +640,13 @@ class ProjectComponent(Component):
                         "smoothing": s_job_dict,
                     }
                 it_dict["events"][event] = {
-                    "jobs": jobs,
+                    "job_info": jobs,
                 }
             else:
                 if not validation:
                     jobs = {"forward": f_job_dict, "adjoint": a_job_dict}
                 it_dict["events"][event] = {
-                    "jobs": jobs,
+                    "job_info": jobs,
                 }
             if not validation:
                 it_dict["events"][event]["misfit"] = 0.0
@@ -759,11 +759,11 @@ class ProjectComponent(Component):
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
                 it_dict["events"][event] = {
-                    "jobs": jobs,
+                    "job_info": jobs,
                 }
             else:
                 it_dict["events"][event] = {
-                    "jobs": jobs,
+                    "job_info": jobs,
                 }
             if not validation:
                 it_dict["events"][event]["misfit"] = self.misfits[event]
@@ -812,14 +812,14 @@ class ProjectComponent(Component):
                 self.updated[event] = it_dict["events"][event]["usage_updated"]
                 self.misfits[event] = it_dict["events"][event]["misfit"]
 
-                self.adjoint_job[event] = it_dict["events"][event]["jobs"][
+                self.adjoint_job[event] = it_dict["events"][event]["job_info"][
                     "adjoint"
                 ]
                 if self.inversion_mode == "mini-batch":
                     self.smoothing_job[event] = it_dict["events"][event][
-                        "jobs"
+                        "job_info"
                     ]["smoothing"]
-            self.forward_job[event] = it_dict["events"][event]["jobs"][
+            self.forward_job[event] = it_dict["events"][event]["job_info"][
                 "forward"
             ]
         if self.inversion_mode == "mono-batch" and not validation:

@@ -73,7 +73,7 @@ class SalvusFlowComponent(Component):
                 iteration_info = self.comm.project.get_old_iteration_info(
                     iteration
                 )
-                job = iteration_info["events"][event]["jobs"][sim_type]["name"]
+                job = iteration_info["events"][event]["job_info"][sim_type]["name"]
             else:
                 if sim_type == "forward":
                     job = self.comm.project.forward_job[event]["name"]
@@ -146,7 +146,7 @@ class SalvusFlowComponent(Component):
             ):
                 job_name = it_dict["smoothing"]["name"]
             else:
-                job_name = it_dict["events"][event]["jobs"][sim_type]["name"]
+                job_name = it_dict["events"][event]["job_info"][sim_type]["name"]
         if sim_type == "smoothing":
             site_name = self.comm.project.smoothing_site_name
             job = sapi.get_job_array(
@@ -566,7 +566,7 @@ class SalvusFlowComponent(Component):
         events_in_iteration = list(iter_info["events"].keys())
 
         for event in events_in_iteration:
-            job_name = iter_info["events"][event]["jobs"][sim_type]["name"]
+            job_name = iter_info["events"][event]["job_info"][sim_type]["name"]
             job = sapi.get_job(
                 site_name=self.comm.project.site_name, job_name=job_name
             )
