@@ -73,7 +73,9 @@ class SalvusFlowComponent(Component):
                 iteration_info = self.comm.project.get_old_iteration_info(
                     iteration
                 )
-                job = iteration_info["events"][event]["job_info"][sim_type]["name"]
+                job = iteration_info["events"][event]["job_info"][sim_type][
+                    "name"
+                ]
             else:
                 if sim_type == "forward":
                     job = self.comm.project.forward_job[event]["name"]
@@ -146,7 +148,9 @@ class SalvusFlowComponent(Component):
             ):
                 job_name = it_dict["smoothing"]["name"]
             else:
-                job_name = it_dict["events"][event]["job_info"][sim_type]["name"]
+                job_name = it_dict["events"][event]["job_info"][sim_type][
+                    "name"
+                ]
         if sim_type == "smoothing":
             site_name = self.comm.project.smoothing_site_name
             job = sapi.get_job_array(
@@ -359,10 +363,23 @@ class SalvusFlowComponent(Component):
         )
         w.physics.wave_equation.attenuation = self.comm.project.attenuation
         boundaries = []
+        if (
+            "inner_boundary"
+            in self.comm.lasif.lasif_comm.project.domain.side_sets
+        ):
+            side_sets = ["inner_boundary"]
+        else:
+            side_sets = [
+                "r0",
+                "t0",
+                "t1",
+                "p0",
+                "p1",
+            ]
         if self.comm.project.absorbing_boundaries:
             absorbing = sc.boundary.Absorbing(
                 width_in_meters=self.comm.project.abs_bound_length * 1000.0,
-                side_sets=["r0", "t0", "t1", "p0", "p1",],
+                side_sets=side_sets,
                 taper_amplitude=1.0
                 / self.comm.lasif.lasif_comm.project.simulation_settings[
                     "minimum_period_in_s"

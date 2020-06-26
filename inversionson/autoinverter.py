@@ -1952,7 +1952,10 @@ class AutoInverter(object):
         self.comm.project.update_iteration_toml()
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
-        self._send_whatsapp_announcement()
+        try:
+            self._send_whatsapp_announcement()
+        except:
+            print("Not able to send whatsapp message")
         self.comm.salvus_opt.run_salvus_opt()
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
         if task_2 == task and verbose_2 == verbose:
