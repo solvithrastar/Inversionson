@@ -287,12 +287,13 @@ class SalvusFlowComponent(Component):
 
         p.close()
         adj_src = [
-            source.seismology.VectorPoint3DZNE(
+            source.seismology.SideSetVectorPoint3DZNE(
                 latitude=rec["latitude"],
                 longitude=rec["longitude"],
                 fz=1.0,
                 fn=1.0,
                 fe=1.0,
+                side_set_name="r1",
                 source_time_function=stf.Custom(
                     filename=adjoint_filename,
                     dataset_name="/"
@@ -317,17 +318,17 @@ class SalvusFlowComponent(Component):
         from salvus.flow.simple_config import receiver
 
         recs = self.comm.lasif.get_receivers(event)
-        # TODO: Find out how the smoothiesem side sets work.
+
         receivers = [
-            receiver.seismology.Point3D(
+                receiver.seismology.SideSetPoint3D(
                 latitude=rec["latitude"],
                 longitude=rec["longitude"],
                 network_code=rec["network-code"],
                 station_code=rec["station-code"],
+                depth_in_m=0.0,
                 fields=["displacement"],
-            )
-            for rec in recs
-        ]
+                side_set_name="r1") for rec in recs
+                ]
 
         return receivers
 
@@ -446,7 +447,6 @@ class SalvusFlowComponent(Component):
         w.adjoint.gradient.parameterization = parameterization
         w.adjoint.gradient.output_filename = gradient
         w.adjoint.point_source = adj_src
-
         w.validate()
 
         return w

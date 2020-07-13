@@ -718,6 +718,7 @@ class LasifComponent(Component):
             command = f"mpirun -n {n} lasif select_windows "
             command += f"{self.comm.project.current_iteration} "
             command += f"{window_set_name} {event}"
+            print(command)
             process = subprocess.Popen(
                 command, shell=True, stdout=subprocess.PIPE, bufsize=1
             )

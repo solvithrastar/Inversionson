@@ -488,6 +488,7 @@ class AutoInverter(object):
                     os.path.join(windows, window_set_name + ".sqlite"),
                 )
         else:
+            print("I'm here!!!!")
             self.comm.lasif.select_windows(
                 window_set_name=window_set_name, event=event, mpi=mpi
             )
