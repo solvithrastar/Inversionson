@@ -584,7 +584,8 @@ class LasifComponent(Component):
             misfit = self.comm.project.misfits[event]
             print(f"Misfit for {event} has already been computed. ")
             print(
-                "If you want it recomputed, change it to 0.0 in the iteration toml file"
+                "If you want it recomputed, change it to 0.0 in the iteration "
+                "toml file"
             )
         return misfit
 

@@ -7,6 +7,7 @@ the inversion itself.
 
 import os
 import toml
+import pprint
 import shutil
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
@@ -94,7 +95,7 @@ class ProjectComponent(Component):
         """
         import pathlib
 
-        allowed_interp_modes = ["gll_2_gll", "gll_2_exodus", "exodus_2_gll"]
+        allowed_interp_modes = ["gll_2_gll"]
         if "inversion_id" not in self.info.keys():
             raise ValueError("The inversion needs a name, Key: inversion_id")
 
@@ -261,6 +262,17 @@ class ProjectComponent(Component):
                 "Only implemented smoothing modes are 'anisotropic', "
                 "'isotropic' and 'none'"
             )
+
+        if "timestep" not in self.info["Smoothing"].keys():
+            raise InversionsonError(
+                "Please specify the timestep you want for your smoothing "
+                "The total time is 1 second so it needs to be a fraction of "
+                "that. Key: Smoothing.timestep"
+            )
+        if self.info["Smoothing"]["timestep"] > 0.5:
+            raise InversionsonError(
+                "Smoothing timestep can not be larger than 0.5 seconds"
+            )
         if not self.info["Smoothing"]["smoothing_mode"] == "none":
             if "smoothing_lengths" not in self.info["Smoothing"].keys():
                 raise InversionsonError(
@@ -421,9 +433,12 @@ class ProjectComponent(Component):
         case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
         case_iso_inv = set(["VP", "VS"])
         case_iso_inv_dens = set(["VP", "VS", "RHO"])
+        case_tti_inv_norho = set(["VSV", "VSH", "VPV", "VPH"])
 
         if set(parameters) == case_tti_inv:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
+        elif set(parameters) == case_tti_inv_norho:
+            parameters = ["VPV", "VPH", "VSV", "VSH"]
         elif set(parameters) == case_tti_mod:
             parameters = [
                 "VPV",
@@ -501,6 +516,7 @@ class ProjectComponent(Component):
         ]
         self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
         self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
+        self.smoothing_timestep = self.info["Smoothing"]["timestep"]
 
         self.initial_batch_size = self.info["initial_batch_size"]
         self.n_random_events_picked = self.info["n_random_events"]
@@ -629,22 +645,29 @@ class ProjectComponent(Component):
         #         "submitted": False,
         #         "retrieved": False,
         #     }
-        for event in self.comm.lasif.list_events(iteration=iteration):
+        for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             if validation:
-                jobs = {"forward": f_job_dict}
+                jobs = {"forward": f_job_dict.copy()}
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs = {
-                        "forward": f_job_dict,
-                        "adjoint": a_job_dict,
-                        "smoothing": s_job_dict,
+                        "forward": f_job_dict.copy(),
+                        "adjoint": a_job_dict.copy(),
+                        "smoothing": s_job_dict.copy(),
                     }
+                it_dict["events"][_i] = {
+                    "name": event,
+                    "job_info": jobs,
+                }
                 it_dict["events"][event] = {
                     "job_info": jobs,
                 }
             else:
                 if not validation:
-                    jobs = {"forward": f_job_dict, "adjoint": a_job_dict}
+                    jobs = {
+                        "forward": f_job_dict.copy(),
+                        "adjoint": a_job_dict.copy(),
+                    }
                 it_dict["events"][event] = {
                     "job_info": jobs,
                 }
@@ -652,7 +675,9 @@ class ProjectComponent(Component):
                 it_dict["events"][event]["misfit"] = 0.0
                 it_dict["events"][event]["usage_updated"] = False
         if self.inversion_mode == "mono-batch" and not validation:
-            it_dict["smoothing"] = s_job_dict
+            it_dict["smoothing"] = s_job_dict.copy()
+        # pp = pprint.PrettyPrinter(indent=1)
+        # pp.pprint(it_dict)
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 

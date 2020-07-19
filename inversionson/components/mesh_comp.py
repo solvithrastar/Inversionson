@@ -164,7 +164,7 @@ class SalvusMeshComponent(Component):
             print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
             tm = UnstructuredMesh.from_h5(to_mesh)
-            tm.elemental_nodal_fields = {}
+            tm.element_nodal_fields = {}
         else:
             tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
@@ -388,12 +388,12 @@ class SalvusMeshComponent(Component):
                     "summed one into a new field"
                 )
 
-        summed_field = np.copy(m.elemental_nodal_fields[fieldname_1])
-        summed_field += m.elemental_nodal_fields[fieldname_2]
+        summed_field = np.copy(m.element_nodal_fields[fieldname_1])
+        summed_field += m.element_nodal_fields[fieldname_2]
 
         if newname is None:
-            m.elemental_nodal_fields[fieldname_1] = summed_field
-            m.elemental_nodal_fields[fieldname_2] = summed_field
+            m.element_nodal_fields[fieldname_1] = summed_field
+            m.element_nodal_fields[fieldname_2] = summed_field
             m.write_h5(mesh)
 
         else:

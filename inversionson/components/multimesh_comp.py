@@ -42,14 +42,11 @@ class MultiMeshComponent(Component):
 
             # There are many more knobs to tune but for now lets stick to
             # defaults.
-            mapi.gll_2_gll(
+            mapi.gll_2_gll_layered(
                 from_gll=model,
                 to_gll=simulation_mesh,
-                nelem_to_search=50,
-                from_model_path="MODEL/data",
-                to_model_path="MODEL/data",
-                from_coordinates_path="MODEL/coordinates",
-                to_coordinates_path="MODEL/coordinates",
+                layers="nocore",
+                nelem_to_search=20,
                 parameters=self.comm.project.modelling_params,
                 stored_array=interp_folder,
             )
@@ -103,12 +100,12 @@ class MultiMeshComponent(Component):
         shutil.copy(master_model, master_disc_gradient)
 
         if mode == "gll_2_gll":
-            mapi.gll_2_gll(
+            mapi.gll_2_gll_layered(
                 from_gll=gradient,
                 to_gll=master_disc_gradient,
-                nelem_to_search=300,
+                nelem_to_search=20,
+                layers="nocore",
                 parameters=self.comm.project.inversion_params,
-                gradient=True,
                 stored_array=interp_folder,
             )
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
