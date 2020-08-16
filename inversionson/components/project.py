@@ -78,6 +78,9 @@ class ProjectComponent(Component):
         simulation_info["absorbing_boundaries_length"] = config_dict[
             "salvus_settings"
         ]["absorbing_boundaries_in_km"]
+        simulation_info["domain_file"] = config_dict["lasif_project"][
+            "domain_settings"
+        ]["domain_file"]
 
         return simulation_info
 
@@ -482,6 +485,7 @@ class ProjectComponent(Component):
         ]
         self.absorbing_boundaries = self.info["absorbing_boundaries"]
         self.ocean_loading = self.simulation_dict["ocean_loading"]
+        self.domain_file = self.simulation_dict["domain_file"]
 
         # Inversion attributes
         self.inversion_root = self.info["inversion_path"]
@@ -604,14 +608,14 @@ class ProjectComponent(Component):
         it_dict["events"] = {}
 
         last_control_group = []
-        if iteration != "it0000_model" and not validation:
+        if iteration != "it0000_model" and not validation and self.inversion_mode == "mini-batch":
             ctrl_grps = toml.load(
                 self.comm.project.paths["control_group_toml"]
             )
             prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
             last_control_group = ctrl_grps[prev_iter]["new"]
 
-        if not validation:
+        if not validation and self.inversion_mode == "mini-batch":
             it_dict["last_control_group"] = last_control_group
             it_dict["new_control_group"] = []
         f_job_dict = {
@@ -639,45 +643,42 @@ class ProjectComponent(Component):
             f_job_dict["interpolated"] = False
             if not validation:
                 a_job_dict["interpolated"] = False
-        # for parameter in self.inversion_params:
-        #     s_job_dict[parameter] = {
-        #         "name": "",
-        #         "submitted": False,
-        #         "retrieved": False,
-        #     }
-        for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
+
+        for _i, event in enumerate(
+            self.comm.lasif.list_events(iteration=iteration)
+        ):
             if validation:
-                jobs = {"forward": f_job_dict.copy()}
+                jobs = {"forward": f_job_dict}
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs = {
-                        "forward": f_job_dict.copy(),
-                        "adjoint": a_job_dict.copy(),
-                        "smoothing": s_job_dict.copy(),
+                        "forward": f_job_dict,
+                        "adjoint": a_job_dict,
+                        "smoothing": s_job_dict,
                     }
-                it_dict["events"][_i] = {
+                it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
                 }
-                it_dict["events"][event] = {
-                    "job_info": jobs,
-                }
+                # it_dict["events"][event] = {
+                #     "job_info": jobs,
+                # }
             else:
                 if not validation:
                     jobs = {
-                        "forward": f_job_dict.copy(),
-                        "adjoint": a_job_dict.copy(),
+                        "forward": f_job_dict,
+                        "adjoint": a_job_dict,
                     }
-                it_dict["events"][event] = {
+                it_dict["events"][str(_i)] = {
+                    "name": event,
                     "job_info": jobs,
                 }
             if not validation:
-                it_dict["events"][event]["misfit"] = 0.0
-                it_dict["events"][event]["usage_updated"] = False
+                it_dict["events"][str(_i)]["misfit"] = 0.0
+                it_dict["events"][str(_i)]["usage_updated"] = False
         if self.inversion_mode == "mono-batch" and not validation:
-            it_dict["smoothing"] = s_job_dict.copy()
-        # pp = pprint.PrettyPrinter(indent=1)
-        # pp.pprint(it_dict)
+            it_dict["smoothing"] = s_job_dict
+
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
@@ -766,35 +767,40 @@ class ProjectComponent(Component):
         if os.path.exists(self.paths["control_group_toml"]) and not validation:
             control_group_dict = toml.load(self.paths["control_group_toml"])
             control_group_dict = control_group_dict[iteration]
-        else:
+        elif self.inversion_mode == "mini-batch":
             control_group_dict = {"old": [], "new": []}
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
-        if not validation:
+        if not validation and self.inversion_mode == "mini-batch":
             it_dict["last_control_group"] = control_group_dict["old"]
             it_dict["new_control_group"] = control_group_dict["new"]
-        for event in self.comm.lasif.list_events(iteration=iteration):
+        for _i, event in enumerate(
+            self.comm.lasif.list_events(iteration=iteration)
+        ):
             jobs = {"forward": self.forward_job[event]}
             if not validation:
                 jobs["adjoint"] = self.adjoint_job[event]
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
-                it_dict["events"][event] = {
+                it_dict["events"][str(_i)] = {
+                    "name": event,
                     "job_info": jobs,
                 }
             else:
-                it_dict["events"][event] = {
+                it_dict["events"][str(_i)] = {
                     "job_info": jobs,
                 }
             if not validation:
-                it_dict["events"][event]["misfit"] = self.misfits[event]
-                it_dict["events"][event]["usage_updated"] = self.updated[event]
+                it_dict["events"][str(_i)]["misfit"] = self.misfits[event]
+                it_dict["events"][str(_i)]["usage_updated"] = self.updated[
+                    event
+                ]
         if self.inversion_mode == "mono-batch" and not validation:
-            it_dict["smoothing"] == self.smoothing_job
+            it_dict["smoothing"] = self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -821,10 +827,13 @@ class ProjectComponent(Component):
 
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
-        self.events_in_iteration = list(it_dict["events"].keys())
+        self.events_in_iteration = self.comm.lasif.list_events(
+            iteration=iteration
+        )
         if not validation:
-            self.old_control_group = it_dict["last_control_group"]
-            self.new_control_group = it_dict["new_control_group"]
+            if self.inversion_mode == "mini-batch":
+                self.old_control_group = it_dict["last_control_group"]
+                self.new_control_group = it_dict["new_control_group"]
             self.adjoint_job = {}
             self.smoothing_job = {}
             self.misfits = {}
@@ -832,19 +841,21 @@ class ProjectComponent(Component):
         self.forward_job = {}
 
         # Not sure if it's worth it to include station misfits
-        for event in self.events_in_iteration:
+        for _i, event in enumerate(self.events_in_iteration):
             if not validation:
-                self.updated[event] = it_dict["events"][event]["usage_updated"]
-                self.misfits[event] = it_dict["events"][event]["misfit"]
-
-                self.adjoint_job[event] = it_dict["events"][event]["job_info"][
-                    "adjoint"
+                self.updated[event] = it_dict["events"][str(_i)][
+                    "usage_updated"
                 ]
+                self.misfits[event] = it_dict["events"][str(_i)]["misfit"]
+
+                self.adjoint_job[event] = it_dict["events"][str(_i)][
+                    "job_info"
+                ]["adjoint"]
                 if self.inversion_mode == "mini-batch":
-                    self.smoothing_job[event] = it_dict["events"][event][
+                    self.smoothing_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["smoothing"]
-            self.forward_job[event] = it_dict["events"][event]["job_info"][
+            self.forward_job[event] = it_dict["events"][str(_i)]["job_info"][
                 "forward"
             ]
         if self.inversion_mode == "mono-batch" and not validation:
@@ -870,3 +881,22 @@ class ProjectComponent(Component):
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)
         return it_dict
+
+    def get_key_number_for_event(
+        self, event: str, iteration: str = "current"
+    ) -> str:
+        """
+        Due to an annoying problem with toml. We can not use event names
+        as keys in the iteration dictionaries. This is a function to find
+        the index.
+        Lasif returns a sorted list which should always be the same.
+
+        :param event: Name of event
+        :type event: str
+        :return: The correct key for the event
+        :rtype: str
+        """
+        if iteration == "current":
+            iteration = self.current_iteration
+        events = self.comm.lasif.list_events(iteration=iteration)
+        return str(events.index(event))

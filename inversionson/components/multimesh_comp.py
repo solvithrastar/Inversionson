@@ -1,3 +1,4 @@
+from salvus.flow.simple_config import simulation
 from .component import Component
 import os
 import shutil
@@ -27,9 +28,15 @@ class MultiMeshComponent(Component):
             self.comm.lasif.lasif_comm, event, iteration
         )
         if mode == "gll_2_gll":
+
             model = os.path.join(self.physical_models, iteration + ".h5")
             if "validation" in iteration:
-                if self.comm.project.when_to_validate > 1:
+                iteration = iteration.replace("validation_", "")
+
+                if (
+                    self.comm.project.when_to_validate > 1
+                    and iteration != "it0000_model"
+                ):
                     it_number = (
                         self.comm.salvus_opt.get_number_of_newest_iteration()
                     )
@@ -39,9 +46,31 @@ class MultiMeshComponent(Component):
                         / f"it_{old_it}_to_{it_number}"
                         / "mesh.h5"
                     )
+                else:
+                    model = os.path.join(
+                        self.physical_models, iteration + ".h5"
+                    )
 
             # There are many more knobs to tune but for now lets stick to
             # defaults.
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=self.comm.project.domain_file,
+                to_mesh=model,
+                field_name="layer",
+                elemental=True,
+            )
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=self.comm.project.domain_file,
+                to_mesh=model,
+                field_name="fluid",
+                elemental=True,
+            )
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=self.comm.project.domain_file,
+                to_mesh=model,
+                field_name="moho_idx",
+                global_string=True,
+            )
             mapi.gll_2_gll_layered(
                 from_gll=model,
                 to_gll=simulation_mesh,
@@ -81,6 +110,7 @@ class MultiMeshComponent(Component):
         gradient = self.comm.lasif.find_gradient(
             iteration, event, smooth=smooth
         )
+        simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=event)
 
         master_model = self.comm.lasif.get_master_model()
         # summed_gradient = self.comm.salvus_opt.get_model_path(
@@ -100,6 +130,24 @@ class MultiMeshComponent(Component):
         shutil.copy(master_model, master_disc_gradient)
 
         if mode == "gll_2_gll":
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=simulation_mesh,
+                to_mesh=gradient,
+                field_name="layer",
+                elemental=True,
+            )
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=simulation_mesh,
+                to_mesh=gradient,
+                field_name="fluid",
+                elemental=True,
+            )
+            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+                from_mesh=master_model,
+                to_mesh=gradient,
+                field_name="moho_idx",
+                global_string=True,
+            )
             mapi.gll_2_gll_layered(
                 from_gll=gradient,
                 to_gll=master_disc_gradient,
@@ -109,15 +157,5 @@ class MultiMeshComponent(Component):
                 stored_array=interp_folder,
             )
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
-        elif mode == "gll2exo":  # This will probably be removed soon
-            mapi.gll_2_exodus(
-                gll_model=gradient,
-                exodus_model=summed_gradient,
-                nelem_to_search=5,
-                parameters=self.comm.project.inversion_params,
-                gradient=True,
-                first=True,
-            )
-            self.comm.salvus_mesher
         else:
             raise ValueError(f"Mode: {mode} not implemented")

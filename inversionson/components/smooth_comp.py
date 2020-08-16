@@ -250,9 +250,16 @@ class SalvusSmoothComponent(Component):
 
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        mesh = UnstructuredMesh.from_h5(
-            self.comm.lasif.find_gradient(iteration=iteration, event=event)
-        )
+        if self.comm.project.inversion_mode == "mini-batch":
+            mesh = UnstructuredMesh.from_h5(
+                self.comm.lasif.find_gradient(iteration=iteration, event=event)
+            )
+        else:
+            mesh = UnstructuredMesh.from_h5(
+                self.comm.lasif.find_gradient(
+                    iteration=iteration, summed=True, smooth=False, event=None
+                )
+            )
         mesh.attach_global_variable(name="reference_frame", data="spherical")
 
         job = smoothing.run_async(
@@ -263,10 +270,17 @@ class SalvusSmoothComponent(Component):
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-
-        self.comm.project.change_attribute(
-            f'smoothing_job["{event}"]["name"]', job.job_array_name
-        )
-        self.comm.project.change_attribute(
-            f'smoothing_job["{event}"]["submitted"]', True
-        )
+        if self.comm.project.inversion_mode == "mini-batch":
+            self.comm.project.change_attribute(
+                f'smoothing_job["{event}"]["name"]', job.job_array_name
+            )
+            self.comm.project.change_attribute(
+                f'smoothing_job["{event}"]["submitted"]', True
+            )
+        else:
+            self.comm.project.change_attribute(
+                'smoothing_job["name"]', job.job_array_name
+            )
+            self.comm.project.change_attribute(
+                'smoothing_job["submitted"]', True
+            )

@@ -31,6 +31,7 @@ class AutoInverter(object):
         self.comm = self._find_project_comm()
         print(Fore.GREEN + "Now I want to start running the inversion")
         print(Style.RESET_ALL)
+        self.task = None
         self.run_inversion()
 
     def _find_project_comm(self):
@@ -115,8 +116,7 @@ class AutoInverter(object):
             prev_try = self.comm.salvus_opt.get_previous_iteration_name(
                 tr_region=True
             )
-            prev_try = self.comm.project.get_old_iteration_info(prev_try)
-            events = list(prev_try["events"].keys())
+            events = self.comm.lasif.list_events(iteration=prev_try)
         self.comm.project.change_attribute("current_iteration", it_name)
         self.comm.lasif.set_up_iteration(it_name, events)
         if self.comm.project.meshes == "multi-mesh":
@@ -131,7 +131,7 @@ class AutoInverter(object):
         else:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
-        if not validation:
+        if not validation and self.comm.project.inversion_mode == "mini-batch":
             self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name)
         self.comm.project.get_iteration_attributes(validation)
@@ -356,7 +356,7 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
-        mpi = True
+        mpi = False
         if self.comm.project.site_name == "swp":
             mpi = False
         misfit = self.comm.lasif.misfit_quantification(
@@ -421,12 +421,13 @@ class AutoInverter(object):
         :param smooth: Am I returning gradient from smoothing? Default: False
         :type smooth: bool
         """
-        if self.comm.project.adjoint_job[event]["retrieved"] and not smooth:
-            print(
-                f"Gradient for event {event} has already been retrieved. "
-                f"Will not retrieve it again."
-            )
-            return
+        if event is not None and not smooth:
+            if self.comm.project.adjoint_job[event]["retrieved"]:
+                print(
+                    f"Gradient for event {event} has already been retrieved. "
+                    f"Will not retrieve it again."
+                )
+                return
         if smooth:
             sim_type = "smoothing"
             self.comm.smoother.retrieve_smooth_gradient(event_name=event,)
@@ -452,9 +453,18 @@ class AutoInverter(object):
         else:
             window_set_name = event
 
-        mpi = True
+        mpi = False
         if self.comm.project.site_name == "swp":
             mpi = False
+        if self.comm.project.inversion_mode == "mono-batch":
+            if self.task == "compute_misfit_and_gradient":
+                self.comm.lasif.select_windows(
+                    window_set_name=window_set_name, event=event, mpi=mpi
+                )
+            else:
+                print("Windows were selected in a previous iteration.")
+                print(" ... On we go")
+                return
 
         if "validation_" in iteration:
             window_set_name = iteration
@@ -563,7 +573,17 @@ class AutoInverter(object):
         """
         from inversionson.utils import sum_gradients
 
-        events = self.comm.projects.events_in_iteration
+        events = self.comm.project.events_in_iteration
+        grad_mesh = self.comm.lasif.find_gradient(
+            iteration=self.comm.project.current_iteration,
+            event=None,
+            summed=True,
+            smooth=False,
+            just_give_path=True,
+        )
+        if os.path.exists(grad_mesh):
+            print("Gradient has already been summed. Moving on...")
+            return
         gradients = []
         for event in events:
             gradients.append(
@@ -575,13 +595,7 @@ class AutoInverter(object):
                     just_give_path=False,
                 )
             )
-        grad_mesh = self.comm.lasif.find_gradient(
-            iteration=self.comm.project.current_iteration,
-            event=None,
-            summed=True,
-            smooth=False,
-            just_give_path=True,
-        )
+        shutil.copy(gradients[0], grad_mesh)
         sum_gradients(mesh=grad_mesh, gradients=gradients)
 
     def prepare_gradient_for_smoothing(self, event) -> object:
@@ -923,7 +937,7 @@ class AutoInverter(object):
                         )
                     if len(params) == len(status):
                         print(f"All parameters have now been smoothed")
-                        self.retrieve_gradient(events, smooth=True)
+                        self.retrieve_gradient(event=None, smooth=True)
                         self.comm.project.change_attribute(
                             attribute=f'smoothing_job["retrieved"]',
                             new_value=True,
@@ -1173,7 +1187,10 @@ class AutoInverter(object):
                 ":rocket: | Run forward simulations", use_aliases=True
             )
         )
-        if self.comm.project.when_to_validate > 1:
+        if (
+            self.comm.project.when_to_validate > 1
+            and "it0000_model" not in self.comm.project.current_iteration
+        ):
             # Find iteration range
             to_it = iteration_number
             from_it = iteration_number - self.comm.project.when_to_validate + 1
@@ -1433,7 +1450,7 @@ class AutoInverter(object):
                 )
                 self.run_adjoint_simulation(event)
 
-        self.compute_misfit_on_validation_data()
+        # self.compute_misfit_on_validation_data()
 
         print(Fore.BLUE + "\n ========================= \n")
         print(
@@ -1444,6 +1461,7 @@ class AutoInverter(object):
         )
 
         self.wait_for_all_jobs_to_finish("forward")
+        # sys.exit("Done with computing forwards")
         # self.comm.lasif.write_misfit()
 
         events_retrieved_adjoint = "None retrieved"
@@ -1480,7 +1498,7 @@ class AutoInverter(object):
                         use_aliases=True,
                     )
                 )
-                self.preprocess_gradient(event)
+                # self.preprocess_gradient(event)
                 if self.comm.project.inversion_mode == "mini-batch":
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(
@@ -1615,15 +1633,20 @@ class AutoInverter(object):
         print(f"Current Task: {task}")
         print(f"More specifically: {verbose}")
 
-        if "compute misfit for" in verbose:
+        if (
+            "compute misfit for" in verbose
+            and self.comm.project.inversion_mode == "mini-batch"
+        ):
             events_to_use = self.comm.project.old_control_group
-        else:
+        elif self.comm.project.inversion_mode == "mini-batch":
             # If model is accepted we consider looking into validation data.
             # self.compute_misfit_on_validation_data()
             events_to_use = list(
                 set(self.comm.project.events_in_iteration)
                 - set(self.comm.project.old_control_group)
             )
+        else:
+            events_to_use = self.comm.project.events_in_iteration
         for event in events_to_use:
 
             if self.comm.project.meshes == "multi-mesh":
@@ -2003,6 +2026,7 @@ class AutoInverter(object):
         # self.initialize_inversion()
 
         task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+        self.task = task
 
         self.assign_task_to_function(task, verbose)
 

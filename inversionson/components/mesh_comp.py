@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from typing import NoReturn
 from .component import Component
 import numpy as np
 import sys
@@ -143,7 +144,12 @@ class SalvusMeshComponent(Component):
         return mesh, smooth_gradient
 
     def add_field_from_one_mesh_to_another(
-        self, from_mesh: str, to_mesh: str, field_name: str
+        self,
+        from_mesh: str,
+        to_mesh: str,
+        field_name: str,
+        elemental: bool = False,
+        global_string: bool = False,
     ):
         """
         Add one field from a specific mesh to another mesh. The two meshes
@@ -155,6 +161,12 @@ class SalvusMeshComponent(Component):
         :type to_mesh: str
         :param field_name: Name of the field to copy between them.
         :type field_name: str
+        :param elemental: If the field is elemental make true, defaults to 
+            False
+        :type elemental: bool, optional
+        :param global_string: If the field is a global variable, defaults
+            to False
+        :type global_string: bool, optional
         """
         from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import os
@@ -168,8 +180,16 @@ class SalvusMeshComponent(Component):
         else:
             tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
-
-        field = fm.element_nodal_fields[field_name]
+        if global_string:
+            field = fm.global_strings[field_name]
+            tm.attach_global_variable(name=field_name, data=field)
+            tm.write_h5(to_mesh)
+            print(f"Attached field {field_name} to mesh {to_mesh}")
+            return
+        elif elemental:
+            field = fm.elemental_fields[field_name]
+        else:
+            field = fm.element_nodal_fields[field_name]
         tm.attach_field(field_name, field)
         tm.write_h5(to_mesh)
         print(f"Attached field {field_name} to mesh {to_mesh}")

@@ -329,7 +329,8 @@ class LasifComponent(Component):
                 gradient = os.path.join(
                     gradients, f"ITERATION_{iteration}", event, "gradient.h5",
                 )
-        if not smooth:
+
+        if not smooth and self.comm.project.inversion_mode == "mini-batch":
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):
@@ -507,7 +508,7 @@ class LasifComponent(Component):
         )
 
     def misfit_quantification(
-        self, event: str, mpi=True, n=8, validation=False, window_set=None
+        self, event: str, mpi=False, n=8, validation=False, window_set=None
     ):
         """
         Quantify misfit and calculate adjoint sources.
@@ -689,8 +690,8 @@ class LasifComponent(Component):
         self,
         window_set_name: str,
         event: str,
-        mpi=True,
-        n=12,
+        mpi=False,
+        n=8,
         validation=False,
     ):
         """
@@ -720,9 +721,12 @@ class LasifComponent(Component):
             command += f"{self.comm.project.current_iteration} "
             command += f"{window_set_name} {event}"
             process = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, bufsize=1
+                command, shell=True, stdout=subprocess.PIPE, bufsize=1, stderr=subprocess.PIPE,
             )
             for line in process.stdout:
+                print(line, end=" \n", flush=True)
+            print("\n\n Error messages: \n\n")
+            for line in process.stderr:
                 print(line, end=" \n", flush=True)
             process.wait()
             print(process.returncode)

@@ -9,6 +9,7 @@ or something like that.
 import numpy as np
 import os
 import h5py
+from tqdm import tqdm
 
 
 def latlondepth_to_cartesian(
@@ -210,17 +211,17 @@ def sum_gradients(mesh: str, gradients: list):
     # Read in the fields for these gradients and sum them accordingly
     # store on a single mesh.
     from salvus.mesh.unstructured_mesh import UnstructuredMesh
+
     m = UnstructuredMesh.from_h5(mesh)
-    m.element_nodal_fields = {}
     fields = UnstructuredMesh.from_h5(gradients[0]).element_nodal_fields.keys()
 
     for _i, gradient in enumerate(gradients):
+        print(f"Adding gradient {_i+1} of {len(gradients)}")
         grad = UnstructuredMesh.from_h5(gradient)
         for field in fields:
             if _i == 0:
                 m.attach_field(
-                    field,
-                    np.zeros_like(grad.element_nodal_fields[field])
+                    field, np.zeros_like(grad.element_nodal_fields[field])
                 )
             m.element_nodal_fields[field] += grad.element_nodal_fields[field]
 

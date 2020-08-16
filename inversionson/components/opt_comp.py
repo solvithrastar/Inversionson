@@ -125,7 +125,9 @@ class SalvusOptComponent(Component):
 
         shutil.copy(model_path, lasif_path)
 
-    def get_model_path(self, gradient=False, iteration=None) -> str:
+    def get_model_path(
+        self, gradient=False, iteration=None, strip_validation=True
+    ) -> str:
         """
         Get path of model related to iteration
 
@@ -133,13 +135,19 @@ class SalvusOptComponent(Component):
         :type gradient: bool
         :param iteration: Name of iteration, if none given will use newest.
         :type iteration: str
+        :param strip_validation: Strip the validation of the iteration if it's
+            a part of it
+        :type strip_validation: bool
         """
         if not iteration:
             iteration = self.comm.project.current_iteration
+        if strip_validation:
+            if "validation" in iteration:
+                iteration = iteration.replace("validation_", "")
         if gradient:
-            return os.path.join(self.models, "gradient_" + iteration + ".e")
+            return os.path.join(self.models, "gradient_" + iteration + ".h5")
         else:
-            return os.path.join(self.models, iteration + ".e")
+            return os.path.join(self.models, iteration + ".h5")
 
     def write_misfit_to_task_toml(self, events=None):
         """
@@ -158,17 +166,17 @@ class SalvusOptComponent(Component):
         )
         task = self.read_salvus_opt()
         if self.comm.project.inversion_mode == "mono-batch":
-            total_misfit = 0
+            total_misfit = 0.0
         else:
             event_list = []
         for event in events:
             if self.comm.project.inversion_mode == "mono-batch":
-                total_misfit += misfits[event]["event_misfit"]
+                total_misfit += float(misfits[event]["event_misfit"])
             else:
                 misfit = misfits[event]["event_misfit"]
                 event_list.append({"misfit": float(misfit), "name": event})
         if self.comm.project.inversion_mode == "mono-batch":
-            task["task"][0]["output"]["event"] = total_misfit
+            task["task"][0]["output"]["misfit"] = total_misfit
         else:
             task["task"][0]["output"]["event"] = event_list
 
@@ -231,6 +239,9 @@ class SalvusOptComponent(Component):
         """
         Write misfit and gradient to task toml
         """
+        if self.comm.project.inversion_mode == "mono-batch":
+            self._write_summed_misfits_and_gradients_to_task_toml()
+            return
         iteration = self.comm.project.current_iteration
         events_used = self.comm.project.events_in_iteration
         misfits = toml.load(
@@ -264,6 +275,29 @@ class SalvusOptComponent(Component):
             )
         task["task"][0]["output"]["event"] = events_list
 
+        with open(os.path.join(self.path, "task.toml"), "w") as fh:
+            toml.dump(task, fh)
+
+    def _write_summed_misfits_and_gradients_to_task_toml(self):
+        iteration = self.comm.project.current_iteration
+        misfits = toml.load(
+            os.path.join(
+                self.comm.project.lasif_root,
+                "ITERATIONS",
+                f"ITERATION_{iteration}",
+                "misfits.toml",
+            )
+        )
+        total_misfit = 0.0
+        for event in misfits.keys():
+            total_misfit += float(misfits[event]["event_misfit"])
+
+        gradient = self.comm.lasif.find_gradient(
+            iteration=iteration, event=None, smooth=True, summed=True,
+        )
+        task = self.read_salvus_opt()
+        task["task"][0]["output"]["gradient"] = gradient
+        task["task"][0]["output"]["misfit"] = total_misfit
         with open(os.path.join(self.path, "task.toml"), "w") as fh:
             toml.dump(task, fh)
 
@@ -439,7 +473,7 @@ class SalvusOptComponent(Component):
         prev_it_dict = self.comm.project.get_old_iteration_info(
             iteration=prev_iter
         )
-        for event in prev_it_dict["events"].keys():
+        for event in self.comm.lasif.list_events(iteration=prev_iter):
             if event not in prev_it_dict["new_control_group"]:
                 blocked_events.append(key)
 
