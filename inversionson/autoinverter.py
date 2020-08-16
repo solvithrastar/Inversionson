@@ -1450,7 +1450,7 @@ class AutoInverter(object):
                 )
                 self.run_adjoint_simulation(event)
 
-        # self.compute_misfit_on_validation_data()
+        self.compute_misfit_on_validation_data()
 
         print(Fore.BLUE + "\n ========================= \n")
         print(
@@ -1498,7 +1498,7 @@ class AutoInverter(object):
                         use_aliases=True,
                     )
                 )
-                # self.preprocess_gradient(event)
+                self.preprocess_gradient(event)
                 if self.comm.project.inversion_mode == "mini-batch":
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(
