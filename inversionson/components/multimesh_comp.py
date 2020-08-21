@@ -58,18 +58,21 @@ class MultiMeshComponent(Component):
                 to_mesh=model,
                 field_name="layer",
                 elemental=True,
+                overwrite=False,
             )
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=self.comm.project.domain_file,
                 to_mesh=model,
                 field_name="fluid",
                 elemental=True,
+                overwrite=False,
             )
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=self.comm.project.domain_file,
                 to_mesh=model,
                 field_name="moho_idx",
                 global_string=True,
+                overwrite=False,
             )
             mapi.gll_2_gll_layered(
                 from_gll=model,
@@ -135,18 +138,21 @@ class MultiMeshComponent(Component):
                 to_mesh=gradient,
                 field_name="layer",
                 elemental=True,
+                overwrite=False,
             )
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=simulation_mesh,
                 to_mesh=gradient,
                 field_name="fluid",
                 elemental=True,
+                overwrite=False,
             )
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=master_model,
                 to_mesh=gradient,
                 field_name="moho_idx",
                 global_string=True,
+                overwrite=False,
             )
             mapi.gll_2_gll_layered(
                 from_gll=gradient,

@@ -7,7 +7,7 @@ or something like that.
 """
 
 import numpy as np
-import os
+import os, sys
 import h5py
 from tqdm import tqdm
 
@@ -226,3 +226,27 @@ def sum_gradients(mesh: str, gradients: list):
             m.element_nodal_fields[field] += grad.element_nodal_fields[field]
 
     m.write_h5(mesh)
+
+
+def double_fork():
+    print("\n \n Attempting to DoubleFork \n \n")
+    try:
+        pid = os.fork()
+        if pid > 0:
+            print("I am in parent process and I will exit")
+            sys.exit(0)
+    except OSError:
+        print("Fork failed")
+        sys.exit(1)
+
+    os.chdir("/")
+    os.setsid()
+    os.umask(0)
+
+    # second fork
+    try:
+        pid = os.fork()
+        if pid > 0:
+            sys.exit(0)
+    except OSError:
+        print("Fork 2 failed")

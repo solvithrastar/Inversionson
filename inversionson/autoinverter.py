@@ -92,10 +92,7 @@ class AutoInverter(object):
                 if self.comm.project.meshes == "multi-mesh":
                     for event in self.comm.project.events_in_iteration:
                         if not self.comm.lasif.has_mesh(event):
-                            self.comm.salvus_mesher.create_mesh(
-                                event=event,
-                                n_lat=self.comm.project.elem_per_quarter,
-                            )
+                            self.comm.salvus_mesher.create_mesh(event=event,)
                             self.comm.salvus_mesher.add_region_of_interest(
                                 event=event
                             )
@@ -597,15 +594,6 @@ class AutoInverter(object):
             )
         shutil.copy(gradients[0], grad_mesh)
         sum_gradients(mesh=grad_mesh, gradients=gradients)
-
-    def prepare_gradient_for_smoothing(self, event) -> object:
-        """
-        Add smoothing fields to the relevant mesh.
-        
-        :param event: Name of event
-        :type event: str
-        """
-        return self.comm.salvus_mesher.add_smoothing_fields(event)
 
     def smooth_gradient(self, event: str):
         """
@@ -2048,14 +2036,14 @@ if __name__ == "__main__":
             use_aliases=True,
         )
     )
-    branch = input("Did you switch to the master branch yet? [Y]/n:  ")
-    if branch == "n":
-        sys.exit("Switch to master branch before continuing")
-    info_toml = input("Give me a path to your information_toml \n\n")
+    # branch = input("Did you switch to the master branch yet? [Y]/n:  ")
+    # if branch == "n":
+    #     sys.exit("Switch to master branch before continuing")
+    # info_toml = input("Give me a path to your information_toml \n\n")
     # Tired of writing it in, I'll do this quick mix for now
     # print("Give me a path to your information_toml \n\n")
     # time.sleep(1)
-    print("Just kidding, I know it")
+    # print("Just kidding, I know it")
     info_toml = "inversion_info.toml"
     if not info_toml.startswith("/"):
         cwd = os.getcwd()
