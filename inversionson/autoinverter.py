@@ -104,6 +104,7 @@ class AutoInverter(object):
                 return
         if first_try and not validation:
             if self.comm.project.inversion_mode == "mini-batch":
+                print("Getting minibatch")
                 events = self.comm.lasif.get_minibatch(first)
             else:
                 events = self.comm.lasif.list_events()
@@ -120,7 +121,7 @@ class AutoInverter(object):
             for event in events:
                 if not self.comm.lasif.has_mesh(event):
                     self.comm.salvus_mesher.create_mesh(
-                        event=event, n_lat=self.comm.project.elem_per_quarter
+                        event=event
                     )
                     self.comm.lasif.move_mesh(event, it_name)
                 else:
@@ -1628,7 +1629,7 @@ class AutoInverter(object):
             events_to_use = self.comm.project.old_control_group
         elif self.comm.project.inversion_mode == "mini-batch":
             # If model is accepted we consider looking into validation data.
-            # self.compute_misfit_on_validation_data()
+            self.compute_misfit_on_validation_data()
             events_to_use = list(
                 set(self.comm.project.events_in_iteration)
                 - set(self.comm.project.old_control_group)
@@ -1930,7 +1931,10 @@ class AutoInverter(object):
             self.comm.project.change_attribute(
                 attribute="new_control_group", new_value=control_group
             )
-            self.comm.project.update_control_group_toml(new=True)
+            first = False
+            # if self.comm.project.current_iteration == "it0000_model":
+            #     first = True
+            self.comm.project.update_control_group_toml(new=True, first=first)
             # sys.exit("Hvada event voru valin segirdu?")
             self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()

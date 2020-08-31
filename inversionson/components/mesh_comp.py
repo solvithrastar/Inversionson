@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 import os
 from inversionson import InversionsonError
+from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
 
 class SalvusMeshComponent(Component):
@@ -88,7 +89,6 @@ class SalvusMeshComponent(Component):
             is True, we write it anyway, defaults to True
         :type bool, optional
         """
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import os
         import shutil
 
@@ -132,7 +132,6 @@ class SalvusMeshComponent(Component):
         :param filename: path to hdf5 file
         :return:
         """
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         mesh = UnstructuredMesh.from_h5(filename)
         mesh.write_h5(filename)
@@ -144,7 +143,6 @@ class SalvusMeshComponent(Component):
         lasif folder afterwards.
         As this is a quickfix, I will make it for my specific case.
         """
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import os
         import numpy as np
 
@@ -187,8 +185,6 @@ class SalvusMeshComponent(Component):
         """
         # I have to make sure the I am consistent with naming of things, might be a bit off there
 
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
-
         folder_name = f"it_{iteration_range[0]}_to_{iteration_range[1]}"
         full_path = self.average_meshes / folder_name / "mesh.h5"
         if not os.path.exists(os.path.dirname(full_path)):
@@ -205,7 +201,7 @@ class SalvusMeshComponent(Component):
         new_fields = {}
         for field in fields.keys():
             new_fields[field] = np.zeros_like(fields[field])
-        m.element_nodal_fields = {}
+        # m.element_nodal_fields = {}
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
             it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
                 number=iteration
@@ -236,12 +232,20 @@ class SalvusMeshComponent(Component):
         :param event: Name of event
         :type event: str
         """
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         mesh = self.comm.lasif.find_event_mesh(event)
         m = UnstructuredMesh.from_h5(mesh)
-        fluid = m.elemental_fields["fluid"]
-        roi = 1.0 - fluid
+        mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[
+            ::-1
+        ].astype(int)
+        layers = m.elemental_fields["layer"]
+        o_core_idx = layers[np.where(m.elemental_fields["fluid"] == 1)[0][0]]
+        o_core_idx = np.where(mesh_layers == o_core_idx)[0][0]
+        correct_layers = mesh_layers[o_core_idx:]
+        roi = np.zeros_like(layers)
+        for layer in correct_layers:
+            roi = np.logical_or(roi, layers == layer)
+
         m.attach_field("ROI", roi)
         m.write_h5(mesh)
 
@@ -309,7 +313,6 @@ class SalvusMeshComponent(Component):
             defaults to False. Currently not implemented
         :type delete_old_fields: bool, optional
         """
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
         m = UnstructuredMesh.from_h5(mesh)
 
@@ -336,9 +339,26 @@ class SalvusMeshComponent(Component):
         summed_field += m.element_nodal_fields[fieldname_2]
 
         if newname is None:
-            m.element_nodal_fields[fieldname_1] = summed_field
-            m.element_nodal_fields[fieldname_2] = summed_field
+            m.attach_field(fieldname_1, summed_field)
+            m.attach_field(fieldname_2, summed_field)
             m.write_h5(mesh)
 
         else:
-            m.attach_field[newname, summed_field]
+            m.attach_field(newname, summed_field)
+
+    def fill_inversion_params_with_zeroes(self, mesh: str):
+        """
+        This is done because we don't interpolate every layer and then
+        we want to make sure there is nothing sneaking into the gradients
+
+        :param mesh: Path to mesh
+        :type mesh: str
+        """
+        print("Filling inversion parameters with zeros before interpolation")
+        m = UnstructuredMesh.from_h5(mesh)
+        parameters = self.comm.project.inversion_params
+        zero_nodal = np.zeros_like(m.element_nodal_fields[parameters[0]])
+
+        for param in parameters:
+            m.attach_field(param, zero_nodal)
+        m.write_h5(mesh)

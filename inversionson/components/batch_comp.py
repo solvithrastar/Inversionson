@@ -3,6 +3,7 @@ A class which takes care of everything related to selecting
 batches and control groups for coming iterations.
 """
 
+from numpy.core.fromnumeric import shape
 from numpy.core.numeric import full
 from .component import Component
 import numpy as np
@@ -90,11 +91,12 @@ class BatchComponent(Component):
         """
         norm_1 = np.linalg.norm(gradient_1)
         norm_2 = np.linalg.norm(gradient_2)
-        angle = (
-            np.arccos(np.dot(gradient_1, gradient_2) / (norm_1 * norm_2))
-            / np.pi
-            * 180.0
-        )
+        value = np.dot(gradient_1, gradient_2) / (norm_1 * norm_2)
+        eps = 1.0e-6
+        if value > 1.0 and (value - 1.0) < eps:
+            value = 1.0
+        # print(f"Value passed to arccos in angle between: {value}")
+        angle = np.arccos(value) / np.pi * 180.0
         return angle
 
     def _compute_angular_change(
@@ -115,13 +117,12 @@ class BatchComponent(Component):
         """
         test_grad = np.copy(full_gradient) - individual_gradient
         test_grad_norm = np.linalg.norm(test_grad)
-        angle = (
-            np.arccos(
-                np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm)
-            )
-            / np.pi
-            * 180.0
-        )
+        value = np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm)
+        eps = 1.0e-6
+        if value > 1.0 and (value - 1.0) < eps:
+            value = 1.0
+        # print(f"Value passed to arccos: {value}")
+        angle = np.arccos(value) / np.pi * 180.0
         return angle
 
     def _sum_relevant_values(self, grad, parameters: list):
@@ -136,10 +137,15 @@ class BatchComponent(Component):
         :return: list
         :rtype: numpy.ndarray
         """
-
-        summed_grad = np.zeros_like(grad.element_nodal_fields[parameters[0]])
-        for param in parameters:
-            summed_grad += grad.element_nodal_fields[param]
+        shapegrad = grad.element_nodal_fields[parameters[0]].shape
+        summed_grad = np.zeros(
+            shape=(shapegrad[0] * len(parameters), shapegrad[1])
+        )
+        # summed_grad = np.zeros_like(grad.element_nodal_fields[parameters[0]])
+        for _i, param in enumerate(parameters):
+            summed_grad[
+                _i * shapegrad[0] : (_i + 1) * shapegrad[0], :
+            ] = grad.element_nodal_fields[param]
         return summed_grad
 
     def _get_vector_of_values(self, gradient, parameters: list):
@@ -217,6 +223,7 @@ class BatchComponent(Component):
                 smooth=True,
                 inversion_grid=inversion_grid,
             )
+            print(f"gradient for {event}: {gradient}")
             gradient_paths.append(gradient)
             grad = um.from_h5(gradient)
             if _i == 0:
@@ -267,7 +274,8 @@ class BatchComponent(Component):
         full_grad_norm = np.linalg.norm(
             full_grad.reshape(full_grad.shape[0] * full_grad.shape[1])
         )
-
+        print(f"Full grad norm: {full_grad_norm}")
+        assert not np.any(np.isnan(full_grad)), "Nan values in full gradient"
         angular_changes = {}
         event_quality = {}
         for event in events:
@@ -282,6 +290,9 @@ class BatchComponent(Component):
             individual_gradient = self._get_vector_of_values(
                 gradient=individual_gradient, parameters=parameters,
             )
+            assert not np.any(
+                np.isnan(individual_gradient)
+            ), f"Nan values in individual_gradient for {event}"
 
             angle = self._compute_angular_change(
                 full_gradient=full_grad.reshape(
@@ -292,10 +303,12 @@ class BatchComponent(Component):
                     individual_gradient.shape[0] * individual_gradient.shape[1]
                 ),
             )
+            print(f"Angle computed for event: {event}: {angle}")
             angular_changes[event] = angle
             event_quality[event] = 0.0
         batch_grad = np.copy(full_grad)
         test_batch_grad = np.copy(batch_grad)
+        assert not np.any(np.isnan(batch_grad)), "Nan values in batch_grad"
 
         while len(ctrl_group) > min_ctrl:
             redundant_gradient = min(angular_changes, key=angular_changes.get)
@@ -312,10 +325,11 @@ class BatchComponent(Component):
             test_batch_grad -= removal_grad
             angle = self._angle_between(
                 full_grad.reshape(full_grad.shape[0] * full_grad.shape[1]),
-                batch_grad.reshape(batch_grad.shape[0] * batch_grad.shape[1]),
+                test_batch_grad.reshape(
+                    test_batch_grad.shape[0] * test_batch_grad.shape[1]
+                ),
             )
-            # TODO: Figure out problem with small angle.
-            print(f"Angle: {angle}")
+            print(f"Angle between test_batch and full gradient: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
                 # How holy do I want this to be? More important than max angle?
                 break
@@ -352,7 +366,7 @@ class BatchComponent(Component):
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val
-        print(f"Control batch events: {self.comm.project.events_in_iteration}")
+        print(f"Control batch events: {ctrl_group}")
 
         return ctrl_group
 
