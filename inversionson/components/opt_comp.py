@@ -475,7 +475,7 @@ class SalvusOptComponent(Component):
         )
         for event in self.comm.lasif.list_events(iteration=prev_iter):
             if event not in prev_it_dict["new_control_group"]:
-                blocked_events.append(key)
+                blocked_events.append(event)
 
         return blocked_events, use_these
 

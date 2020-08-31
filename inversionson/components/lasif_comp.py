@@ -525,7 +525,6 @@ class LasifComponent(Component):
             one, default None
         :type window: str, optional
         """
-        from inversionson.utils import double_fork
 
         iteration = self.comm.project.current_iteration
         if window_set is None:
@@ -548,6 +547,8 @@ class LasifComponent(Component):
                 f"calculated, delete file: {adjoint_path}"
             )
         elif mpi:
+            from inversionson.utils import double_fork
+
             double_fork()
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif calculate_adjoint_sources "

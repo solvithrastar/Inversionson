@@ -116,6 +116,9 @@ class MultiMeshComponent(Component):
         simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=event)
 
         master_model = self.comm.lasif.get_master_model()
+        # master_model = os.path.join(
+        #     self.comm.lasif.lasif_root, "MODELS", "master_model.h5"
+        # )
         # summed_gradient = self.comm.salvus_opt.get_model_path(
         #     iteration, gradient=True)
         # seperator = "/"
@@ -131,7 +134,9 @@ class MultiMeshComponent(Component):
             just_give_path=True,
         )
         shutil.copy(master_model, master_disc_gradient)
-
+        self.comm.salvus_mesher.fill_inversion_params_with_zeroes(
+            mesh=master_disc_gradient
+        )
         if mode == "gll_2_gll":
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=simulation_mesh,
@@ -154,6 +159,8 @@ class MultiMeshComponent(Component):
                 global_string=True,
                 overwrite=False,
             )
+            # Dangerous here when we copy something and it maintains the values from before.
+            # Make sure that the core values are not fixed there
             mapi.gll_2_gll_layered(
                 from_gll=gradient,
                 to_gll=master_disc_gradient,

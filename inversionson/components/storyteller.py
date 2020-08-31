@@ -167,6 +167,8 @@ class StoryTellerComponent(Component):
         """
         for event in self.comm.project.events_in_iteration:
             if not self.comm.project.updated[event]:
+                if isinstance(self.events_used[event], str):
+                    raise InversionsonError("Events used are strings")
                 self.events_used[event] += 1
                 self.comm.project.change_attribute(
                     attribute=f'updated["{event}"]', new_value=True
@@ -216,16 +218,16 @@ class StoryTellerComponent(Component):
             f"{self.comm.project.current_iteration}",
             alt_text="text",
         )
-        print("Preparing Ray density image")
-        text = "Ray density plot"
-        ray_file = self.comm.lasif.plot_iteration_raydensity()
-        self.markdown.add_paragraph(text=text)
-        self.markdown.add_image(
-            image_url=ray_file,
-            image_title=f"Ray density plot for "
-            f"{self.comm.project.current_iteration}",
-            alt_text="text",
-        )
+        # print("Preparing Ray density image")
+        # text = "Ray density plot"
+        # ray_file = self.comm.lasif.plot_iteration_raydensity()
+        # self.markdown.add_paragraph(text=text)
+        # self.markdown.add_image(
+        #     image_url=ray_file,
+        #     image_title=f"Ray density plot for "
+        #     f"{self.comm.project.current_iteration}",
+        #     alt_text="text",
+        # )
 
     def _add_image_of_event_misfits(self):
         """
@@ -526,8 +528,8 @@ class StoryTellerComponent(Component):
                 # self._add_image_of_data_coverage()
                 # self._add_image_of_event_misfits()
             self._add_table_of_events_and_misfits(task=task)
-            # self._report_control_group()
-            # self._update_event_quality()
+            self._report_control_group()
+            self._update_event_quality()
         if task == "compute_misfit":
             first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
             if "additional" in verbose:
@@ -537,8 +539,9 @@ class StoryTellerComponent(Component):
             else:
                 if first_try:
                     self._start_entry_for_iteration()
-                    # if self.comm.project.inversion_mode == "mini-batch":
-                    # self._add_image_of_data_coverage()
+                    if self.comm.project.inversion_mode == "mini-batch":
+                        # self._add_image_of_data_coverage()
+                        print("Not making figures now")
                 else:
                     self._report_shrinking_of_trust_region()
             if self.comm.project.inversion_mode == "mini-batch":
