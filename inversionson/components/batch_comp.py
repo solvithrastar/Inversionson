@@ -3,6 +3,7 @@ A class which takes care of everything related to selecting
 batches and control groups for coming iterations.
 """
 
+from numpy.core.numeric import full
 from .component import Component
 import numpy as np
 import h5py
@@ -131,46 +132,29 @@ class BatchComponent(Component):
         :param grad: Numpy array with gradient values
         :type grad: numpy.ndarray
         :param parameters: A list of dimension labels in gradient
+        :type parameters: list
         :return: list
         :rtype: numpy.ndarray
         """
-        inversion_params = self.comm.project.inversion_params
-        indices = []
-        for param in inversion_params:
-            indices.append(parameters.index(param))
-        summed_grad = np.zeros(shape=(grad.shape[0]))
 
-        for i in indices:
-            summed_grad += grad[:, i]
+        summed_grad = np.zeros_like(grad.element_nodal_fields[parameters[0]])
+        for param in parameters:
+            summed_grad += grad.element_nodal_fields[param]
         return summed_grad
 
-    def _get_vector_of_values(self, gradient, unique, parameters: list):
+    def _get_vector_of_values(self, gradient, parameters: list):
         """
         Take a full gradient, find it's unique values and relevant parameters,
         manipulate all of these into a vector of summed parameter values.
         
         :param gradient: Array of gradient values
         :type gradient: numpy.ndarray
-        :param unique: Array of unique indices spatially
-        :type unique: numpy.ndarray
         :param parameters: A list of dimension labels in gradient
         :return: list
         :return: 1D vector with gradient values
         :rtype: numpy.ndarray
         """
-        gradient = np.swapaxes(a=gradient, axis1=1, axis2=2)
-        gradient = np.reshape(
-            a=gradient,
-            newshape=(
-                gradient.shape[0] * gradient.shape[1],
-                gradient.shape[2],
-            ),
-        )
-        gradient = gradient[unique]
-        gradient = self._sum_relevant_values(
-            grad=gradient, parameters=parameters
-        )
-        return gradient
+        return self._sum_relevant_values(grad=gradient, parameters=parameters)
 
     def get_random_event(self, n: int, existing: list) -> list:
         """
@@ -214,6 +198,8 @@ class BatchComponent(Component):
         # look for event to remove until a certain total angle
         # is reached or minimum control group is reached.
         # We just use the bulk norm of the gradients it seems
+        from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
+
         events = self.comm.project.events_in_iteration
         print(f"Control batch events: {events}")
         ctrl_group = events.copy()
@@ -223,6 +209,7 @@ class BatchComponent(Component):
         inversion_grid = False
         if self.comm.project.meshes == "multi-mesh":
             inversion_grid = True
+        parameters = self.comm.project.inversion_params
         for _i, event in enumerate(events):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
@@ -231,39 +218,55 @@ class BatchComponent(Component):
                 inversion_grid=inversion_grid,
             )
             gradient_paths.append(gradient)
-            with h5py.File(gradient, "r") as f:
-                grad = f["MODEL/data"]
-                if _i == 0:
-                    parameters = grad.attrs.get("DIMENSION_LABELS")[1].decode()
-                    parameters = (
-                        parameters[2:-2]
-                        .replace(" ", "")
-                        .replace("grad", "")
-                        .split("|")
-                    )
-                    coordinates = f["MODEL/coordinates"][()]
-                    init_shape = coordinates.shape
-                    coordinates = np.reshape(
-                        a=coordinates,
-                        newshape=(
-                            init_shape[0] * init_shape[1],
-                            init_shape[2],
-                        ),
-                    )
-                    _, unique_indices = np.unique(
-                        ar=coordinates, return_index=True, axis=0
-                    )
-                if _i == 0:
-                    full_grad = np.zeros_like(grad)
-                # else:
-                full_grad += grad[()]
+            grad = um.from_h5(gradient)
+            if _i == 0:
+                full_grad = self._get_vector_of_values(
+                    gradient=grad, parameters=parameters,
+                )
+            else:
+                full_grad += self._get_vector_of_values(
+                    gradient=grad, parameters=parameters,
+                )
+            # with h5py.File(gradient, "r") as f:
+            #     grad = f["MODEL/data"]
+            #     if _i == 0:
+            #         # This is wrong
+            #         parameters = self.comm.project.inversion_params
+            #         parameters = grad.attrs.get("DIMENSION_LABELS")[1].decode()
+            #         parameters = (
+            #             parameters[2:-2]
+            #             .replace(" ", "")
+            #             .replace("grad", "")
+            #             .split("|")
+            #         )
+            #         coordinates = f["MODEL/coordinates"][()]
+            #         init_shape = coordinates.shape
+            #         coordinates = np.reshape(
+            #             a=coordinates,
+            #             newshape=(
+            #                 init_shape[0] * init_shape[1],
+            #                 init_shape[2],
+            #             ),
+            #         )
+            #         _, unique_indices = np.unique(
+            #             ar=coordinates, return_index=True, axis=0
+            #         )
+            #     if _i == 0:
+            #         full_grad = np.zeros_like(grad)
+            #     # else:
+            #     full_grad += grad[()]
         # Select only the relevant parameters and sum them together.
-        # We also need to make sure we don't use points more often than ones.
-        full_grad = self._get_vector_of_values(
-            gradient=full_grad, unique=unique_indices, parameters=parameters
-        )
 
-        full_grad_norm = np.linalg.norm(full_grad)
+        # I could use the unique values here, not sure which one is more
+        # correct. I think it depends on how salvus opt handles it.
+        # If I want that, I use grad.get_element_nodes() rather than
+        # grad.points
+        # full_grad = self._get_vector_of_values(
+        #     gradient=full_grad, parameters=parameters
+        # )
+        full_grad_norm = np.linalg.norm(
+            full_grad.reshape(full_grad.shape[0] * full_grad.shape[1])
+        )
 
         angular_changes = {}
         event_quality = {}
@@ -274,18 +277,20 @@ class BatchComponent(Component):
                 smooth=True,
                 inversion_grid=inversion_grid,
             )
-            with h5py.File(gradient, "r") as f:
-                individual_gradient = f["MODEL/data"][()]
-                individual_gradient = self._get_vector_of_values(
-                    gradient=individual_gradient,
-                    unique=unique_indices,
-                    parameters=parameters,
-                )
+            individual_gradient = um.from_h5(gradient)
+
+            individual_gradient = self._get_vector_of_values(
+                gradient=individual_gradient, parameters=parameters,
+            )
 
             angle = self._compute_angular_change(
-                full_gradient=full_grad,
+                full_gradient=full_grad.reshape(
+                    full_grad.shape[0] * full_grad.shape[1]
+                ),
                 full_norm=full_grad_norm,
-                individual_gradient=individual_gradient,
+                individual_gradient=individual_gradient.reshape(
+                    individual_gradient.shape[0] * individual_gradient.shape[1]
+                ),
             )
             angular_changes[event] = angle
             event_quality[event] = 0.0
@@ -300,14 +305,15 @@ class BatchComponent(Component):
                 smooth=True,
                 inversion_grid=inversion_grid,
             )
-            with h5py.File(gradient, "r") as f:
-                removal_grad = self._get_vector_of_values(
-                    gradient=f["MODEL/data"][()],
-                    unique=unique_indices,
-                    parameters=parameters,
-                )
-                test_batch_grad -= removal_grad
-            angle = self._angle_between(full_grad, batch_grad)
+
+            removal_grad = self._get_vector_of_values(
+                gradient=um.from_h5(gradient), parameters=parameters,
+            )
+            test_batch_grad -= removal_grad
+            angle = self._angle_between(
+                full_grad.reshape(full_grad.shape[0] * full_grad.shape[1]),
+                batch_grad.reshape(batch_grad.shape[0] * batch_grad.shape[1]),
+            )
             # TODO: Figure out problem with small angle.
             print(f"Angle: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:

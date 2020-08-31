@@ -1,7 +1,6 @@
 from .component import Component
 from inversionson import InversionsonError
 
-import h5py  # Might be needed when it comes to space dependent smoothing
 import toml
 import os
 import subprocess
@@ -159,7 +158,7 @@ class SalvusSmoothComponent(Component):
             model=self.comm.lasif.find_event_mesh(event=event_name),
         )
         smooth_gradient.write_h5(smooth_grad)
-        if "VPV" in list(smooth_gradient.elemental_nodal_fields.keys()):
+        if "VPV" in list(smooth_gradient.element_nodal_fields.keys()):
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
                 mesh=smooth_grad, fieldname_1="VPV", fieldname_2="VPH",
             )
@@ -251,28 +250,37 @@ class SalvusSmoothComponent(Component):
 
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        mesh = UnstructuredMesh.from_h5(
-            self.comm.lasif.find_gradient(iteration=iteration, event=event)
-        )
+        if self.comm.project.inversion_mode == "mini-batch":
+            mesh = UnstructuredMesh.from_h5(
+                self.comm.lasif.find_gradient(iteration=iteration, event=event)
+            )
+        else:
+            mesh = UnstructuredMesh.from_h5(
+                self.comm.lasif.find_gradient(
+                    iteration=iteration, summed=True, smooth=False, event=None
+                )
+            )
         mesh.attach_global_variable(name="reference_frame", data="spherical")
-        # site_config = SiteConfig(
-        #     site_name=self.comm.project.smoothing_site_name,
-        #     ranks=self.comm.project.smoothing_ranks,
-        #     wall_time_in_seconds=self.comm.project.smoothing_wall_time,
-        # )
+
         job = smoothing.run_async(
             model=mesh,
             smoothing_config=smoothing_config,
-            # site_config=site_config,
-            time_step_in_seconds=1.0e-5,
+            time_step_in_seconds=self.comm.project.smoothing_timestep,
             site_name=self.comm.project.smoothing_site_name,
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-
-        self.comm.project.change_attribute(
-            f'smoothing_job["{event}"]["name"]', job.job_array_name
-        )
-        self.comm.project.change_attribute(
-            f'smoothing_job["{event}"]["submitted"]', True
-        )
+        if self.comm.project.inversion_mode == "mini-batch":
+            self.comm.project.change_attribute(
+                f'smoothing_job["{event}"]["name"]', job.job_array_name
+            )
+            self.comm.project.change_attribute(
+                f'smoothing_job["{event}"]["submitted"]', True
+            )
+        else:
+            self.comm.project.change_attribute(
+                'smoothing_job["name"]', job.job_array_name
+            )
+            self.comm.project.change_attribute(
+                'smoothing_job["submitted"]', True
+            )

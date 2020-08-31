@@ -288,17 +288,26 @@ class StoryTellerComponent(Component):
 
         prev_total_misfit = 0.0
         prev_cg_misfit = 0.0
-        for key in prev_it_dict["events"].keys():
-            prev_total_misfit += prev_it_dict["events"][key]["misfit"]
-            if key in prev_it_dict["new_control_group"]:
-                prev_cg_misfit += prev_it_dict["events"][key]["misfit"]
+        for _i, event in enumerate(
+            self.comm.lasif.list_events(iteration=prev_iter)
+        ):
+            prev_total_misfit += float(
+                prev_it_dict["events"][str(_i)]["misfit"]
+            )
+            if event in prev_it_dict["new_control_group"]:
+                event_index = self.comm.project.get_key_number_for_event(
+                    event=event, iteration=prev_iter
+                )
+                prev_cg_misfit += float(
+                    prev_it_dict["events"][event_index]["misfit"]
+                )
 
         current_total_misfit = 0.0
         current_cg_misfit = 0.0
         for key, value in self.comm.project.misfits.items():
-            current_total_misfit += value
+            current_total_misfit += float(value)
             if key in self.comm.project.old_control_group:
-                current_cg_misfit += value
+                current_cg_misfit += float(value)
 
         tot_red = (
             prev_total_misfit - current_total_misfit
@@ -335,7 +344,7 @@ class StoryTellerComponent(Component):
         if task == "compute_misfit_and_gradient":
             total_misfit = 0.0
             for key in self.comm.project.misfits.keys():
-                total_misfit += self.comm.project.misfits[key]
+                total_misfit += float(self.comm.project.misfits[key])
             text = f"Total misfit for iteration: {total_misfit:.3f} \n"
             self.markdown.add_paragraph(text=text)
             return
@@ -344,9 +353,9 @@ class StoryTellerComponent(Component):
             total_misfit = 0.0
             old_control_group_misfit = 0.0
             for key, value in self.comm.project.misfits.items():
-                total_misfit += value
+                total_misfit += float(value)
                 if key in self.comm.project.old_control_group:
-                    old_control_group_misfit += value
+                    old_control_group_misfit += float(value)
 
             _, cg_red = self._get_misfit_reduction()
 
@@ -362,7 +371,7 @@ class StoryTellerComponent(Component):
             old_control_group_misfit = 0.0
             for key, value in self.comm.project.misfits.items():
                 if key in self.comm.project.old_control_group:
-                    old_control_group_misfit += value
+                    old_control_group_misfit += float(value)
 
             _, cg_red = self._get_misfit_reduction()
 
@@ -392,7 +401,7 @@ class StoryTellerComponent(Component):
         cg_misfit = 0.0
         for key, value in self.comm.project.misfits.items():
             if key in self.comm.project.new_control_group:
-                cg_misfit += value
+                cg_misfit += float(value)
 
         text = f"The current misfit for the control group is {cg_misfit:.3f}"
         self.markdown.add_paragraph(text=text)
@@ -465,7 +474,7 @@ class StoryTellerComponent(Component):
                 for key, value in validation_dict[iteration]["events"][
                     event
                 ].items():
-                    total[key] += value
+                    total[key] += float(value)
             validation_dict[iteration]["total"] = total
         else:
             misfits_toml = os.path.join(
@@ -478,9 +487,9 @@ class StoryTellerComponent(Component):
             event_misfit = misfits_dict[event]["event_misfit"]
             if not event in validation_dict[iteration]["events"].keys():
                 validation_dict[iteration]["events"][event] = {}
-            validation_dict[iteration]["events"][event][
-                window_set
-            ] = event_misfit
+            validation_dict[iteration]["events"][event][window_set] = float(
+                event_misfit
+            )
         self.validation_dict = validation_dict
         with open(self.validation_toml, mode="w") as fh:
             toml.dump(validation_dict, fh)

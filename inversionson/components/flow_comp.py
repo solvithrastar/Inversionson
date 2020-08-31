@@ -38,8 +38,8 @@ class SalvusFlowComponent(Component):
         old_iter = True
         if iteration == "current":
             iteration = self.comm.project.current_iteration
+        if iteration == self.comm.project.current_iteration:
             old_iter = False
-
         if sim_type not in ["forward", "adjoint", "smoothing"]:
             raise ValueError(
                 f"Simulation type {sim_type} not supported. Only supported "
@@ -73,9 +73,18 @@ class SalvusFlowComponent(Component):
                 iteration_info = self.comm.project.get_old_iteration_info(
                     iteration
                 )
-                job = iteration_info["events"][event]["job_info"][sim_type][
-                    "name"
-                ]
+                event_index = self.comm.project.get_key_number_for_event(
+                    event, iteration
+                )
+                if (
+                    self.comm.project.inversion_mode == "mono-batch"
+                    and sim_type == "smoothing"
+                ):
+                    job = iteration_info[sim_type]["name"]
+                else:
+                    job = iteration_info["events"][event_index]["job_info"][
+                        sim_type
+                    ]["name"]
             else:
                 if sim_type == "forward":
                     job = self.comm.project.forward_job[event]["name"]
@@ -148,9 +157,12 @@ class SalvusFlowComponent(Component):
             ):
                 job_name = it_dict["smoothing"]["name"]
             else:
-                job_name = it_dict["events"][event]["job_info"][sim_type][
-                    "name"
-                ]
+                event_index = self.comm.project.get_key_number_for_event(
+                    event=event, iteration=iteration
+                )
+                job_name = it_dict["events"][event_index]["job_info"][
+                    sim_type
+                ]["name"]
         if sim_type == "smoothing":
             site_name = self.comm.project.smoothing_site_name
             job = sapi.get_job_array(
@@ -363,21 +375,24 @@ class SalvusFlowComponent(Component):
             self.comm.project.start_time
         )
         w.physics.wave_equation.attenuation = self.comm.project.attenuation
+        bound = False
         boundaries = []
-        if (
-            "inner_boundary"
-            in self.comm.lasif.lasif_comm.project.domain.side_sets
-        ):
-            side_sets = ["inner_boundary"]
-        else:
-            side_sets = [
-                "r0",
-                "t0",
-                "t1",
-                "p0",
-                "p1",
-            ]
+
         if self.comm.project.absorbing_boundaries:
+            bound = True
+            if (
+                "inner_boundary"
+                in self.comm.lasif.lasif_comm.project.domain.get_side_set_names()
+            ):
+                side_sets = ["inner_boundary"]
+            else:
+                side_sets = [
+                    "r0",
+                    "t0",
+                    "t1",
+                    "p0",
+                    "p1",
+                ]
             absorbing = sc.boundary.Absorbing(
                 width_in_meters=self.comm.project.abs_bound_length * 1000.0,
                 side_sets=side_sets,
@@ -388,9 +403,11 @@ class SalvusFlowComponent(Component):
             )
             boundaries.append(absorbing)
         if self.comm.project.ocean_loading:
+            bound = True
             ocean_loading = sc.boundary.OceanLoading(side_sets=["r1_ol"])
             boundaries.append(ocean_loading)
-        w.physics.wave_equation.boundaries = boundaries
+        if bound:
+            w.physics.wave_equation.boundaries = boundaries
 
         # For gradient computation
 
@@ -580,10 +597,12 @@ class SalvusFlowComponent(Component):
         """
         iter_info = self.comm.project.get_old_iteration_info(iteration)
 
-        events_in_iteration = list(iter_info["events"].keys())
+        events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
 
-        for event in events_in_iteration:
-            job_name = iter_info["events"][event]["job_info"][sim_type]["name"]
+        for _i, event in enumerate(events_in_iteration):
+            job_name = iter_info["events"][str(_i)]["job_info"][sim_type][
+                "name"
+            ]
             job = sapi.get_job(
                 site_name=self.comm.project.site_name, job_name=job_name
             )

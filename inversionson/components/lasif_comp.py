@@ -329,7 +329,8 @@ class LasifComponent(Component):
                 gradient = os.path.join(
                     gradients, f"ITERATION_{iteration}", event, "gradient.h5",
                 )
-        if not smooth:
+
+        if not smooth and self.comm.project.inversion_mode == "mini-batch":
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):
@@ -507,7 +508,7 @@ class LasifComponent(Component):
         )
 
     def misfit_quantification(
-        self, event: str, mpi=True, n=8, validation=False, window_set=None
+        self, event: str, mpi=False, n=8, validation=False, window_set=None
     ):
         """
         Quantify misfit and calculate adjoint sources.
@@ -524,6 +525,8 @@ class LasifComponent(Component):
             one, default None
         :type window: str, optional
         """
+        from inversionson.utils import double_fork
+
         iteration = self.comm.project.current_iteration
         if window_set is None:
             if self.comm.project.inversion_mode == "mini-batch":
@@ -545,6 +548,7 @@ class LasifComponent(Component):
                 f"calculated, delete file: {adjoint_path}"
             )
         elif mpi:
+            double_fork()
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif calculate_adjoint_sources "
             command += f"{iteration} "
@@ -556,6 +560,7 @@ class LasifComponent(Component):
                 print(line, end="\n", flush=True)
             process.wait()
             print(process.returncode)
+            double_fork()
             os.chdir(self.comm.project.inversion_root)
 
         else:
@@ -584,7 +589,8 @@ class LasifComponent(Component):
             misfit = self.comm.project.misfits[event]
             print(f"Misfit for {event} has already been computed. ")
             print(
-                "If you want it recomputed, change it to 0.0 in the iteration toml file"
+                "If you want it recomputed, change it to 0.0 in the iteration "
+                "toml file"
             )
         return misfit
 
@@ -688,8 +694,8 @@ class LasifComponent(Component):
         self,
         window_set_name: str,
         event: str,
-        mpi=True,
-        n=12,
+        mpi=False,
+        n=8,
         validation=False,
     ):
         """
@@ -705,6 +711,8 @@ class LasifComponent(Component):
         :type n: int
         """
         # Check if window set exists:
+        from inversionson.utils import double_fork
+
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
         )
@@ -714,18 +722,27 @@ class LasifComponent(Component):
             return
 
         if mpi:
+            double_fork()
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif select_windows "
             command += f"{self.comm.project.current_iteration} "
             command += f"{window_set_name} {event}"
             print(command)
             process = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, bufsize=1
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                bufsize=1,
+                stderr=subprocess.PIPE,
             )
             for line in process.stdout:
                 print(line, end=" \n", flush=True)
+            print("\n\n Error messages: \n\n")
+            for line in process.stderr:
+                print(line, end=" \n", flush=True)
             process.wait()
             print(process.returncode)
+            double_fork()
             os.chdir(self.comm.project.inversion_root)
         else:
             lapi.select_windows(

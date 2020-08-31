@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from typing import NoReturn
 from .component import Component
 import numpy as np
 import sys
@@ -25,125 +26,47 @@ class SalvusMeshComponent(Component):
         self.event_meshes = self.meshes / "EVENT_MESHES"
         self.average_meshes = self.meshes / "AVERAGE_MESHES"
 
-    def create_mesh(self, event: str, n_lat: int):
+    def create_mesh(self, event: str):
         """
         Create a smoothiesem mesh for an event. I'll keep refinements fixed
         for now.
         
         :param event: Name of event
         :type event: str
-        :param n_lat: Elements per quarter in azimuthal dimension
-        :type n_lat: int
         """
-        sys.path.append("/home/solvi/workspace/Meshing/inversionson_smoothie/")
-        from global_mesh_smoothiesem import mesh as tmp_mesher
-        from salvus.mesh import simple_mesh
 
-        info = {}
-        info["period"] = self.comm.project.min_period
+        from salvus.mesh.simple_mesh import SmoothieSEM
+
         source_info = self.comm.lasif.get_source(event_name=event)
         if isinstance(source_info, list):
             source_info = source_info[0]
-        info["latitude"] = source_info["latitude"]
-        info["longitude"] = source_info["longitude"]
-        info["n_lat"] = n_lat
-        info["event_name"] = event
-        sm = simple_mesh.AxiSEM()
-        sm.basic.model = "prem_ani_one_crust"  # Maybe set as an import param
+        sm = SmoothieSEM()
+        sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = self.comm.project.min_period
-        sm.basic.elements_per_wavelength = 1.5
-        sm.validate()
-        print(sm)
-
-        m = tmp_mesher(sm.get_dictionary(), tensor_order=1)
-
-        theta_min_lat_refine = [40.0]
-        theta_max_lat_refine = [140.0]
-        r_min_lat_refine = [6250.0 / 6371.0]  # Should adapt this to 1D model
-
-        m = tmp_mesher(
-            sm.get_dictionary(),
-            tensor_order=4,
-            theta_max_lat_refine=theta_max_lat_refine,
-            theta_min_lat_refine=theta_min_lat_refine,
-            r_min_lat_refine=r_min_lat_refine,
-            n_lat=n_lat,
-            src_lat=source_info["latitude"],
-            src_lon=source_info["longitude"],
+        sm.basic.elements_per_wavelength = 1.8
+        sm.basic.number_of_lateral_elements = (
+            self.comm.project.elem_per_quarter
         )
+        sm.advanced.tensor_order = 4
+        sm.source.latitude = source_info["latitude"]
+        sm.source.longitude = source_info["longitude"]
+        sm.refinement.lateral_refinements.append(
+            {"theta_min": 40.0, "theta_max": 140.0, "r_min": 6250.0}
+        )
+        m = sm.create_mesh()
         mesh_file = self.event_meshes / event / "mesh.h5"
         if not os.path.exists(os.path.dirname(mesh_file)):
             os.makedirs(os.path.dirname(mesh_file))
         m.write_h5(mesh_file)
 
-    def add_smoothing_fields(
-        self, event: str
-    ) -> object:  # @TODO: Need to rewrite this whole thing for new smoothing interface
-        """
-        The diffusion equation smoothing needs certain parameters for
-        smoothing. These parameters need to be appended to the mesh as fields.
-        Currently we only use constant smoothing lengths but that will change.
-
-        :param event: name of event
-        :type event: str
-        """
-        import shutil
-        import os
-        import h5py
-
-        # TODO: Make the smoothing fields be a different mesh.
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
-
-        iteration = self.comm.project.current_iteration
-        gradient = self.comm.lasif.find_gradient(
-            iteration=iteration, event=event, smooth=False
-        )
-
-        # grad_folder, _ = os.path.split(gradient)
-        # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
-
-        # shutil.copyfile(gradient, smoothing_fields_mesh)
-        smoothing_length = 350.0 * 1000.0  # Hardcoded for now
-        # dimstr = '[ ' + ' | '.join(["M0", "M1"]) + ' ]'
-
-        # with h5py.File(smoothing_fields_mesh, "r+") as fh:
-        #     if "MODEL/data" in fh:
-        #         M0 = np.ones(shape=(fh["MODEL/data"].shape[0], 1, fh["MODEL/data"].shape[2]))
-        #         # M0 = fh["MODEL/data"][:, 0, :]
-        #         # M0 = np.ones(M0.shape)
-        #         M1 = np.copy(M0) * 2 * np.sqrt(smoothing_length)
-        #         smoothing = np.concatenate((M0, M1), axis=1)
-        #         print(f"Smoothing shape: {smoothing.shape}")
-        #         del fh["MODEL/data"]
-        #         fh.create_dataset("MODEL/data", data=smoothing)
-        #         fh['MODEL/data'].dims[0].label = 'element'
-        #         fh['MODEL/data'].dims[1].label = dimstr
-        #         fh['MODEL/data'].dims[2].label = 'point'
-
-        mesh = UnstructuredMesh.from_h5(gradient)
-        mesh.elemental_fields = {}
-        smooth_gradient = UnstructuredMesh.from_h5(gradient)
-        smooth_gradient.elemental_fields = {}
-
-        mesh.attach_field(
-            "M0", np.ones_like(mesh.get_element_nodes()[:, :, 0])
-        )
-        mesh.attach_field(
-            "M1",
-            0.5
-            * smoothing_length ** 2
-            * np.ones_like(mesh.get_element_nodes()[:, :, 0]),
-        )
-        mesh.attach_field("fluid", np.ones(mesh.nelem))
-
-        print(
-            f"Smoothing fields M0 and M1 added to gradient for "
-            f"event {event}"
-        )
-        return mesh, smooth_gradient
-
     def add_field_from_one_mesh_to_another(
-        self, from_mesh: str, to_mesh: str, field_name: str
+        self,
+        from_mesh: str,
+        to_mesh: str,
+        field_name: str,
+        elemental: bool = False,
+        global_string: bool = False,
+        overwrite: bool = True,
     ):
         """
         Add one field from a specific mesh to another mesh. The two meshes
@@ -155,6 +78,15 @@ class SalvusMeshComponent(Component):
         :type to_mesh: str
         :param field_name: Name of the field to copy between them.
         :type field_name: str
+        :param elemental: If the field is elemental make true, defaults to 
+            False
+        :type elemental: bool, optional
+        :param global_string: If the field is a global variable, defaults
+            to False
+        :type global_string: bool, optional
+        :param overwrite: We check whether field is existing, if overwrite
+            is True, we write it anyway, defaults to True
+        :type bool, optional
         """
         from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import os
@@ -164,12 +96,32 @@ class SalvusMeshComponent(Component):
             print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
             tm = UnstructuredMesh.from_h5(to_mesh)
-            tm.elemental_nodal_fields = {}
+            # tm.element_nodal_fields = {}
         else:
             tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
-
-        field = fm.element_nodal_fields[field_name]
+        if global_string:
+            if field_name in tm.global_strings.keys():
+                if not overwrite:
+                    print(f"Field {field_name} already exists on mesh")
+                    return
+            field = fm.global_strings[field_name]
+            tm.attach_global_variable(name=field_name, data=field)
+            tm.write_h5(to_mesh)
+            print(f"Attached field {field_name} to mesh {to_mesh}")
+            return
+        elif elemental:
+            if field_name in tm.elemental_fields.keys():
+                if not overwrite:
+                    print(f"Field {field_name} already exists on mesh")
+                    return
+            field = fm.elemental_fields[field_name]
+        else:
+            if field_name in tm.element_nodal_fields.keys():
+                if not overwrite:
+                    print(f"Field {field_name} already exists on mesh")
+                    return
+            field = fm.element_nodal_fields[field_name]
         tm.attach_field(field_name, field)
         tm.write_h5(to_mesh)
         print(f"Attached field {field_name} to mesh {to_mesh}")
@@ -273,14 +225,6 @@ class SalvusMeshComponent(Component):
         )
 
         return full_path
-
-        # Save similar looking fields as zeros
-        # Delete fields
-        # Sequentially go through old models and get fields
-        # Add them to the fields of zeros
-        # Divide all the new fields by len(range(iteration_range))
-        # Add fields to mesh object
-        # Write mesh out as hdf5.
 
     def add_region_of_interest(self, event: str):
         """
@@ -388,14 +332,13 @@ class SalvusMeshComponent(Component):
                     "summed one into a new field"
                 )
 
-        summed_field = np.copy(m.elemental_nodal_fields[fieldname_1])
-        summed_field += m.elemental_nodal_fields[fieldname_2]
+        summed_field = np.copy(m.element_nodal_fields[fieldname_1])
+        summed_field += m.element_nodal_fields[fieldname_2]
 
         if newname is None:
-            m.elemental_nodal_fields[fieldname_1] = summed_field
-            m.elemental_nodal_fields[fieldname_2] = summed_field
+            m.element_nodal_fields[fieldname_1] = summed_field
+            m.element_nodal_fields[fieldname_2] = summed_field
             m.write_h5(mesh)
 
         else:
             m.attach_field[newname, summed_field]
-            # if delete_old_fields: Currently not implemented
