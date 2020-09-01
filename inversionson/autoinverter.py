@@ -1921,6 +1921,8 @@ class AutoInverter(object):
             self.comm.storyteller.document_task(task, verbose)
 
         else:
+            if self.comm.project.current_iteration == "it0000_model":
+                self.comm.project.update_control_group_toml(first=True)
             self.comm.minibatch.print_dp()
 
             control_group = self.comm.minibatch.select_optimal_control_group()
@@ -1932,8 +1934,7 @@ class AutoInverter(object):
                 attribute="new_control_group", new_value=control_group
             )
             first = False
-            # if self.comm.project.current_iteration == "it0000_model":
-            #     first = True
+
             self.comm.project.update_control_group_toml(new=True, first=first)
             # sys.exit("Hvada event voru valin segirdu?")
             self.comm.storyteller.document_task(task)
