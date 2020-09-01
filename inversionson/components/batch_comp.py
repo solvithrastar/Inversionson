@@ -12,6 +12,8 @@ import random
 from colorama import Fore, Back, Style
 import time
 import toml
+from typing import Union
+from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
 
 class BatchComponent(Component):
@@ -162,6 +164,93 @@ class BatchComponent(Component):
         """
         return self._sum_relevant_values(grad=gradient, parameters=parameters)
 
+    def _remove_individual_grad_from_full_grad(
+        self, full_grad: np.ndarray, event: str
+    ) -> np.ndarray:
+        """
+        Remove one gradient from the full gradient
+
+        :param full_grad: A sum of all gradients
+        :type full_grad: np.ndarray
+        :param event: An event name of the individual gradient to be removed
+        :type event: str
+        """
+        inversion_grid = False
+        if self.comm.project.meshes == "multi-mesh":
+            inversion_grid = True
+        iteration = self.comm.project.current_iteration
+        parameters = self.comm.project.inversion_params
+        gradient = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=event,
+            smooth=True,
+            inversion_grid=inversion_grid,
+        )
+        individual_gradient = um.from_h5(gradient)
+
+        individual_gradient = self._get_vector_of_values(
+            gradient=individual_gradient, parameters=parameters,
+        )
+        return full_grad - individual_gradient
+
+    def _find_most_useless_event(
+        self, full_gradient: np.ndarray, events: list,
+    ) -> Union[str, np.ndarray]:
+        """
+        For a given gradient, which of the events which compose the full_grad
+        is the least inflential for it?
+
+        :param full_gradient: Summed gradient for all events in events
+        :type full_gradient: np.ndarray
+        :param events: A list of event names
+        :type events: list
+        :return: Name of the event and the reduced gradient
+        :rtype: Union[str, np.ndarray]
+        """
+
+        inversion_grid = False
+        if self.comm.project.meshes == "multi-mesh":
+            inversion_grid = True
+        iteration = self.comm.project.current_iteration
+        parameters = self.comm.project.inversion_params
+        full_gradient_norm = np.linalg.norm(
+            full_gradient.reshape(full_gradient.shape[0] * full_gradient.shape[1])
+        )
+        event_angles = {}
+        for event in events:
+            gradient = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event,
+                smooth=True,
+                inversion_grid=inversion_grid,
+            )
+            individual_gradient = um.from_h5(gradient)
+
+            individual_gradient = self._get_vector_of_values(
+                gradient=individual_gradient, parameters=parameters,
+            )
+            assert not np.any(
+                np.isnan(individual_gradient)
+            ), f"Nan values in individual_gradient for {event}"
+
+            angle = self._compute_angular_change(
+                full_gradient=full_gradient.reshape(
+                    full_gradient.shape[0] * full_gradient.shape[1]
+                ),
+                full_norm=full_gradient_norm,
+                individual_gradient=individual_gradient.reshape(
+                    individual_gradient.shape[0] * individual_gradient.shape[1]
+                ),
+            )
+            event_angles[event] = angle
+            print(f"Angle computed for event: {event}: {angle}")
+        redundant_gradient = min(event_angles, key=event_angles.get)
+        print(f"Most redundant: {redundant_gradient}")
+        reduced_gradient = self._remove_individual_grad_from_full_grad(
+            full_gradient, redundant_gradient
+        )
+        return redundant_gradient, reduced_gradient
+
     def get_random_event(self, n: int, existing: list) -> list:
         """
         Get an n number of events based on the probabilities defined
@@ -204,7 +293,6 @@ class BatchComponent(Component):
         # look for event to remove until a certain total angle
         # is reached or minimum control group is reached.
         # We just use the bulk norm of the gradients it seems
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
         events = self.comm.project.events_in_iteration
         print(f"Control batch events: {events}")
@@ -234,95 +322,61 @@ class BatchComponent(Component):
                 full_grad += self._get_vector_of_values(
                     gradient=grad, parameters=parameters,
                 )
-            # with h5py.File(gradient, "r") as f:
-            #     grad = f["MODEL/data"]
-            #     if _i == 0:
-            #         # This is wrong
-            #         parameters = self.comm.project.inversion_params
-            #         parameters = grad.attrs.get("DIMENSION_LABELS")[1].decode()
-            #         parameters = (
-            #             parameters[2:-2]
-            #             .replace(" ", "")
-            #             .replace("grad", "")
-            #             .split("|")
-            #         )
-            #         coordinates = f["MODEL/coordinates"][()]
-            #         init_shape = coordinates.shape
-            #         coordinates = np.reshape(
-            #             a=coordinates,
-            #             newshape=(
-            #                 init_shape[0] * init_shape[1],
-            #                 init_shape[2],
-            #             ),
-            #         )
-            #         _, unique_indices = np.unique(
-            #             ar=coordinates, return_index=True, axis=0
-            #         )
-            #     if _i == 0:
-            #         full_grad = np.zeros_like(grad)
-            #     # else:
-            #     full_grad += grad[()]
-        # Select only the relevant parameters and sum them together.
 
-        # I could use the unique values here, not sure which one is more
-        # correct. I think it depends on how salvus opt handles it.
-        # If I want that, I use grad.get_element_nodes() rather than
-        # grad.points
-        # full_grad = self._get_vector_of_values(
-        #     gradient=full_grad, parameters=parameters
-        # )
         full_grad_norm = np.linalg.norm(
             full_grad.reshape(full_grad.shape[0] * full_grad.shape[1])
         )
         print(f"Full grad norm: {full_grad_norm}")
         assert not np.any(np.isnan(full_grad)), "Nan values in full gradient"
-        angular_changes = {}
         event_quality = {}
-        for event in events:
-            gradient = self.comm.lasif.find_gradient(
-                iteration=iteration,
-                event=event,
-                smooth=True,
-                inversion_grid=inversion_grid,
-            )
-            individual_gradient = um.from_h5(gradient)
+        # I need to create a function for this that I can call with varying full gradients
+        # for event in events:
+        #     gradient = self.comm.lasif.find_gradient(
+        #         iteration=iteration,
+        #         event=event,
+        #         smooth=True,
+        #         inversion_grid=inversion_grid,
+        #     )
+        #     individual_gradient = um.from_h5(gradient)
 
-            individual_gradient = self._get_vector_of_values(
-                gradient=individual_gradient, parameters=parameters,
-            )
-            assert not np.any(
-                np.isnan(individual_gradient)
-            ), f"Nan values in individual_gradient for {event}"
+        #     individual_gradient = self._get_vector_of_values(
+        #         gradient=individual_gradient, parameters=parameters,
+        #     )
+        #     assert not np.any(
+        #         np.isnan(individual_gradient)
+        #     ), f"Nan values in individual_gradient for {event}"
 
-            angle = self._compute_angular_change(
-                full_gradient=full_grad.reshape(
-                    full_grad.shape[0] * full_grad.shape[1]
-                ),
-                full_norm=full_grad_norm,
-                individual_gradient=individual_gradient.reshape(
-                    individual_gradient.shape[0] * individual_gradient.shape[1]
-                ),
-            )
-            print(f"Angle computed for event: {event}: {angle}")
-            angular_changes[event] = angle
-            event_quality[event] = 0.0
+        #     angle = self._compute_angular_change(
+        #         full_gradient=full_grad.reshape(
+        #             full_grad.shape[0] * full_grad.shape[1]
+        #         ),
+        #         full_norm=full_grad_norm,
+        #         individual_gradient=individual_gradient.reshape(
+        #             individual_gradient.shape[0] * individual_gradient.shape[1]
+        #         ),
+        #     )
+        #     print(f"Angle computed for event: {event}: {angle}")
+        #     angular_changes[event] = angle
+        #     event_quality[event] = 0.0
         batch_grad = np.copy(full_grad)
         test_batch_grad = np.copy(batch_grad)
-        assert not np.any(np.isnan(batch_grad)), "Nan values in batch_grad"
 
         while len(ctrl_group) > min_ctrl:
-            redundant_gradient = min(angular_changes, key=angular_changes.get)
-            gradient = self.comm.lasif.find_gradient(
-                iteration=iteration,
-                event=redundant_gradient,
-                smooth=True,
-                inversion_grid=inversion_grid,
+            event_name, test_batch_grad = self._find_most_useless_event(
+                full_gradient=batch_grad, events=ctrl_group
             )
+            # redundant_gradient = min(angular_changes, key=angular_changes.get)
+            # gradient = self.comm.lasif.find_gradient(
+            #     iteration=iteration,
+            #     event=redundant_gradient,
+            #     smooth=True,
+            #     inversion_grid=inversion_grid,
+            # )
 
-            removal_grad = self._get_vector_of_values(
-                gradient=um.from_h5(gradient), parameters=parameters,
-            )
-            test_batch_grad -= removal_grad
+            # removal_grad = self._get_vector_of_values(
+            #     gradient=um.from_h5(gradient), parameters=parameters,
+            # )
+            # test_batch_grad -= removal_grad
             angle = self._angle_between(
                 full_grad.reshape(full_grad.shape[0] * full_grad.shape[1]),
                 test_batch_grad.reshape(
@@ -331,13 +385,13 @@ class BatchComponent(Component):
             )
             print(f"Angle between test_batch and full gradient: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
-                # How holy do I want this to be? More important than max angle?
                 break
             else:
                 batch_grad = np.copy(test_batch_grad)
-                del angular_changes[redundant_gradient]
-                event_quality[redundant_gradient] = 1 / len(ctrl_group)
-                ctrl_group.remove(redundant_gradient)
+                # del angular_changes[redundant_gradient]
+                event_quality[event_name] = 1 / len(ctrl_group)
+                ctrl_group.remove(event_name)
+                print(f"{event_name} does not continue to next iteration")
         if "it0000" not in iteration:
             grads_dropped = self._dropout(ctrl_group)
             tmp_event_qual = event_quality.copy()
