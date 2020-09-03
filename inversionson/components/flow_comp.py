@@ -232,7 +232,7 @@ class SalvusFlowComponent(Component):
         if isinstance(src_info, list):
             src_info = src_info[0]
 
-        src = source.seismology.MomentTensorPoint3D(
+        src = source.seismology.SideSetMomentTensorPoint3D(
             latitude=src_info["latitude"],
             longitude=src_info["longitude"],
             depth_in_m=src_info["depth_in_m"],
@@ -242,6 +242,7 @@ class SalvusFlowComponent(Component):
             mtp=src_info["mtp"],
             mrp=src_info["mrp"],
             mrt=src_info["mrt"],
+            side_set_name="r1",
             source_time_function=stf.Custom(
                 filename=stf_file, dataset_name="/source"
             ),
