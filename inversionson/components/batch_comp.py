@@ -359,7 +359,6 @@ class BatchComponent(Component):
         #     angular_changes[event] = angle
         #     event_quality[event] = 0.0
         batch_grad = np.copy(full_grad)
-        test_batch_grad = np.copy(batch_grad)
 
         while len(ctrl_group) > min_ctrl:
             event_name, test_batch_grad = self._find_most_useless_event(
