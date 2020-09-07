@@ -301,50 +301,64 @@ class SalvusFlowComponent(Component):
         p.close()
 
         # Get path to meta.json to obtain receiver position, use again for adjoint
-        meta_json_filename = os.path.join(self.comm.project.lasif_root, "SYNTHETICS", "EARTHQUAKES",
-                    f"ITERATION_{iteration}", event_name,
-                    "meta.json")
+        meta_json_filename = os.path.join(
+            self.comm.project.lasif_root,
+            "SYNTHETICS",
+            "EARTHQUAKES",
+            f"ITERATION_{iteration}",
+            event_name,
+            "meta.json",
+        )
 
         # Build meta info dict
         import json
+
         with open(meta_json_filename) as json_file:
             data = json.load(json_file)
-        meta_recs = data['forward_run_input']["output"]['point_data']["receiver"]
+        meta_recs = data["forward_run_input"]["output"]["point_data"][
+            "receiver"
+        ]
         meta_info_dict = {}
         for rec in meta_recs:
             if rec["network_code"] + "_" + rec["station_code"] in adjoint_recs:
                 rec_name = rec["network_code"] + "_" + rec["station_code"]
                 meta_info_dict[rec_name] = {}
-                # this is the rotation from XYZ to ZNE, we still need to transpose to get ZND -> XYZ
-                meta_info_dict[rec_name]["rotation_on_input"] = \
-                    {"matrix": np.array(rec["rotation_on_output"]["matrix"]).T.tolist()}
+                # this is the rotation from XYZ to ZNE, 
+                # we still need to transpose to get ZND -> XYZ
+                meta_info_dict[rec_name]["rotation_on_input"] = {
+                    "matrix": np.array(
+                        rec["rotation_on_output"]["matrix"]
+                    ).T.tolist()
+                }
                 meta_info_dict[rec_name]["location"] = rec["location"]
 
         adj_src = [
             source.cartesian.VectorPoint3D(
-                x = meta_info_dict[rec["network-code"]
-                    + "_"
-                    + rec["station-code"]]["location"][0],
-                y = meta_info_dict[rec["network-code"]
-                               + "_"
-                               + rec["station-code"]]["location"][1],
-                z = meta_info_dict[rec["network-code"]
-                               + "_"
-                               + rec["station-code"]]["location"][2],
-                fx = 1.0,
-                fy = 1.0,
-                fz = 1.0,
+                x=meta_info_dict[
+                    rec["network-code"] + "_" + rec["station-code"]
+                ]["location"][0],
+                y=meta_info_dict[
+                    rec["network-code"] + "_" + rec["station-code"]
+                ]["location"][1],
+                z=meta_info_dict[
+                    rec["network-code"] + "_" + rec["station-code"]
+                ]["location"][2],
+                fx=1.0,
+                fy=1.0,
+                fz=1.0,
                 source_time_function=stf.Custom(
                     filename=adjoint_filename,
                     dataset_name="/"
-                                 + rec["network-code"]
-                                 + "_"
-                                 + rec["station-code"],
-                ),
-                rotation_on_input=meta_info_dict[rec["network-code"]
+                    + rec["network-code"]
                     + "_"
-                    + rec["station-code"]]["rotation_on_input"]
-            ) for rec in adjoint_sources]
+                    + rec["station-code"],
+                ),
+                rotation_on_input=meta_info_dict[
+                    rec["network-code"] + "_" + rec["station-code"]
+                ]["rotation_on_input"],
+            )
+            for rec in adjoint_sources
+        ]
 
         return adj_src
 
@@ -361,15 +375,17 @@ class SalvusFlowComponent(Component):
         recs = self.comm.lasif.get_receivers(event)
 
         receivers = [
-                receiver.seismology.SideSetPoint3D(
+            receiver.seismology.SideSetPoint3D(
                 latitude=rec["latitude"],
                 longitude=rec["longitude"],
                 network_code=rec["network-code"],
                 station_code=rec["station-code"],
                 depth_in_m=0.0,
                 fields=["displacement"],
-                side_set_name="r1") for rec in recs
-                ]
+                side_set_name="r1",
+            )
+            for rec in recs
+        ]
 
         return receivers
 

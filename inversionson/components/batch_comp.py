@@ -127,27 +127,34 @@ class BatchComponent(Component):
         angle = np.arccos(value) / np.pi * 180.0
         return angle
 
-    def _sum_relevant_values(self, grad, parameters: list):
+    def _sum_relevant_values(self, grad, param_ind: list):
         """
         Take the gradient, find inverted parameters and sum them together.
         Reduces a 3D array to a 2D array.
         
         :param grad: Numpy array with gradient values
         :type grad: numpy.ndarray
-        :param parameters: A list of dimension labels in gradient
+        :param parameters: A list of indices where relevant gradient is kept
         :type parameters: list
         :return: list
         :rtype: numpy.ndarray
         """
-        shapegrad = grad.element_nodal_fields[parameters[0]].shape
-        summed_grad = np.zeros(
-            shape=(shapegrad[0] * len(parameters), shapegrad[1])
-        )
+        # shapegrad = grad.element_nodal_fields[parameters[0]].shape
+        # shapegrad = grad.shape
+        # summed_grad = np.zeros(
+        #     shape=(shapegrad[0] * shapegrad[1], shapegrad[2])
+        # )
         # summed_grad = np.zeros_like(grad.element_nodal_fields[parameters[0]])
-        for _i, param in enumerate(parameters):
-            summed_grad[
-                _i * shapegrad[0] : (_i + 1) * shapegrad[0], :
-            ] = grad.element_nodal_fields[param]
+        for _i, ind in enumerate(param_ind):
+            if _i == 0:
+                summed_grad = grad[:, ind, :]
+            else:
+                summed_grad = np.concatenate(
+                    (summed_grad, grad[:, ind, :]), axis=0
+                )
+            # summed_grad[
+            #     _i * shapegrad[0] : (_i + 1) * shapegrad[0], :
+            # ] = grad.element_nodal_fields[param]
         return summed_grad
 
     def _get_vector_of_values(self, gradient, parameters: list):
@@ -162,7 +169,19 @@ class BatchComponent(Component):
         :return: 1D vector with gradient values
         :rtype: numpy.ndarray
         """
-        return self._sum_relevant_values(grad=gradient, parameters=parameters)
+        with h5py.File(gradient, mode="r") as f:
+            grad = f["MODEL/data"]
+            dim_labels = (
+                grad.attrs.get("DIMENSION_LABELS")[1]
+                .decode()[1:-1]
+                .replace(" ", "")
+                .split("|")
+            )
+            indices = []
+            for param in parameters:
+                indices.append(dim_labels.index(param))
+            # relevant_grad = grad[:, indices, :]
+        return self._sum_relevant_values(grad=grad, param_ind=indices)
 
     def _remove_individual_grad_from_full_grad(
         self, full_grad: np.ndarray, event: str
@@ -186,10 +205,10 @@ class BatchComponent(Component):
             smooth=True,
             inversion_grid=inversion_grid,
         )
-        individual_gradient = um.from_h5(gradient)
+        # individual_gradient = um.from_h5(gradient)
 
         individual_gradient = self._get_vector_of_values(
-            gradient=individual_gradient, parameters=parameters,
+            gradient=gradient, parameters=parameters,
         )
         return full_grad - individual_gradient
 
@@ -214,7 +233,9 @@ class BatchComponent(Component):
         iteration = self.comm.project.current_iteration
         parameters = self.comm.project.inversion_params
         full_gradient_norm = np.linalg.norm(
-            full_gradient.reshape(full_gradient.shape[0] * full_gradient.shape[1])
+            full_gradient.reshape(
+                full_gradient.shape[0] * full_gradient.shape[1]
+            )
         )
         event_angles = {}
         for event in events:
@@ -224,10 +245,10 @@ class BatchComponent(Component):
                 smooth=True,
                 inversion_grid=inversion_grid,
             )
-            individual_gradient = um.from_h5(gradient)
+            # individual_gradient = um.from_h5(gradient)
 
             individual_gradient = self._get_vector_of_values(
-                gradient=individual_gradient, parameters=parameters,
+                gradient=gradient, parameters=parameters,
             )
             assert not np.any(
                 np.isnan(individual_gradient)
@@ -313,14 +334,14 @@ class BatchComponent(Component):
             )
             print(f"gradient for {event}: {gradient}")
             gradient_paths.append(gradient)
-            grad = um.from_h5(gradient)
+            # grad = um.from_h5(gradient)
             if _i == 0:
                 full_grad = self._get_vector_of_values(
-                    gradient=grad, parameters=parameters,
+                    gradient=gradient, parameters=parameters,
                 )
             else:
                 full_grad += self._get_vector_of_values(
-                    gradient=grad, parameters=parameters,
+                    gradient=gradient, parameters=parameters,
                 )
 
         full_grad_norm = np.linalg.norm(
