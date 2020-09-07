@@ -120,9 +120,7 @@ class AutoInverter(object):
         if self.comm.project.meshes == "multi-mesh":
             for event in events:
                 if not self.comm.lasif.has_mesh(event):
-                    self.comm.salvus_mesher.create_mesh(
-                        event=event
-                    )
+                    self.comm.salvus_mesher.create_mesh(event=event)
                     self.comm.lasif.move_mesh(event, it_name)
                 else:
                     self.comm.lasif.move_mesh(event, it_name)
@@ -331,7 +329,6 @@ class AutoInverter(object):
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src
         )
-
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w_adjoint,
@@ -1896,6 +1893,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
+        sys.exit("Now Pull from master and fix sideset stuff")
         self.assign_task_to_function(task_2, verbose_2)
 
     def select_control_batch(self, task, verbose):

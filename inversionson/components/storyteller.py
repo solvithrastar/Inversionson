@@ -74,7 +74,7 @@ class StoryTellerComponent(Component):
         """
         Backup all information at the end of each iteration.
         """
-        tmpdir = os.path.join(self.backup, "..", "tmp")
+        tmpdir = os.path.join(self.backup, "..", "..", "tmp")
         if os.path.exists(self.backup):
             shutil.copytree(self.backup, tmpdir)
             shutil.rmtree(self.backup)
@@ -167,6 +167,8 @@ class StoryTellerComponent(Component):
         """
         for event in self.comm.project.events_in_iteration:
             if not self.comm.project.updated[event]:
+                if event not in self.events_used.keys():
+                    self.events_used[event] = 0
                 if isinstance(self.events_used[event], str):
                     raise InversionsonError("Events used are strings")
                 self.events_used[event] += 1
