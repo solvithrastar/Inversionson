@@ -351,7 +351,7 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
-        mpi = False
+        mpi = True
         if self.comm.project.site_name == "swp":
             mpi = False
         misfit = self.comm.lasif.misfit_quantification(
@@ -448,7 +448,7 @@ class AutoInverter(object):
         else:
             window_set_name = event
 
-        mpi = False
+        mpi = True
         if self.comm.project.site_name == "swp":
             mpi = False
         if self.comm.project.inversion_mode == "mono-batch":

@@ -508,7 +508,7 @@ class LasifComponent(Component):
         )
 
     def misfit_quantification(
-        self, event: str, mpi=False, n=8, validation=False, window_set=None
+        self, event: str, mpi=False, n=4, validation=False, window_set=None
     ):
         """
         Quantify misfit and calculate adjoint sources.
@@ -547,9 +547,9 @@ class LasifComponent(Component):
                 f"calculated, delete file: {adjoint_path}"
             )
         elif mpi:
-            from inversionson.utils import double_fork
+            # from inversionson.utils import double_fork
 
-            double_fork()
+            # double_fork()
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif calculate_adjoint_sources "
             command += f"{iteration} "
@@ -561,7 +561,7 @@ class LasifComponent(Component):
                 print(line, end="\n", flush=True)
             process.wait()
             print(process.returncode)
-            double_fork()
+            # double_fork()
             os.chdir(self.comm.project.inversion_root)
 
         else:
@@ -696,7 +696,7 @@ class LasifComponent(Component):
         window_set_name: str,
         event: str,
         mpi=False,
-        n=8,
+        n=4,
         validation=False,
     ):
         """
@@ -712,7 +712,7 @@ class LasifComponent(Component):
         :type n: int
         """
         # Check if window set exists:
-        from inversionson.utils import double_fork
+        # from inversionson.utils import double_fork
 
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
@@ -723,7 +723,7 @@ class LasifComponent(Component):
             return
 
         if mpi:
-            double_fork()
+            # double_fork()
             os.chdir(self.comm.project.lasif_root)
             command = f"mpirun -n {n} lasif select_windows "
             command += f"{self.comm.project.current_iteration} "
@@ -742,7 +742,7 @@ class LasifComponent(Component):
                 print(line, end=" \n", flush=True)
             process.wait()
             print(process.returncode)
-            double_fork()
+            # double_fork()
             os.chdir(self.comm.project.inversion_root)
         else:
             lapi.select_windows(
