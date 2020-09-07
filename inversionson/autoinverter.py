@@ -1893,7 +1893,6 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        sys.exit("Now Pull from master and fix sideset stuff")
         self.assign_task_to_function(task_2, verbose_2)
 
     def select_control_batch(self, task, verbose):
