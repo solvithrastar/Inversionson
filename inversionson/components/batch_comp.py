@@ -80,6 +80,20 @@ class BatchComponent(Component):
         msg = "Parameters in gradient are not the same as inversion perameters"
         assert params == self.comm.project.inversion_params, msg
 
+    def _get_unique_points(self, points: np.ndarray):
+        """
+        Take an array of coordinates and find the unique coordinates. Returns
+        the unique coordinates and an array of indices that can be used to
+        reconstruct the previous array.
+        
+        :param points: Coordinates, or a file
+        :type points: numpy.ndarray
+        """
+        all_points = points.reshape(
+            (points.shape[0] * points.shape[1], points.shape[2])
+        )
+        return np.unique(all_points, return_index=True, axis=0)
+
     def _angle_between(self, gradient_1, gradient_2) -> float:
         """
         Compute the angle between two gradients
@@ -127,7 +141,9 @@ class BatchComponent(Component):
         angle = np.arccos(value) / np.pi * 180.0
         return angle
 
-    def _sum_relevant_values(self, grad, param_ind: list):
+    def _sum_relevant_values(
+        self, grad, param_ind: list, unique_indices: np.ndarray
+    ):
         """
         Take the gradient, find inverted parameters and sum them together.
         Reduces a 3D array to a 2D array.
@@ -136,7 +152,8 @@ class BatchComponent(Component):
         :type grad: numpy.ndarray
         :param parameters: A list of indices where relevant gradient is kept
         :type parameters: list
-        :return: list
+        :param unique_indices: indices of the unique points in mesh
+        :type unique_indices: numpy.ndarray
         :rtype: numpy.ndarray
         """
         # shapegrad = grad.element_nodal_fields[parameters[0]].shape
@@ -147,17 +164,27 @@ class BatchComponent(Component):
         # summed_grad = np.zeros_like(grad.element_nodal_fields[parameters[0]])
         for _i, ind in enumerate(param_ind):
             if _i == 0:
-                summed_grad = grad[:, ind, :]
+                summed_grad = grad[:, ind, :].reshape(
+                    grad.shape[0] * grad.shape[2]
+                )[unique_indices]
             else:
                 summed_grad = np.concatenate(
-                    (summed_grad, grad[:, ind, :]), axis=0
+                    (
+                        summed_grad,
+                        grad[:, ind, :].reshape(grad.shape[0] * grad.shape[2])[
+                            unique_indices
+                        ],
+                    ),
+                    axis=0,
                 )
             # summed_grad[
             #     _i * shapegrad[0] : (_i + 1) * shapegrad[0], :
             # ] = grad.element_nodal_fields[param]
         return summed_grad
 
-    def _get_vector_of_values(self, gradient, parameters: list):
+    def _get_vector_of_values(
+        self, gradient, parameters: list, unique_indices: np.ndarray
+    ):
         """
         Take a full gradient, find it's unique values and relevant parameters,
         manipulate all of these into a vector of summed parameter values.
@@ -165,7 +192,9 @@ class BatchComponent(Component):
         :param gradient: Array of gradient values
         :type gradient: numpy.ndarray
         :param parameters: A list of dimension labels in gradient
-        :return: list
+        :type parameters: list
+        :param unique_indices: indices of the unique points in mesh
+        :type unique_indices: numpy.ndarray
         :return: 1D vector with gradient values
         :rtype: numpy.ndarray
         """
@@ -181,10 +210,12 @@ class BatchComponent(Component):
             for param in parameters:
                 indices.append(dim_labels.index(param))
             # relevant_grad = grad[:, indices, :]
-        return self._sum_relevant_values(grad=grad, param_ind=indices)
+        return self._sum_relevant_values(
+            grad=grad[()], param_ind=indices, unique_indices=unique_indices
+        )
 
     def _remove_individual_grad_from_full_grad(
-        self, full_grad: np.ndarray, event: str
+        self, full_grad: np.ndarray, event: str, unique_indices=np.ndarray,
     ) -> np.ndarray:
         """
         Remove one gradient from the full gradient
@@ -208,12 +239,17 @@ class BatchComponent(Component):
         # individual_gradient = um.from_h5(gradient)
 
         individual_gradient = self._get_vector_of_values(
-            gradient=gradient, parameters=parameters,
+            gradient=gradient,
+            parameters=parameters,
+            unique_indices=unique_indices,
         )
         return full_grad - individual_gradient
 
     def _find_most_useless_event(
-        self, full_gradient: np.ndarray, events: list,
+        self,
+        full_gradient: np.ndarray,
+        events: list,
+        unique_indices: np.ndarray,
     ) -> Union[str, np.ndarray]:
         """
         For a given gradient, which of the events which compose the full_grad
@@ -232,11 +268,7 @@ class BatchComponent(Component):
             inversion_grid = True
         iteration = self.comm.project.current_iteration
         parameters = self.comm.project.inversion_params
-        full_gradient_norm = np.linalg.norm(
-            full_gradient.reshape(
-                full_gradient.shape[0] * full_gradient.shape[1]
-            )
-        )
+        full_gradient_norm = np.linalg.norm(full_gradient)
         event_angles = {}
         for event in events:
             gradient = self.comm.lasif.find_gradient(
@@ -248,27 +280,25 @@ class BatchComponent(Component):
             # individual_gradient = um.from_h5(gradient)
 
             individual_gradient = self._get_vector_of_values(
-                gradient=gradient, parameters=parameters,
+                gradient=gradient,
+                parameters=parameters,
+                unique_indices=unique_indices,
             )
             assert not np.any(
                 np.isnan(individual_gradient)
             ), f"Nan values in individual_gradient for {event}"
 
             angle = self._compute_angular_change(
-                full_gradient=full_gradient.reshape(
-                    full_gradient.shape[0] * full_gradient.shape[1]
-                ),
+                full_gradient=full_gradient,
                 full_norm=full_gradient_norm,
-                individual_gradient=individual_gradient.reshape(
-                    individual_gradient.shape[0] * individual_gradient.shape[1]
-                ),
+                individual_gradient=individual_gradient,
             )
             event_angles[event] = angle
             print(f"Angle computed for event: {event}: {angle}")
         redundant_gradient = min(event_angles, key=event_angles.get)
         print(f"Most redundant: {redundant_gradient}")
         reduced_gradient = self._remove_individual_grad_from_full_grad(
-            full_gradient, redundant_gradient
+            full_gradient, redundant_gradient, unique_indices=unique_indices,
         )
         return redundant_gradient, reduced_gradient
 
@@ -332,21 +362,28 @@ class BatchComponent(Component):
                 smooth=True,
                 inversion_grid=inversion_grid,
             )
+            if _i == 0:
+                with h5py.File(gradient, mode="r") as f:
+                    _, unique_indices = self._get_unique_points(
+                        points=f["MODEL/coordinates"][()]
+                    )
             print(f"gradient for {event}: {gradient}")
             gradient_paths.append(gradient)
             # grad = um.from_h5(gradient)
             if _i == 0:
                 full_grad = self._get_vector_of_values(
-                    gradient=gradient, parameters=parameters,
+                    gradient=gradient,
+                    parameters=parameters,
+                    unique_indices=unique_indices,
                 )
             else:
                 full_grad += self._get_vector_of_values(
-                    gradient=gradient, parameters=parameters,
+                    gradient=gradient,
+                    parameters=parameters,
+                    unique_indices=unique_indices,
                 )
 
-        full_grad_norm = np.linalg.norm(
-            full_grad.reshape(full_grad.shape[0] * full_grad.shape[1])
-        )
+        full_grad_norm = np.linalg.norm(full_grad)
         print(f"Full grad norm: {full_grad_norm}")
         assert not np.any(np.isnan(full_grad)), "Nan values in full gradient"
         event_quality = {}
@@ -383,7 +420,9 @@ class BatchComponent(Component):
 
         while len(ctrl_group) > min_ctrl:
             event_name, test_batch_grad = self._find_most_useless_event(
-                full_gradient=batch_grad, events=ctrl_group
+                full_gradient=batch_grad,
+                events=ctrl_group,
+                unique_indices=unique_indices,
             )
             # redundant_gradient = min(angular_changes, key=angular_changes.get)
             # gradient = self.comm.lasif.find_gradient(
@@ -397,12 +436,7 @@ class BatchComponent(Component):
             #     gradient=um.from_h5(gradient), parameters=parameters,
             # )
             # test_batch_grad -= removal_grad
-            angle = self._angle_between(
-                full_grad.reshape(full_grad.shape[0] * full_grad.shape[1]),
-                test_batch_grad.reshape(
-                    test_batch_grad.shape[0] * test_batch_grad.shape[1]
-                ),
-            )
+            angle = self._angle_between(full_grad, test_batch_grad,)
             print(f"Angle between test_batch and full gradient: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
                 break

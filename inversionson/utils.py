@@ -171,7 +171,7 @@ def cut_receiver_regions_from_gradient(
     gradient.close()
 
 
-def clip_gradient(mesh: str, percentile: float):
+def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
     Clip the gradient to remove abnormally high/low values from it.
     Discrete gradients sometimes have the problem of unphysically high
@@ -182,13 +182,18 @@ def clip_gradient(mesh: str, percentile: float):
     :type mesh: str
     :param percentile: The percentile at which you want to clip the gradient
     :type percentile: float
+    :param parameters: Parameters to clip
+    :type parameters: list
     """
     gradient = h5py.File(mesh, "r+")
     data = gradient["MODEL/data"]
-
+    dim_labels = data.attrs.get("DIMENSION_LABELS")[1].decode()[1:-1].replace(" ", "").split("|")
+    indices = []
+    for param in parameters:
+        indices.append(dim_labels.index(param))
     clipped_data = data[:, :, :].copy()
 
-    for i in range(data.shape[1]):
+    for i in indices:
         clipped_data[:, i, :] = np.clip(
             data[:, i, :],
             a_min=np.quantile(data[:, i, :], 1.0 - percentile),

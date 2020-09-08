@@ -559,7 +559,9 @@ class AutoInverter(object):
         if self.comm.project.clip_gradient != 1.0:
             print("Clipping gradient")
             clip_gradient(
-                mesh=gradient, percentile=self.comm.project.clip_gradient
+                mesh=gradient,
+                percentile=self.comm.project.clip_gradient,
+                parameters=self.comm.project.inversion_params,
             )
 
     def sum_gradients(self):
