@@ -847,7 +847,7 @@ class ProjectComponent(Component):
             self.updated = {}
         self.forward_job = {}
 
-        if self.meshes == "mono-mesh"
+        if self.meshes == "mono-mesh":
             if "remote_simulation_mesh" not in it_dict.keys():
                 self.remote_mesh = None
             else:
