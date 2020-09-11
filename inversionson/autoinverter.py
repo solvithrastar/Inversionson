@@ -257,6 +257,11 @@ class AutoInverter(object):
         w = self.comm.salvus_flow.construct_simulation(
             event, source, receivers
         )
+
+        if self.comm.project.remote_mesh is not None and \
+                self.comm.project.meshes == "mono-mesh":
+            w.set_mesh(self.comm.project.remote_mesh)
+
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w,
@@ -330,6 +335,11 @@ class AutoInverter(object):
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src
         )
+
+        if self.comm.project.remote_mesh is not None and \
+                self.comm.project.meshes == "mono-mesh":
+            w_adjoint.set_mesh(self.comm.project.remote_mesh)
+
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w_adjoint,

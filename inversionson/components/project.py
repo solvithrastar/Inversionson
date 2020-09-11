@@ -607,6 +607,9 @@ class ProjectComponent(Component):
         it_dict["name"] = iteration
         it_dict["events"] = {}
 
+        if self.meshes == "mono-mesh":
+            it_dict["remote_simulation_mesh"] = None
+
         last_control_group = []
         if iteration != "it0000_model" and not validation and self.inversion_mode == "mini-batch":
             ctrl_grps = toml.load(
@@ -772,6 +775,10 @@ class ProjectComponent(Component):
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
+
+        if self.meshes == "mono-mesh":
+            it_dict["remote_simulation_mesh"] = self.remote_mesh
+
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
         if not validation and self.inversion_mode == "mini-batch":
@@ -839,6 +846,12 @@ class ProjectComponent(Component):
             self.misfits = {}
             self.updated = {}
         self.forward_job = {}
+
+        if self.meshes == "mono-mesh"
+            if "remote_simulation_mesh" not in it_dict.keys():
+                self.remote_mesh = None
+            else:
+                self.remote_mesh = it_dict["remote_simulation_mesh"]
 
         # Not sure if it's worth it to include station misfits
         for _i, event in enumerate(self.events_in_iteration):
