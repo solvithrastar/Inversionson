@@ -210,9 +210,9 @@ class BatchComponent(Component):
             for param in parameters:
                 indices.append(dim_labels.index(param))
             # relevant_grad = grad[:, indices, :]
-        return self._sum_relevant_values(
-            grad=grad[()], param_ind=indices, unique_indices=unique_indices
-        )
+            return self._sum_relevant_values(
+                grad=grad[()], param_ind=indices, unique_indices=unique_indices
+            )
 
     def _remove_individual_grad_from_full_grad(
         self, full_grad: np.ndarray, event: str, unique_indices=np.ndarray,
