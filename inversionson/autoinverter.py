@@ -14,6 +14,15 @@ from typing import Union, List
 init()
 
 
+def _find_project_comm(info):
+    """
+    Get lasif communicator.
+    """
+    from inversionson.components.project import ProjectComponent
+
+    return ProjectComponent(info).get_communicator()
+
+
 class AutoInverter(object):
     """
     A class which takes care of automating a Full-Waveform Inversion.
@@ -28,19 +37,11 @@ class AutoInverter(object):
     def __init__(self, info_dict: dict):
         self.info = info_dict
         print(Fore.RED + "Will make communicator now")
-        self.comm = self._find_project_comm()
+        self.comm = _find_project_comm(self.info)
         print(Fore.GREEN + "Now I want to start running the inversion")
         print(Style.RESET_ALL)
         self.task = None
         self.run_inversion()
-
-    def _find_project_comm(self):
-        """
-        Get lasif communicator.
-        """
-        from inversionson.components.project import ProjectComponent
-
-        return ProjectComponent(self.info).get_communicator()
 
     def _send_whatsapp_announcement(self):
         """
