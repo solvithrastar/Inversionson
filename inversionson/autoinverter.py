@@ -796,7 +796,8 @@ class AutoInverter(object):
                             grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
                             preprocess_remote_gradient(self.comm, grad, event)
                         # retrieve job, then path. write toml and call process
-                        self.retrieve_gradient(event)
+                        else:
+                            self.retrieve_gradient(event)
                         events_retrieved_now.append(event)
                     elif status == "pending":
                         print(f"Status = {status}, event: {event}")
