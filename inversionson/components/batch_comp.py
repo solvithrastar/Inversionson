@@ -199,9 +199,9 @@ class BatchComponent(Component):
         :rtype: numpy.ndarray
         """
         with h5py.File(gradient, mode="r") as f:
-            grad = f["MODEL/data"]
+            grad = f["MODEL/data"][()]
             dim_labels = (
-                grad.attrs.get("DIMENSION_LABELS")[1]
+                f["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
                 .decode()[1:-1]
                 .replace(" ", "")
                 .split("|")
@@ -211,7 +211,7 @@ class BatchComponent(Component):
                 indices.append(dim_labels.index(param))
             # relevant_grad = grad[:, indices, :]
         return self._sum_relevant_values(
-            grad=grad[()], param_ind=indices, unique_indices=unique_indices
+            grad=grad, param_ind=indices, unique_indices=unique_indices
         )
 
     def _remove_individual_grad_from_full_grad(
