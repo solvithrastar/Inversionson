@@ -40,7 +40,7 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     info["clipping_percentile"] = comm.project.clip_gradient,
     info["parameters"] = comm.project.inversion_params
 
-    toml_filename = f"{event}_gradient_process.toml
+    toml_filename = f"{event}_gradient_process.toml"
     with open(toml_filename, "w") as fh:
         toml.dump(info, fh)
 
