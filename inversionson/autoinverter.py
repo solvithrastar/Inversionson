@@ -1077,7 +1077,14 @@ class AutoInverter(object):
                             if sim_type == "forward":
                                 self.retrieve_seismograms(event)
                             elif sim_type == "adjoint":
-                                self.retrieve_gradient(event)
+                                if self.comm.project.remote_gradient_processing:
+                                    job = self.comm.salvus_flow.get_job(event, "adjoint")
+                                    output_files = job.get_output_files()
+                                    grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+                                    preprocess_remote_gradient(self.comm, grad,
+                                                               event)
+                                else:
+                                    self.retrieve_gradient(event)
                             jobs[event]["retrieved"] = True
                     else:
                         for _i, s in enumerate(status):
