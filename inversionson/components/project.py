@@ -484,6 +484,7 @@ class ProjectComponent(Component):
             "absorbing_boundaries_length"
         ]
         self.absorbing_boundaries = self.info["absorbing_boundaries"]
+        self.remote_gradient_processing = True
         self.ocean_loading = self.simulation_dict["ocean_loading"]
         self.domain_file = self.simulation_dict["domain_file"]
 

@@ -10,7 +10,7 @@ import toml
 from colorama import init
 from colorama import Fore, Style
 from typing import Union, List
-
+from inversionson.remote_helpers.helpers import preprocess_remote_gradient
 init()
 
 
@@ -789,6 +789,13 @@ class AutoInverter(object):
                     reposts = self.comm.project.adjoint_job[event]["reposts"]
 
                     if status == "finished":
+                        # Potentially add preprocess_remote here
+                        if self.comm.project.remote_gradient_processing:
+                            job = self.comm.salvus_flow.get_job(event, "adjoint")
+                            output_files = job.get_output_files()
+                            grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+                            preprocess_remote_gradient(self.comm, grad, event)
+                        # retrieve job, then path. write toml and call process
                         self.retrieve_gradient(event)
                         events_retrieved_now.append(event)
                     elif status == "pending":
@@ -1497,7 +1504,8 @@ class AutoInverter(object):
                         use_aliases=True,
                     )
                 )
-                self.preprocess_gradient(event)
+                if not self.comm.project.remote_gradient_processing:
+                    self.preprocess_gradient(event)
                 if self.comm.project.inversion_mode == "mini-batch":
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(
@@ -1823,7 +1831,8 @@ class AutoInverter(object):
                         use_aliases=True,
                     )
                 )
-                self.preprocess_gradient(event)
+                if not self.comm.project.remote_gradient_processing:
+                    self.preprocess_gradient(event)
 
                 print(Fore.YELLOW + "\n ==================== \n")
                 print(

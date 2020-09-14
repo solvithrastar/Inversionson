@@ -261,7 +261,11 @@ class SalvusSmoothComponent(Component):
                 )
             )
         mesh.attach_global_variable(name="reference_frame", data="spherical")
-
+        if self.comm.project.remote_gradient_processing:
+            job = self.comm.salvus_flow.get_job(event, "adjoint")
+            output_files = job.get_output_files()
+            grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+            mesh = os.path.join("REMOTE:", grad)
         job = smoothing.run_async(
             model=mesh,
             smoothing_config=smoothing_config,
