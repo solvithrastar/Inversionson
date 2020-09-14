@@ -540,6 +540,7 @@ class LasifComponent(Component):
             event,
             "stf.h5",
         )
+        mpi = False
         if os.path.exists(adjoint_path) and not validation:
             print(f"Adjoint source exists for event: {event} ")
             print(
@@ -565,7 +566,7 @@ class LasifComponent(Component):
             os.chdir(self.comm.project.inversion_root)
 
         else:
-            lapi.calculate_adjoint_sources(
+            lapi.calculate_adjoint_sources_multiprocessing(
                 self.lasif_comm,
                 iteration=iteration,
                 window_set=window_set,
@@ -721,7 +722,7 @@ class LasifComponent(Component):
         if os.path.exists(path) and not validation:
             print(f"Window set for event {event} exists.")
             return
-
+        mpi = False
         if mpi:
             # double_fork()
             os.chdir(self.comm.project.lasif_root)
@@ -745,7 +746,7 @@ class LasifComponent(Component):
             # double_fork()
             os.chdir(self.comm.project.inversion_root)
         else:
-            lapi.select_windows(
+            lapi.select_windows_multiprocessing(
                 self.lasif_comm,
                 iteration=self.comm.project.current_iteration,
                 window_set=window_set_name,
