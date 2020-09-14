@@ -39,6 +39,7 @@ class ProjectComponent(Component):
         self.__setup_components()
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
+        self.remote_gradient_processing = True
 
     def _read_config_file(self) -> dict:
         """
