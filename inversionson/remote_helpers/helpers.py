@@ -23,14 +23,16 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     username = "dpvanher"
     daint = DaintClient(hostname, username)
 
-    remote_inversionson_dir = os.path.join("/users", username, "Inversionson")
+    remote_inversionson_dir = os.path.join("/project/s961", username,
+                                           "smoothing_info")
     print(remote_inversionson_dir)
     if not daint.remote_exists(remote_inversionson_dir):
         daint.remote_mkdir(remote_inversionson_dir)
 
     # copy processing script to daint
     remote_script = os.path.join(remote_inversionson_dir, "cut_and_clip.py")
-    daint.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
+    if not daint.remote_exists(remote_script):
+        daint.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
 
     info = {}
     info["filename"] = str(gradient_path)
@@ -47,6 +49,8 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     # put toml on daint
     remote_toml = os.path.join(remote_inversionson_dir, toml_filename)
     daint.remote_put(toml_filename, remote_toml)
+
+    os.remove(toml_filename)
 
     # Call script
     print("Calling script on Daint")
