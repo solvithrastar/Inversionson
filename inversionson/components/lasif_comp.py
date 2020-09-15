@@ -572,6 +572,7 @@ class LasifComponent(Component):
                 window_set=window_set,
                 weight_set=event,
                 events=[event],
+                num_processes=4,
             )
 
         if validation:  # We just return some random value as it is not used
@@ -751,6 +752,7 @@ class LasifComponent(Component):
                 iteration=self.comm.project.current_iteration,
                 window_set=window_set_name,
                 events=[event],
+                num_processes=4,
             )
 
     def find_seismograms(self, event: str, iteration: str) -> str:
