@@ -259,7 +259,7 @@ class SalvusSmoothComponent(Component):
             job = self.comm.salvus_flow.get_job(event, "adjoint")
             output_files = job.get_output_files()
             grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
-            mesh = "REMOTE:" + str(grad)
+            mesh = UnstructuredMesh.from_h5(str(grad))
             #mesh = os.path.join("REMOTE:", grad)
             print(mesh)
         else:
