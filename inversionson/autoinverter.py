@@ -321,11 +321,8 @@ class AutoInverter(object):
                 elif status == "JobStatus.finished":
                     print(f"Status of job for event {event} is finished")
                     print("Will retrieve and update toml")
-                    print(self.comm.project.remote_gradient_processing)
-                    if True:
-                        print("getting job")
+                    if self.comm.project.remote_gradient_processing:
                         job = self.comm.salvus_flow.get_job(event, "adjoint")
-                        print("B")
                         output_files = job.get_output_files()
                         grad = output_files[0][
                             ('adjoint', 'gradient', 'output_filename')]

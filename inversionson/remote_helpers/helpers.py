@@ -23,8 +23,8 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     username = "dpvanher"
     daint = DaintClient(hostname, username)
 
-    remote_inversionson_dir = os.path.join("users", username, "Inversionson")
-
+    remote_inversionson_dir = os.path.join("/users", username, "Inversionson")
+    print(remote_inversionson_dir)
     if not daint.remote_exists(remote_inversionson_dir):
         daint.remote_mkdir(remote_inversionson_dir)
 
@@ -33,11 +33,11 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     daint.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
 
     info = {}
-    info["filename"] = gradient_path
+    info["filename"] = str(gradient_path)
     info["cutout_radius_in_km"] = comm.project.cut_source_radius
     info["source_location"] = comm.lasif.get_source(event_name=event)
 
-    info["clipping_percentile"] = comm.project.clip_gradient,
+    info["clipping_percentile"] = comm.project.clip_gradient
     info["parameters"] = comm.project.inversion_params
 
     toml_filename = f"{event}_gradient_process.toml"

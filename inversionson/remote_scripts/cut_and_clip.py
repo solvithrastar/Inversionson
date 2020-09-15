@@ -131,5 +131,12 @@ if __name__ == "__main__":
     if clipping_percentile < 1.0:
         clip_gradient(gradient_filename, clipping_percentile, parameters)
 
+    
+    # Set referece frame to spherical
+    print("Set reference frame")
+    with h5py.File(gradient_filename, "r+") as f:
+        attributes = f["MODEL"].attrs
+        attributes.modify("reference_frame", b"spherical")
+
     with open(toml_filename, "w") as fh:
         toml.dump(info, fh)

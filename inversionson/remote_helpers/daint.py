@@ -65,6 +65,7 @@ class DaintClient():
         self.hostname = hostname
         self.username = username
         self.keyring_settings = None
+        self.verbose = True
         self._init_ssh_and_stfp_clients()
 
     def __del__(self):
