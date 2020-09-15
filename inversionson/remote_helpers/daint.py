@@ -64,6 +64,7 @@ class DaintClient():
     def __init__(self, hostname, username):
         self.hostname = hostname
         self.username = username
+        self.keyring_settings = None
         self._init_ssh_and_stfp_clients()
 
     def __del__(self):
@@ -101,15 +102,41 @@ class DaintClient():
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         self.ssh_client.load_system_host_keys()
 
+        # Use the keyring library to encrypt the private SSH key if required.
+        if self.keyring_settings:
+            import keyring
+            private_key_file = Path.home() / Path(".ssh") / Path("id_rsa")
+            pw = keyring.get_password(*self.keyring_settings)
+            if not pw:
+                msg = (
+                    "Failed to get SSH key password from keyring. Make sure "
+                    "keyring.get_password(servicename, username) works from "
+                    "within Python and that it returns the correct password "
+                    "with the settings chosen in the salvus-flow config.")
+                raise ValueError(msg)
+            pkey = paramiko.RSAKey.from_private_key_file(
+                filename=private_key_file,
+                password=pw)
+        else:
+            pkey = None
+
+        # Follow proxy commands if set.
+        if "proxycommand" in info:
+            sock = paramiko.ProxyCommand(info["proxycommand"])
+        else:
+            sock = None
+
         self.ssh_client.connect(
             username=info["username"],
             hostname=info["hostname"],
+            pkey=pkey,
+            sock=sock,
             # Two minutes should be good for most things.
             timeout=120)
 
         self.sftp_client = self.ssh_client.open_sftp()
 
-        print("Success")
+        print("Connected to Daint.")
 
     def run_ssh_command(self, cmd: str, assert_ok: bool = True,
                         environment: Dict[str, str] = None) \
@@ -141,7 +168,7 @@ class DaintClient():
             nl = "\n"
             msg = f"Command '{cmd}' on {self.hostname} returned with exit " \
                   f"code {exit_status}. stderr: {nl}{nl.join(stderr)}"
-            raise RemoteExecutionError(msg)
+            raise Exception(msg)
 
         return exit_status, stdout, stderr
 

@@ -323,10 +323,13 @@ class AutoInverter(object):
                     print("Will retrieve and update toml")
                     print(self.comm.project.remote_gradient_processing)
                     if True:
+                        print("getting job")
                         job = self.comm.salvus_flow.get_job(event, "adjoint")
+                        print("B")
                         output_files = job.get_output_files()
                         grad = output_files[0][
                             ('adjoint', 'gradient', 'output_filename')]
+                        print("calling preprocess")
                         preprocess_remote_gradient(self.comm, grad, event)
                     else:
                         self.retrieve_gradient(event)
