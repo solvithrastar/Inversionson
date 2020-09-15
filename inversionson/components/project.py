@@ -859,6 +859,8 @@ class ProjectComponent(Component):
                 self.remote_mesh = None
             else:
                 self.remote_mesh = it_dict["remote_simulation_mesh"]
+        else:
+            self.remote_mesh = None
 
         # Not sure if it's worth it to include station misfits
         for _i, event in enumerate(self.events_in_iteration):
