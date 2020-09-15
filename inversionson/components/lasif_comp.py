@@ -142,7 +142,7 @@ class LasifComponent(Component):
                 )
                 batch = list(batch + rand_batch)
                 existing = batch
-            count -= len(rand_batch)
+                count -= len(rand_batch)
             avail_events = list(
                 set(events) - set(blocked_events) - set(existing)
             )

@@ -153,6 +153,10 @@ class SalvusSmoothComponent(Component):
                 inversion_grid=False,
                 just_give_path=True,
             )
+        output_file_name = self.comm.lasif.find_event_mesh(event=event_name)
+        if not os.path.exists(os.path.dirname(smooth_grad)):
+            os.mkdir(os.path.dirname(smooth_grad))
+
         smooth_gradient = get_smooth_model(
             job=salvus_job,
             model=self.comm.lasif.find_event_mesh(event=event_name),
