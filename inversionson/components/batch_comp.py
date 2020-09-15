@@ -419,7 +419,7 @@ class BatchComponent(Component):
         batch_grad = np.copy(full_grad)
         removal_order = 0
         while len(ctrl_group) > min_ctrl:
-	    removal_order += 1
+            removal_order += 1
             event_name, test_batch_grad = self._find_most_useless_event(
                 full_gradient=batch_grad,
                 events=ctrl_group,
