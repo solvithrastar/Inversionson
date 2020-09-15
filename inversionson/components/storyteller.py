@@ -197,7 +197,7 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+            iteration_number = int(iteration.split("_")[0][2:].lstrip("0"))
         self.markdown.add_header(
             header_style=2, text=f"Iteration: {iteration_number}"
         )
