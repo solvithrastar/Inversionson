@@ -475,6 +475,7 @@ class AutoInverter(object):
                 self.comm.lasif.select_windows(
                     window_set_name=window_set_name, event=event, mpi=mpi
                 )
+                return
             else:
                 print("Windows were selected in a previous iteration.")
                 print(" ... On we go")
