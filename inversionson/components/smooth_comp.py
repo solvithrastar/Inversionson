@@ -19,43 +19,6 @@ class SalvusSmoothComponent(Component):
         )
         # self.smoother_path = self.comm.project.paths["salvus_smoother"]
 
-    def generate_diffusion_object(
-        self, gradient: str, mesh: object, par: str, movie=False
-    ) -> object:
-        """
-        Generate the input object that the smoother requires
-        
-        :param gradient: Path to the gradient file to be smoothed
-        :type gradient: str
-        :param mesh: Mesh object with diffusion parameters
-        :type mesh: UnstructuredMesh object
-        :param movie: If a movie should be saved, defaults to False
-        :type movie: bool
-        """
-        import salvus.flow.simple_config as sc
-
-        seperator = "/"
-        sim = sc.simulation.Diffusion(mesh=mesh)
-        output_file = seperator.join(gradient.split(seperator)[:-1])
-        movie_file = output_file + "/smoothing_movie.h5"
-        output_file += "/smooth_gradient.h5"
-
-        sim.physics.diffusion_equation.time_step_in_seconds = 1e-5
-        sim.physics.diffusion_equation.initial_values.filename = gradient
-        sim.physics.diffusion_equation.initial_values.format = "hdf5"
-        sim.physics.diffusion_equation.initial_values.field = par  # Temporary
-
-        sim.physics.diffusion_equation.final_values.filename = output_file
-        if movie:
-            sim.output.volume_data.filename = movie_file
-            sim.output.volume_data.format = "hdf5"
-            sim.output.volume_data.fields = ["VS"]
-            sim.output.volume_data.sampling_interval_in_time_steps = 10
-
-        sim.validate()
-
-        return sim
-
     def generate_smoothing_config(self, event: str) -> dict:
         """
         Generate a dictionary which contains smoothing objects for each 
@@ -159,74 +122,6 @@ class SalvusSmoothComponent(Component):
                 mesh=smooth_grad, fieldname_1="VPV", fieldname_2="VPH",
             )
 
-    def generate_input_toml(self, gradient: str, movie=False):
-        """
-        Generate the input file that the smoother requires
-        
-        :param gradient: Path to the gradient file to be smoothed
-        :type gradient: str
-        :param movie: If a movie should be saved, defaults to False
-        :type movie: bool
-        """
-        # Define a few paths
-        seperator = "/"
-        if movie:
-            movie_file = seperator.join(gradient.split(seperator)[:-1])
-            movie_file += "/smooth_movie.h5"
-        output_file = seperator.join(gradient.split(seperator)[:-1])
-        output_file += "/smooth_gradient.h5"
-
-        grad_folder, _ = os.path.split(gradient)
-        smoothing_fields_mesh = os.path.join(
-            grad_folder, "smoothing_fields.h5"
-        )
-        # Domain dictionary
-        mesh = {"filename": gradient, "format": "hdf5"}
-        domain = {
-            "dimension": 3,
-            "polynomial-order": 4,
-            "mesh": mesh,
-            "model": mesh,
-            "geometry": mesh,
-        }
-
-        # Physics dictionary
-        diffusion_equation = {
-            "start-time-in-seconds": 0.0,
-            "end-time-in-seconds": 1.0,
-            "time-step-in-seconds": 0.001,
-            "time-stepping-scheme": "euler",
-            "initial-values": {
-                "filename": gradient,
-                "format": "hdf5",
-                "field": self.comm.project.inversion_params,
-            },
-            "final-values": {"filename": output_file},
-        }
-
-        physics = {"diffusion-equation": diffusion_equation}
-
-        # Output dict
-        if movie:
-            volume_data = {
-                "fields": ["VS"],
-                "sampling-interval-in-time-steps": 10,
-                "filename": movie_file,
-                "format": "hdf5",
-            }
-            output = {"volume-data": volume_data}
-
-        input_dict = {"domain": domain, "physics": physics}
-        if movie:
-            input_dict["output"] = output
-
-        # Write toml file
-        toml_dir = seperator.join(gradient.split(seperator)[:-1])
-        toml_filename = "input.toml"
-        toml_path = os.path.join(toml_dir, toml_filename)
-        with open(toml_path, "w+") as fh:
-            toml.dump(input_dict, fh)
-
     def run_smoother(
         self, smoothing_config: dict, event: str, iteration: str = None
     ):
@@ -250,20 +145,27 @@ class SalvusSmoothComponent(Component):
         if self.comm.project.remote_gradient_processing:
             job = self.comm.salvus_flow.get_job(event, "adjoint")
             output_files = job.get_output_files()
-            grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+            grad = output_files[0][("adjoint", "gradient", "output_filename")]
             mesh = UnstructuredMesh.from_h5(str(grad))
         else:
             if self.comm.project.inversion_mode == "mini-batch":
                 mesh = UnstructuredMesh.from_h5(
-                    self.comm.lasif.find_gradient(iteration=iteration, event=event)
+                    self.comm.lasif.find_gradient(
+                        iteration=iteration, event=event
+                    )
                 )
             else:
                 mesh = UnstructuredMesh.from_h5(
                     self.comm.lasif.find_gradient(
-                        iteration=iteration, summed=True, smooth=False, event=None
+                        iteration=iteration,
+                        summed=True,
+                        smooth=False,
+                        event=None,
                     )
                 )
-            mesh.attach_global_variable(name="reference_frame", data="spherical")
+            mesh.attach_global_variable(
+                name="reference_frame", data="spherical"
+            )
 
         job = smoothing.run_async(
             model=mesh,

@@ -53,7 +53,7 @@ python <Path to inversionson folder>/inversionson/create_dummy_info_file.py
     * __model_interpolation_mode__: Actually only supports "gll_2_gll" right now so don't worry about that as long as you use `hdf5` meshes.
     * __inversion_parameters__: Parameters to invert for. Make sure these are the same ones as in the `inversion.toml` file in the `SALVUS_OPT` directory.
     * __modelling_parameters__: The parameters on the meshes you use for simulations.
-    * __n_random_events__: Only relevant for "mini-batch" mode. Describes how many of the events selected in each batch are random, vs how many are selected based on spatial coverage.
+    * __event_random_fraction__: Only relevant for "mini-batch" mode. Describes how many of the events selected in each batch are random, vs how many are selected based on spatial coverage.
     * __min_ctrl_group_size__: The minimum number of events used in control group, again only relevant for "mini-batch" mode.
     * __max_angular_change__: Used to decide how many events make it to the control group for the coming iteration in "mini-batch" mode.
     * __dropout_probability__: A form of regularization. Events in control group can be randomly dropped out with this probability so they don't get stuck there.

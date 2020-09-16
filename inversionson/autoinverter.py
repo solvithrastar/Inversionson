@@ -11,12 +11,13 @@ from colorama import init
 from colorama import Fore, Style
 from typing import Union, List
 from inversionson.remote_helpers.helpers import preprocess_remote_gradient
+
 init()
 
 
 def _find_project_comm(info):
     """
-    Get lasif communicator.
+    Get Inversionson communicator.
     """
     from inversionson.components.project import ProjectComponent
 
@@ -132,13 +133,6 @@ class AutoInverter(object):
             self.comm.project.update_control_group_toml(first=first)
         self.comm.project.create_iteration_toml(it_name)
         self.comm.project.get_iteration_attributes(validation)
-        # mixa inn control group fra gamalli vinkonu
-        # Get control group info into iteration attributes
-        # ctrl_groups = toml.load(
-        #     self.comm.project.paths["control_group_toml"])
-        # if it_name in ctrl_groups.keys():
-        #     self.comm.project.change_attribute(
-        #         "old_control_group", ctrl_groups[it_name]["old"])
 
     def interpolate_model(self, event: str):
         """
@@ -258,8 +252,10 @@ class AutoInverter(object):
             event, source, receivers
         )
 
-        if self.comm.project.remote_mesh is not None and \
-                self.comm.project.meshes == "mono-mesh":
+        if (
+            self.comm.project.remote_mesh is not None
+            and self.comm.project.meshes == "mono-mesh"
+        ):
             w.set_mesh(self.comm.project.remote_mesh)
 
         self.comm.salvus_flow.submit_job(
@@ -325,7 +321,8 @@ class AutoInverter(object):
                         job = self.comm.salvus_flow.get_job(event, "adjoint")
                         output_files = job.get_output_files()
                         grad = output_files[0][
-                            ('adjoint', 'gradient', 'output_filename')]
+                            ("adjoint", "gradient", "output_filename")
+                        ]
                         print("calling preprocess")
                         preprocess_remote_gradient(self.comm, grad, event)
                     else:
@@ -344,8 +341,10 @@ class AutoInverter(object):
             event, adj_src
         )
 
-        if self.comm.project.remote_mesh is not None and \
-                self.comm.project.meshes == "mono-mesh":
+        if (
+            self.comm.project.remote_mesh is not None
+            and self.comm.project.meshes == "mono-mesh"
+        ):
             w_adjoint.set_mesh(self.comm.project.remote_mesh)
 
         self.comm.salvus_flow.submit_job(
@@ -499,7 +498,10 @@ class AutoInverter(object):
             self.comm.project.update_iteration_toml(validation=True)
             return
         # If event is in control group, we look for newest window set for event
-        if iteration != "it0000_model" and event in self.comm.project.old_control_group:
+        if (
+            iteration != "it0000_model"
+            and event in self.comm.project.old_control_group
+        ):
             import glob
 
             windows = self.comm.lasif.lasif_comm.project.paths["windows"]
@@ -800,9 +802,13 @@ class AutoInverter(object):
                     if status == "finished":
                         # Potentially add preprocess_remote here
                         if self.comm.project.remote_gradient_processing:
-                            job = self.comm.salvus_flow.get_job(event, "adjoint")
+                            job = self.comm.salvus_flow.get_job(
+                                event, "adjoint"
+                            )
                             output_files = job.get_output_files()
-                            grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+                            grad = output_files[0][
+                                ("adjoint", "gradient", "output_filename")
+                            ]
                             preprocess_remote_gradient(self.comm, grad, event)
                         # retrieve job, then path. write toml and call process
                         else:
@@ -1086,12 +1092,23 @@ class AutoInverter(object):
                             if sim_type == "forward":
                                 self.retrieve_seismograms(event)
                             elif sim_type == "adjoint":
-                                if self.comm.project.remote_gradient_processing:
-                                    job = self.comm.salvus_flow.get_job(event, "adjoint")
+                                if (
+                                    self.comm.project.remote_gradient_processing
+                                ):
+                                    job = self.comm.salvus_flow.get_job(
+                                        event, "adjoint"
+                                    )
                                     output_files = job.get_output_files()
-                                    grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
-                                    preprocess_remote_gradient(self.comm, grad,
-                                                               event)
+                                    grad = output_files[0][
+                                        (
+                                            "adjoint",
+                                            "gradient",
+                                            "output_filename",
+                                        )
+                                    ]
+                                    preprocess_remote_gradient(
+                                        self.comm, grad, event
+                                    )
                                 else:
                                     self.retrieve_gradient(event)
                             jobs[event]["retrieved"] = True
@@ -1484,8 +1501,6 @@ class AutoInverter(object):
         )
 
         self.wait_for_all_jobs_to_finish("forward")
-        # sys.exit("Done with computing forwards")
-        # self.comm.lasif.write_misfit()
 
         events_retrieved_adjoint = "None retrieved"
         while events_retrieved_adjoint != "All retrieved":
@@ -1782,7 +1797,6 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        # sys.exit("Hvernig for thetta segirdu? ")
         self.assign_task_to_function(task_2, verbose_2)
 
     def compute_gradient(self, task: str, verbose: str):
@@ -1972,7 +1986,6 @@ class AutoInverter(object):
             first = False
 
             self.comm.project.update_control_group_toml(new=True, first=first)
-            # sys.exit("Hvada event voru valin segirdu?")
             self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
@@ -2009,7 +2022,6 @@ class AutoInverter(object):
         except:
             print("Not able to send whatsapp message")
         self.comm.salvus_opt.run_salvus_opt()
-        # sys.exit("Finished the iteration, maybe sideset issue is fixed now")
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
         if task_2 == task and verbose_2 == verbose:
             message = "Salvus Opt did not run properly "
@@ -2078,9 +2090,6 @@ if __name__ == "__main__":
             use_aliases=True,
         )
     )
-    # branch = input("Did you switch to the master branch yet? [Y]/n:  ")
-    # if branch == "n":
-    #     sys.exit("Switch to master branch before continuing")
     # info_toml = input("Give me a path to your information_toml \n\n")
     # Tired of writing it in, I'll do this quick mix for now
     # print("Give me a path to your information_toml \n\n")

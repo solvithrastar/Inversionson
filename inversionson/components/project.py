@@ -215,11 +215,15 @@ class ProjectComponent(Component):
                 "Key: random_event_fraction"
             )
 
-        if self.info["random_event_fraction"] > 1 or \
-                self.info["random_event_fraction"] < 0 or not \
-                isinstance(self.info["random_event_fraction"], float):
-            raise InversionsonError("random_event_fraction should be a float"
-                                    "and lie between 0.0 and 1.0")
+        if (
+            self.info["random_event_fraction"] > 1
+            or self.info["random_event_fraction"] < 0
+            or not isinstance(self.info["random_event_fraction"], float)
+        ):
+            raise InversionsonError(
+                "random_event_fraction should be a float"
+                "and lie between 0.0 and 1.0"
+            )
 
         if "min_ctrl_group_size" not in self.info.keys():
             raise InversionsonError(
@@ -340,20 +344,6 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "Elements per azimuthal quarter need to be an integer."
             )
-        # # Salvus Opt
-        # if "salvus_opt_dir" not in self.info.keys():
-        #     raise InversionsonError(
-        #         "Information on salvus_opt_dir is missing from information")
-        # else:
-        #     folder = pathlib.Path(self.info["salvus_opt_dir"])
-        #     if not (folder / "inversion.toml").exists():
-        #         raise InversionsonError("Salvus opt inversion not initiated")
-
-        # Salvus Smoother
-        # if "salvus_smoother" not in self.info.keys():
-        #     raise InversionsonError(
-        #         "We need information regarding location of your salvus "
-        #         "smoother binary. Key: salvus_smoother")
 
         # Lasif
         if "lasif_root" not in self.info.keys():
@@ -618,7 +608,11 @@ class ProjectComponent(Component):
             it_dict["remote_simulation_mesh"] = None
 
         last_control_group = []
-        if iteration != "it0000_model" and not validation and self.inversion_mode == "mini-batch":
+        if (
+            iteration != "it0000_model"
+            and not validation
+            and self.inversion_mode == "mini-batch"
+        ):
             ctrl_grps = toml.load(
                 self.comm.project.paths["control_group_toml"]
             )

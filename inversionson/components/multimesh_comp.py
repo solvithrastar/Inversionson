@@ -116,16 +116,7 @@ class MultiMeshComponent(Component):
         simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=event)
 
         master_model = self.comm.lasif.get_master_model()
-        # master_model = os.path.join(
-        #     self.comm.lasif.lasif_root, "MODELS", "master_model.h5"
-        # )
-        # summed_gradient = self.comm.salvus_opt.get_model_path(
-        #     iteration, gradient=True)
-        # seperator = "/"
-        # master_disc_gradient = (
-        #     seperator.join(gradient.split(seperator)[:-1])
-        #     + "/smooth_grad_master.h5"
-        # )
+
         master_disc_gradient = self.comm.lasif.find_gradient(
             iteration=iteration,
             event=event,
