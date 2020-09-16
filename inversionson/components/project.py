@@ -39,6 +39,7 @@ class ProjectComponent(Component):
         self.__setup_components()
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
+        self.remote_gradient_processing = False
 
     def _read_config_file(self) -> dict:
         """
@@ -207,12 +208,18 @@ class ProjectComponent(Component):
                 "for forward modelling. Key: modelling_parameters"
             )
 
-        if "n_random_events" not in self.info.keys():
+        if "random_event_fraction" not in self.info.keys():
             raise InversionsonError(
                 "We need information regarding how many events should be "
                 "randomly picked when all events have been used. "
-                "Key: n_random_events"
+                "Key: random_event_fraction"
             )
+
+        if self.info["random_event_fraction"] > 1 or \
+                self.info["random_event_fraction"] < 0 or not \
+                isinstance(self.info["random_event_fraction"], float):
+            raise InversionsonError("random_event_fraction should be a float"
+                                    "and lie between 0.0 and 1.0")
 
         if "min_ctrl_group_size" not in self.info.keys():
             raise InversionsonError(
@@ -523,7 +530,7 @@ class ProjectComponent(Component):
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
 
         self.initial_batch_size = self.info["initial_batch_size"]
-        self.n_random_events_picked = self.info["n_random_events"]
+        self.random_event_fraction = self.info["random_event_fraction"]
         self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
         self.maximum_grad_divergence_angle = self.info["max_angular_change"]
         self.dropout_probability = self.info["dropout_probability"]
@@ -606,6 +613,9 @@ class ProjectComponent(Component):
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
+
+        if self.meshes == "mono-mesh":
+            it_dict["remote_simulation_mesh"] = None
 
         last_control_group = []
         if iteration != "it0000_model" and not validation and self.inversion_mode == "mini-batch":
@@ -772,6 +782,10 @@ class ProjectComponent(Component):
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
+
+        if self.meshes == "mono-mesh":
+            it_dict["remote_simulation_mesh"] = self.remote_mesh
+
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
         if not validation and self.inversion_mode == "mini-batch":
@@ -839,6 +853,14 @@ class ProjectComponent(Component):
             self.misfits = {}
             self.updated = {}
         self.forward_job = {}
+
+        if self.meshes == "mono-mesh":
+            if "remote_simulation_mesh" not in it_dict.keys():
+                self.remote_mesh = None
+            else:
+                self.remote_mesh = it_dict["remote_simulation_mesh"]
+        else:
+            self.remote_mesh = None
 
         # Not sure if it's worth it to include station misfits
         for _i, event in enumerate(self.events_in_iteration):

@@ -8,6 +8,7 @@ import warnings
 import subprocess
 import sys
 import toml
+import numpy as np
 from typing import Union
 import pathlib
 
@@ -134,12 +135,14 @@ class LasifComponent(Component):
         else:
             batch = existing
             if len(blocked_events) == 0:
+                n_random_events = int(np.floor(self.comm.project.random_event_fraction * count))
                 rand_batch = self.comm.minibatch.get_random_event(
                     n=self.comm.project.n_random_events_picked,
                     existing=existing,
                 )
                 batch = list(batch + rand_batch)
                 existing = batch
+                count -= len(rand_batch)
             avail_events = list(
                 set(events) - set(blocked_events) - set(existing)
             )
@@ -540,6 +543,7 @@ class LasifComponent(Component):
             event,
             "stf.h5",
         )
+        mpi = False
         if os.path.exists(adjoint_path) and not validation:
             print(f"Adjoint source exists for event: {event} ")
             print(
@@ -565,12 +569,13 @@ class LasifComponent(Component):
             os.chdir(self.comm.project.inversion_root)
 
         else:
-            lapi.calculate_adjoint_sources(
+            lapi.calculate_adjoint_sources_multiprocessing(
                 self.lasif_comm,
                 iteration=iteration,
                 window_set=window_set,
                 weight_set=event,
                 events=[event],
+                num_processes=4,
             )
 
         if validation:  # We just return some random value as it is not used
@@ -721,7 +726,7 @@ class LasifComponent(Component):
         if os.path.exists(path) and not validation:
             print(f"Window set for event {event} exists.")
             return
-
+        mpi = False
         if mpi:
             # double_fork()
             os.chdir(self.comm.project.lasif_root)
@@ -745,11 +750,12 @@ class LasifComponent(Component):
             # double_fork()
             os.chdir(self.comm.project.inversion_root)
         else:
-            lapi.select_windows(
+            lapi.select_windows_multiprocessing(
                 self.lasif_comm,
                 iteration=self.comm.project.current_iteration,
                 window_set=window_set_name,
                 events=[event],
+                num_processes=4,
             )
 
     def find_seismograms(self, event: str, iteration: str) -> str:

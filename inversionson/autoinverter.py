@@ -10,8 +10,17 @@ import toml
 from colorama import init
 from colorama import Fore, Style
 from typing import Union, List
-
+from inversionson.remote_helpers.helpers import preprocess_remote_gradient
 init()
+
+
+def _find_project_comm(info):
+    """
+    Get lasif communicator.
+    """
+    from inversionson.components.project import ProjectComponent
+
+    return ProjectComponent(info).get_communicator()
 
 
 class AutoInverter(object):
@@ -28,19 +37,11 @@ class AutoInverter(object):
     def __init__(self, info_dict: dict):
         self.info = info_dict
         print(Fore.RED + "Will make communicator now")
-        self.comm = self._find_project_comm()
+        self.comm = _find_project_comm(self.info)
         print(Fore.GREEN + "Now I want to start running the inversion")
         print(Style.RESET_ALL)
         self.task = None
         self.run_inversion()
-
-    def _find_project_comm(self):
-        """
-        Get lasif communicator.
-        """
-        from inversionson.components.project import ProjectComponent
-
-        return ProjectComponent(self.info).get_communicator()
 
     def _send_whatsapp_announcement(self):
         """
@@ -256,6 +257,11 @@ class AutoInverter(object):
         w = self.comm.salvus_flow.construct_simulation(
             event, source, receivers
         )
+
+        if self.comm.project.remote_mesh is not None and \
+                self.comm.project.meshes == "mono-mesh":
+            w.set_mesh(self.comm.project.remote_mesh)
+
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w,
@@ -315,7 +321,15 @@ class AutoInverter(object):
                 elif status == "JobStatus.finished":
                     print(f"Status of job for event {event} is finished")
                     print("Will retrieve and update toml")
-                    self.retrieve_gradient(event)
+                    if self.comm.project.remote_gradient_processing:
+                        job = self.comm.salvus_flow.get_job(event, "adjoint")
+                        output_files = job.get_output_files()
+                        grad = output_files[0][
+                            ('adjoint', 'gradient', 'output_filename')]
+                        print("calling preprocess")
+                        preprocess_remote_gradient(self.comm, grad, event)
+                    else:
+                        self.retrieve_gradient(event)
                     self.comm.project.change_attribute(
                         attribute=f'adjoint_job["{event}"]["retrieved"]',
                         new_value=True,
@@ -329,6 +343,11 @@ class AutoInverter(object):
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src
         )
+
+        if self.comm.project.remote_mesh is not None and \
+                self.comm.project.meshes == "mono-mesh":
+            w_adjoint.set_mesh(self.comm.project.remote_mesh)
+
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w_adjoint,
@@ -456,6 +475,7 @@ class AutoInverter(object):
                 self.comm.lasif.select_windows(
                     window_set_name=window_set_name, event=event, mpi=mpi
                 )
+                return
             else:
                 print("Windows were selected in a previous iteration.")
                 print(" ... On we go")
@@ -778,7 +798,15 @@ class AutoInverter(object):
                     reposts = self.comm.project.adjoint_job[event]["reposts"]
 
                     if status == "finished":
-                        self.retrieve_gradient(event)
+                        # Potentially add preprocess_remote here
+                        if self.comm.project.remote_gradient_processing:
+                            job = self.comm.salvus_flow.get_job(event, "adjoint")
+                            output_files = job.get_output_files()
+                            grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+                            preprocess_remote_gradient(self.comm, grad, event)
+                        # retrieve job, then path. write toml and call process
+                        else:
+                            self.retrieve_gradient(event)
                         events_retrieved_now.append(event)
                     elif status == "pending":
                         print(f"Status = {status}, event: {event}")
@@ -1058,7 +1086,14 @@ class AutoInverter(object):
                             if sim_type == "forward":
                                 self.retrieve_seismograms(event)
                             elif sim_type == "adjoint":
-                                self.retrieve_gradient(event)
+                                if self.comm.project.remote_gradient_processing:
+                                    job = self.comm.salvus_flow.get_job(event, "adjoint")
+                                    output_files = job.get_output_files()
+                                    grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+                                    preprocess_remote_gradient(self.comm, grad,
+                                                               event)
+                                else:
+                                    self.retrieve_gradient(event)
                             jobs[event]["retrieved"] = True
                     else:
                         for _i, s in enumerate(status):
@@ -1486,7 +1521,8 @@ class AutoInverter(object):
                         use_aliases=True,
                     )
                 )
-                self.preprocess_gradient(event)
+                if not self.comm.project.remote_gradient_processing:
+                    self.preprocess_gradient(event)
                 if self.comm.project.inversion_mode == "mini-batch":
                     print(Fore.YELLOW + "\n ==================== \n")
                     print(
@@ -1812,7 +1848,8 @@ class AutoInverter(object):
                         use_aliases=True,
                     )
                 )
-                self.preprocess_gradient(event)
+                if not self.comm.project.remote_gradient_processing:
+                    self.preprocess_gradient(event)
 
                 print(Fore.YELLOW + "\n ==================== \n")
                 print(
