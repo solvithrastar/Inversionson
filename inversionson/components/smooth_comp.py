@@ -3,9 +3,6 @@ from inversionson import InversionsonError
 
 import toml
 import os
-import subprocess
-import sys
-import pathlib
 from salvus.opt import smoothing
 
 
@@ -38,8 +35,6 @@ class SalvusSmoothComponent(Component):
         import salvus.flow.simple_config as sc
 
         seperator = "/"
-        # grad_folder, _ = os.path.split(gradient)
-        # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
         sim = sc.simulation.Diffusion(mesh=mesh)
         output_file = seperator.join(gradient.split(seperator)[:-1])
         movie_file = output_file + "/smoothing_movie.h5"
@@ -60,8 +55,6 @@ class SalvusSmoothComponent(Component):
         sim.validate()
 
         return sim
-
-    # Now I need to make some stuff based on the new salvus.opt and it's smoothing configurations
 
     def generate_smoothing_config(self, event: str) -> dict:
         """
@@ -125,7 +118,6 @@ class SalvusSmoothComponent(Component):
         :type iteration: str, optional
         """
         from salvus.opt.smoothing import get_smooth_model
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import salvus.flow.api
 
         if iteration is None:
@@ -153,6 +145,10 @@ class SalvusSmoothComponent(Component):
                 inversion_grid=False,
                 just_give_path=True,
             )
+
+        if not os.path.exists(os.path.dirname(smooth_grad)):
+            os.mkdir(os.path.dirname(smooth_grad))
+
         smooth_gradient = get_smooth_model(
             job=salvus_job,
             model=self.comm.lasif.find_event_mesh(event=event_name),
@@ -250,17 +246,24 @@ class SalvusSmoothComponent(Component):
 
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        if self.comm.project.inversion_mode == "mini-batch":
-            mesh = UnstructuredMesh.from_h5(
-                self.comm.lasif.find_gradient(iteration=iteration, event=event)
-            )
+
+        if self.comm.project.remote_gradient_processing:
+            job = self.comm.salvus_flow.get_job(event, "adjoint")
+            output_files = job.get_output_files()
+            grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
+            mesh = UnstructuredMesh.from_h5(str(grad))
         else:
-            mesh = UnstructuredMesh.from_h5(
-                self.comm.lasif.find_gradient(
-                    iteration=iteration, summed=True, smooth=False, event=None
+            if self.comm.project.inversion_mode == "mini-batch":
+                mesh = UnstructuredMesh.from_h5(
+                    self.comm.lasif.find_gradient(iteration=iteration, event=event)
                 )
-            )
-        mesh.attach_global_variable(name="reference_frame", data="spherical")
+            else:
+                mesh = UnstructuredMesh.from_h5(
+                    self.comm.lasif.find_gradient(
+                        iteration=iteration, summed=True, smooth=False, event=None
+                    )
+                )
+            mesh.attach_global_variable(name="reference_frame", data="spherical")
 
         job = smoothing.run_async(
             model=mesh,

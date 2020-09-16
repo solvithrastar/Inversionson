@@ -617,6 +617,12 @@ class SalvusFlowComponent(Component):
         #        output_folder=output_folder,
         #        ranks=8,
         #        overwrite=True)
+
+        if self.comm.project.remote_mesh is None:
+            self.comm.project.\
+                change_attribute("remote_mesh",
+                                 "REMOTE:" + str(job.input_path / "mesh.h5"))
+
         if sim_type == "forward":
             self.comm.project.change_attribute(
                 f'forward_job["{event}"]["name"]', job.job_name

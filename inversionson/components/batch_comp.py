@@ -201,9 +201,9 @@ class BatchComponent(Component):
         :rtype: numpy.ndarray
         """
         with h5py.File(gradient, mode="r") as f:
-            grad = f["MODEL/data"]
+            grad = f["MODEL/data"][()]
             dim_labels = (
-                grad.attrs.get("DIMENSION_LABELS")[1]
+                f["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
                 .decode()[1:-1]
                 .replace(" ", "")
                 .split("|")
@@ -419,8 +419,9 @@ class BatchComponent(Component):
         #     angular_changes[event] = angle
         #     event_quality[event] = 0.0
         batch_grad = np.copy(full_grad)
-
+        removal_order = 0
         while len(ctrl_group) > min_ctrl:
+            removal_order += 1
             event_name, test_batch_grad = self._find_most_useless_event(
                 full_gradient=batch_grad,
                 events=ctrl_group,
@@ -445,7 +446,8 @@ class BatchComponent(Component):
             else:
                 batch_grad = np.copy(test_batch_grad)
                 # del angular_changes[redundant_gradient]
-                event_quality[event_name] = 1 / len(ctrl_group)
+                # event_quality[event_name] = 1 / len(ctrl_group)
+                event_quality[event_name] = removal_order / len(events)
                 ctrl_group.remove(event_name)
                 print(f"{event_name} does not continue to next iteration")
         if "it0000" not in iteration:
