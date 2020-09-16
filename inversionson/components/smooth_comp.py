@@ -3,9 +3,6 @@ from inversionson import InversionsonError
 
 import toml
 import os
-import subprocess
-import sys
-import pathlib
 from salvus.opt import smoothing
 
 
@@ -38,8 +35,6 @@ class SalvusSmoothComponent(Component):
         import salvus.flow.simple_config as sc
 
         seperator = "/"
-        # grad_folder, _ = os.path.split(gradient)
-        # smoothing_fields_mesh = os.path.join(grad_folder, "smoothing_fields.h5")
         sim = sc.simulation.Diffusion(mesh=mesh)
         output_file = seperator.join(gradient.split(seperator)[:-1])
         movie_file = output_file + "/smoothing_movie.h5"
@@ -60,8 +55,6 @@ class SalvusSmoothComponent(Component):
         sim.validate()
 
         return sim
-
-    # Now I need to make some stuff based on the new salvus.opt and it's smoothing configurations
 
     def generate_smoothing_config(self, event: str) -> dict:
         """
@@ -125,7 +118,6 @@ class SalvusSmoothComponent(Component):
         :type iteration: str, optional
         """
         from salvus.opt.smoothing import get_smooth_model
-        from salvus.mesh.unstructured_mesh import UnstructuredMesh
         import salvus.flow.api
 
         if iteration is None:
@@ -153,7 +145,7 @@ class SalvusSmoothComponent(Component):
                 inversion_grid=False,
                 just_give_path=True,
             )
-        output_file_name = self.comm.lasif.find_event_mesh(event=event_name)
+
         if not os.path.exists(os.path.dirname(smooth_grad)):
             os.mkdir(os.path.dirname(smooth_grad))
 
@@ -260,8 +252,6 @@ class SalvusSmoothComponent(Component):
             output_files = job.get_output_files()
             grad = output_files[0][('adjoint', 'gradient', 'output_filename')]
             mesh = UnstructuredMesh.from_h5(str(grad))
-            #mesh = os.path.join("REMOTE:", grad)
-            print(mesh)
         else:
             if self.comm.project.inversion_mode == "mini-batch":
                 mesh = UnstructuredMesh.from_h5(
