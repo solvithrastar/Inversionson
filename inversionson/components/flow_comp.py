@@ -231,22 +231,37 @@ class SalvusFlowComponent(Component):
         stf_file = self.comm.lasif.find_stf(iteration)
         if isinstance(src_info, list):
             src_info = src_info[0]
-
-        src = source.seismology.SideSetMomentTensorPoint3D(
-            latitude=src_info["latitude"],
-            longitude=src_info["longitude"],
-            depth_in_m=src_info["depth_in_m"],
-            mrr=src_info["mrr"],
-            mtt=src_info["mtt"],
-            mpp=src_info["mpp"],
-            mtp=src_info["mtp"],
-            mrp=src_info["mrp"],
-            mrt=src_info["mrt"],
-            side_set_name="r1",
-            source_time_function=stf.Custom(
-                filename=stf_file, dataset_name="/source"
-            ),
-        )
+        if self.comm.project.meshes == "multi-mesh":
+            src = source.seismology.MomentTensorPoint3D(
+                latitude=src_info["latitude"],
+                longitude=src_info["longitude"],
+                depth_in_m=src_info["depth_in_m"],
+                mrr=src_info["mrr"],
+                mtt=src_info["mtt"],
+                mpp=src_info["mpp"],
+                mtp=src_info["mtp"],
+                mrp=src_info["mrp"],
+                mrt=src_info["mrt"],
+                source_time_function=stf.Custom(
+                    filename=stf_file, dataset_name="/source"
+                ),
+            )
+        else:
+            src = source.seismology.SideSetMomentTensorPoint3D(
+                latitude=src_info["latitude"],
+                longitude=src_info["longitude"],
+                depth_in_m=src_info["depth_in_m"],
+                mrr=src_info["mrr"],
+                mtt=src_info["mtt"],
+                mpp=src_info["mpp"],
+                mtp=src_info["mtp"],
+                mrp=src_info["mrp"],
+                mrt=src_info["mrt"],
+                side_set_name="r1",
+                source_time_function=stf.Custom(
+                    filename=stf_file, dataset_name="/source"
+                ),
+            )
 
         return src
 
@@ -299,7 +314,25 @@ class SalvusFlowComponent(Component):
                 adjoint_sources.append(rec)
 
         p.close()
-
+        if self.comm.project.meshes == "multi-mesh":
+            adj_src = [
+                source.seismology.VectorPoint3DZNE(
+                    latitude=rec["latitude"],
+                    longitude=rec["longitude"],
+                    fz=1.0,
+                    fn=1.0,
+                    fe=1.0,
+                    source_time_function=stf.Custom(
+                        filename=adjoint_filename,
+                        dataset_name="/"
+                        + rec["network-code"]
+                        + "_"
+                        + rec["station-code"],
+                    ),
+                )
+                for rec in adjoint_sources
+            ]
+            return adj_src
         # Get path to meta.json to obtain receiver position, use again for adjoint
         meta_json_filename = os.path.join(
             self.comm.project.lasif_root,
@@ -373,19 +406,31 @@ class SalvusFlowComponent(Component):
         from salvus.flow.simple_config import receiver
 
         recs = self.comm.lasif.get_receivers(event)
-
-        receivers = [
-            receiver.seismology.SideSetPoint3D(
-                latitude=rec["latitude"],
-                longitude=rec["longitude"],
-                network_code=rec["network-code"],
-                station_code=rec["station-code"],
-                depth_in_m=0.0,
-                fields=["displacement"],
-                side_set_name="r1",
-            )
-            for rec in recs
-        ]
+        if self.comm.project.meshes == "multi-mesh":
+            receivers = [
+                receiver.seismology.Point3D(
+                    latitude=rec["latitude"],
+                    longitude=rec["longitude"],
+                    network_code=rec["network-code"],
+                    station_code=rec["station-code"],
+                    depth_in_m=0.0,
+                    fields=["displacement"],
+                )
+                for rec in recs
+            ]
+        else:
+            receivers = [
+                receiver.seismology.SideSetPoint3D(
+                    latitude=rec["latitude"],
+                    longitude=rec["longitude"],
+                    network_code=rec["network-code"],
+                    station_code=rec["station-code"],
+                    depth_in_m=0.0,
+                    fields=["displacement"],
+                    side_set_name="r1",
+                )
+                for rec in recs
+            ]
 
         return receivers
 

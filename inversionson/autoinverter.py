@@ -351,7 +351,7 @@ class AutoInverter(object):
         :param event: Name of event
         :type event: str
         """
-        mpi = True
+        mpi = False
         if self.comm.project.site_name == "swp":
             mpi = False
         misfit = self.comm.lasif.misfit_quantification(
@@ -448,7 +448,7 @@ class AutoInverter(object):
         else:
             window_set_name = event
 
-        mpi = True
+        mpi = False
         if self.comm.project.site_name == "swp":
             mpi = False
         if self.comm.project.inversion_mode == "mono-batch":
@@ -456,6 +456,7 @@ class AutoInverter(object):
                 self.comm.lasif.select_windows(
                     window_set_name=window_set_name, event=event, mpi=mpi
                 )
+                return
             else:
                 print("Windows were selected in a previous iteration.")
                 print(" ... On we go")
@@ -479,7 +480,7 @@ class AutoInverter(object):
             self.comm.project.update_iteration_toml(validation=True)
             return
         # If event is in control group, we look for newest window set for event
-        if event in self.comm.project.old_control_group:
+        if iteration != "it0000_model" and event in self.comm.project.old_control_group:
             import glob
 
             windows = self.comm.lasif.lasif_comm.project.paths["windows"]
@@ -1972,6 +1973,7 @@ class AutoInverter(object):
         except:
             print("Not able to send whatsapp message")
         self.comm.salvus_opt.run_salvus_opt()
+        # sys.exit("Finished the iteration, maybe sideset issue is fixed now")
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
         if task_2 == task and verbose_2 == verbose:
             message = "Salvus Opt did not run properly "

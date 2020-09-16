@@ -42,6 +42,8 @@ class BatchComponent(Component):
         # Find the current control group and if an event was not in it,
         # we don't want to drop it out. Every event selected for a control
         # group thus gets a chance to stay in at least once.
+        # make sure it's not more likely that early events are dropped
+        random.shuffle(events)
         for event in events:
             if event not in self.comm.project.old_control_group:
                 continue
@@ -206,12 +208,13 @@ class BatchComponent(Component):
                 .replace(" ", "")
                 .split("|")
             )
+            grad = grad[()]
             indices = []
             for param in parameters:
                 indices.append(dim_labels.index(param))
             # relevant_grad = grad[:, indices, :]
         return self._sum_relevant_values(
-            grad=grad[()], param_ind=indices, unique_indices=unique_indices
+            grad=grad, param_ind=indices, unique_indices=unique_indices
         )
 
     def _remove_individual_grad_from_full_grad(
@@ -367,7 +370,6 @@ class BatchComponent(Component):
                     _, unique_indices = self._get_unique_points(
                         points=f["MODEL/coordinates"][()]
                     )
-            print(f"gradient for {event}: {gradient}")
             gradient_paths.append(gradient)
             # grad = um.from_h5(gradient)
             if _i == 0:
@@ -447,7 +449,7 @@ class BatchComponent(Component):
                 ctrl_group.remove(event_name)
                 print(f"{event_name} does not continue to next iteration")
         if "it0000" not in iteration:
-            grads_dropped = self._dropout(ctrl_group)
+            grads_dropped = self._dropout(ctrl_group.copy())
             tmp_event_qual = event_quality.copy()
             best_non_ctrl_group_event = max(
                 tmp_event_qual, key=tmp_event_qual.get

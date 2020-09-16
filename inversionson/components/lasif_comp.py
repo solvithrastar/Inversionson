@@ -138,6 +138,7 @@ class LasifComponent(Component):
                     n=self.comm.project.n_random_events_picked,
                     existing=existing,
                 )
+                count -= len(rand_batch)
                 batch = list(batch + rand_batch)
                 existing = batch
             avail_events = list(
@@ -547,30 +548,33 @@ class LasifComponent(Component):
                 f"calculated, delete file: {adjoint_path}"
             )
         elif mpi:
-            # from inversionson.utils import double_fork
+            from inversionson.utils import double_fork
 
-            # double_fork()
+            double_fork()
             os.chdir(self.comm.project.lasif_root)
-            command = f"mpirun -n {n} lasif calculate_adjoint_sources "
+            command = f"/home/solvi/miniconda3/envs/lasif/bin/mpirun -n {n} lasif calculate_adjoint_sources "
             command += f"{iteration} "
             command += f"{window_set} {event} --weight_set {event}"
-            process = subprocess.Popen(
-                command, shell=True, stdout=subprocess.PIPE, bufsize=1
-            )
-            for line in process.stdout:
-                print(line, end="\n", flush=True)
-            process.wait()
-            print(process.returncode)
-            # double_fork()
+            # process = subprocess.Popen(
+            #     command, shell=True, stdout=subprocess.PIPE, bufsize=1
+            # )
+            os.system(command)
+            # for line in process.stdout:
+            #     print(line, end="\n", flush=True)
+            # process.wait()
+            # print(process.returncode)
+
             os.chdir(self.comm.project.inversion_root)
+            double_fork()
 
         else:
-            lapi.calculate_adjoint_sources(
+            lapi.calculate_adjoint_sources_multiprocessing(
                 self.lasif_comm,
                 iteration=iteration,
                 window_set=window_set,
                 weight_set=event,
                 events=[event],
+                num_processes=12,
             )
 
         if validation:  # We just return some random value as it is not used
@@ -712,7 +716,7 @@ class LasifComponent(Component):
         :type n: int
         """
         # Check if window set exists:
-        # from inversionson.utils import double_fork
+        from inversionson.utils import double_fork
 
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
@@ -723,33 +727,39 @@ class LasifComponent(Component):
             return
 
         if mpi:
-            # double_fork()
+            double_fork()
             os.chdir(self.comm.project.lasif_root)
-            command = f"mpirun -n {n} lasif select_windows "
+            command = f"/home/solvi/miniconda3/envs/lasif/bin/mpirun -n {n} lasif select_windows "
             command += f"{self.comm.project.current_iteration} "
             command += f"{window_set_name} {event}"
-            process = subprocess.Popen(
-                command,
-                shell=True,
-                stdout=subprocess.PIPE,
-                bufsize=1,
-                stderr=subprocess.PIPE,
-            )
-            for line in process.stdout:
-                print(line, end=" \n", flush=True)
-            print("\n\n Error messages: \n\n")
-            for line in process.stderr:
-                print(line, end=" \n", flush=True)
-            process.wait()
-            print(process.returncode)
-            # double_fork()
+            # process = subprocess.Popen(
+            #     command,
+            #     shell=True,
+            #     stdout=subprocess.PIPE,
+            #     bufsize=1,
+            #     stderr=subprocess.PIPE,
+            # )
+            os.system(command)
+            # print("Running the window selection")
+            # # for line in process.stdout:
+            # #     print(line, end=" \n", flush=True)
+            # print("\n\n Error messages: \n\n")
+            # for line in process.stderr:
+            #     print(line, end=" \n", flush=True)
+            # # process.wait()
+            # print(process.returncode)
+            # if process.returncode != 0:
+            #     raise InversionsonError("Window selection ended weirdly")
             os.chdir(self.comm.project.inversion_root)
+            double_fork()
+            # sys.exit("Did that work?")
         else:
-            lapi.select_windows(
+            lapi.select_windows_multiprocessing(
                 self.lasif_comm,
                 iteration=self.comm.project.current_iteration,
                 window_set=window_set_name,
                 events=[event],
+                num_processes=12,
             )
 
     def find_seismograms(self, event: str, iteration: str) -> str:
