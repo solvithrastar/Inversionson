@@ -216,8 +216,12 @@ class SalvusSmoothComponent(Component):
         daint = get_site(self.comm.project.site_name)
         username = daint.config["ssh_settings"]["username"]
         remote_diff_dir = os.path.join("/scratch/snx3000", username, "diff_models")
-
         local_diff_model_dir = "DIFF_MODELS"
+
+        if not os.path.exists(local_diff_model_dir):
+            os.mkdir(local_diff_model_dir)
+
+
         if not daint.remote_exists(remote_diff_dir):
             daint.remote_mkdir(remote_diff_dir)
 
@@ -239,10 +243,9 @@ class SalvusSmoothComponent(Component):
             if self.comm.project.meshes == "multi-mesh":
                 diff_model_file = event + "_" + diff_model_file
 
-            diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
-
-            # if diff model not on daint, copy it there
             remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
+
+            diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
             
             if not os.path.exists(diff_model_file):
                 smooth = smoothing.AnisotropicModelDependent(
