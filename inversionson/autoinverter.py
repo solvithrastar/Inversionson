@@ -715,12 +715,16 @@ class AutoInverter(object):
                 job_array.cancel()
             except:
                 pass
-        smoothing_config = self.comm.smoother.generate_smoothing_config(
-            event=event
-        )
-        self.comm.smoother.run_smoother(
-            smoothing_config=smoothing_config, event=event
-        )
+
+        if self.comm.project.remote_gradient_processing:
+            self.comm.smoother.run_remote_smoother(event=event)
+        else:
+            smoothing_config = self.comm.smoother.\
+                generate_smoothing_config(event=event
+            )
+            self.comm.smoother.run_smoother(
+                smoothing_config=smoothing_config, event=event
+            )
 
         self.comm.project.update_iteration_toml()
 

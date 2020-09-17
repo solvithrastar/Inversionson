@@ -447,8 +447,8 @@ class BatchComponent(Component):
             else:
                 batch_grad = np.copy(test_batch_grad)
                 # del angular_changes[redundant_gradient]
-                # event_quality[event_name] = removal_order / len(events)
-                event_quality[event_name] = 1 / len(ctrl_group)
+                event_quality[event_name] = removal_order / len(events)
+                # event_quality[event_name] = 1 / len(ctrl_group)
                 ctrl_group.remove(event_name)
                 print(f"{event_name} does not continue to next iteration")
         if "it0000" not in iteration:
