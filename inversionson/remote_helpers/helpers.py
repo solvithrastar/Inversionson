@@ -25,7 +25,7 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     """
 
     # Connect to daint
-    daint = get_site(self.comm.project.sitename)
+    daint = get_site(comm.project.sitename)
     username = daint.config["ssh_settings"]["username"]
 
     remote_inversionson_dir = os.path.join("/scratch/snx3000", username,
