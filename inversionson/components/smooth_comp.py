@@ -213,7 +213,7 @@ class SalvusSmoothComponent(Component):
         remote_grad = str(output_files[0][('adjoint', 'gradient', 'output_filename')])
 
         # make site stuff (hardcoded for now)
-        daint = get_site(self.comm.project.sitename)
+        daint = get_site(self.comm.project.site_name)
         username = daint.config["ssh_settings"]["username"]
         remote_diff_dir = os.path.join("/scratch/snx3000", username, "diff_models")
 
