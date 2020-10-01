@@ -148,7 +148,7 @@ class StoryTellerComponent(Component):
         need to update the list of used events.
         """
         all_events = self.comm.lasif.list_events()
-        already_in_list = list(self.events_used)
+        already_in_list = list(self.events_used.keys())
         new = [x for x in all_events if x not in already_in_list]
         if len(new) == 0:
             return
@@ -160,6 +160,8 @@ class StoryTellerComponent(Component):
                 toml.dump(self.events_used, fh)
             with open(self.events_quality_toml, "w") as fh:
                 toml.dump(self.events_quality, fh)
+            with open(self.all_events, "w") as fh:
+                fh.writelines(f"{event}\n")
 
     def _update_usage_of_events(self):
         """
@@ -561,6 +563,7 @@ class StoryTellerComponent(Component):
         if task == "finalize_iteration":
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
+                self._update_list_of_events()
             self._backup_files()
 
 
