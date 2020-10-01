@@ -160,7 +160,7 @@ class StoryTellerComponent(Component):
                 toml.dump(self.events_used, fh)
             with open(self.events_quality_toml, "w") as fh:
                 toml.dump(self.events_quality, fh)
-            with open(self.all_events, "w") as fh:
+            with open(self.all_events, "a") as fh:
                 fh.writelines(f"{event}\n")
 
     def _update_usage_of_events(self):
