@@ -309,7 +309,7 @@ class BatchComponent(Component):
         redundant_gradient = min(event_angles, key=event_angles.get)
         print(f"Most redundant: {redundant_gradient}")
         reduced_gradient = self._remove_individual_grad_from_full_grad(
-            full_gradient, redundant_gradient, unique_indices=unique_indices,
+            cntrl_gradient, redundant_gradient, unique_indices=unique_indices,
         )
         return redundant_gradient, reduced_gradient
 
