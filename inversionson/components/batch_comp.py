@@ -118,7 +118,11 @@ class BatchComponent(Component):
         return angle
 
     def _compute_angular_change(
-        self, full_gradient, full_norm, individual_gradient
+        self,
+        full_gradient,
+        full_norm,
+        individual_gradient,
+        ctrl_grp_grad: None,
     ) -> float:
         """
         Compute the angular change fo the full gradient, when the individual
@@ -130,10 +134,18 @@ class BatchComponent(Component):
         :type full_norm: float
         :param individual_gradient: Numpy array with the gradient to be removed
         :type individual_gradient: np.array, np.float64
+        :param ctrl_grp_grad: Numpy array, containing the current control group
+            gradient. Used if you want to remove individual grad from
+            control group gradient. If you just want to check the individual
+            gradient with the full gradient, just pass None
+        :type ctrl_grp_grad: np.array, np.float64
         :return: The angular difference resulting from removing gradient
         :rtype: float
         """
-        test_grad = np.copy(full_gradient) - individual_gradient
+        if ctrl_grp_grad is not None:
+            test_grad = np.copy(ctrl_grp_grad) - individual_gradient
+        else:
+            test_grad = np.copy(full_gradient) - individual_gradient
         test_grad_norm = np.linalg.norm(test_grad)
         value = np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm)
         eps = 1.0e-6
@@ -254,6 +266,7 @@ class BatchComponent(Component):
         full_gradient: np.ndarray,
         events: list,
         unique_indices: np.ndarray,
+        batch_gradient: np.ndarray = None,
     ) -> Union[str, np.ndarray]:
         """
         For a given gradient, which of the events which compose the full_grad
@@ -263,6 +276,9 @@ class BatchComponent(Component):
         :type full_gradient: np.ndarray
         :param events: A list of event names
         :type events: list
+        :param batch_gradient: Summed gradient for all events in events
+            pass None if you don't want to compare batch grad to full grad
+        :type batch_gradient: np.ndarray
         :return: Name of the event and the reduced gradient
         :rtype: Union[str, np.ndarray]
         """
@@ -296,14 +312,24 @@ class BatchComponent(Component):
                 full_gradient=full_gradient,
                 full_norm=full_gradient_norm,
                 individual_gradient=individual_gradient,
+                ctrl_grp_grad=batch_gradient,
             )
             event_angles[event] = angle
             print(f"Angle computed for event: {event}: {angle}")
         redundant_gradient = min(event_angles, key=event_angles.get)
         print(f"Most redundant: {redundant_gradient}")
-        reduced_gradient = self._remove_individual_grad_from_full_grad(
-            full_gradient, redundant_gradient, unique_indices=unique_indices,
-        )
+        if batch_gradient is not None:
+            reduced_gradient = self._remove_individual_grad_from_full_grad(
+                batch_gradient,
+                redundant_gradient,
+                unique_indices=unique_indices,
+            )
+        else:
+            reduced_gradient = self._remove_individual_grad_from_full_grad(
+                full_gradient,
+                redundant_gradient,
+                unique_indices=unique_indices,
+            )
         return redundant_gradient, reduced_gradient
 
     def get_random_event(self, n: int, existing: list) -> list:
@@ -390,41 +416,13 @@ class BatchComponent(Component):
         print(f"Full grad norm: {full_grad_norm}")
         assert not np.any(np.isnan(full_grad)), "Nan values in full gradient"
         event_quality = {}
-        # I need to create a function for this that I can call with varying full gradients
-        # for event in events:
-        #     gradient = self.comm.lasif.find_gradient(
-        #         iteration=iteration,
-        #         event=event,
-        #         smooth=True,
-        #         inversion_grid=inversion_grid,
-        #     )
-        #     individual_gradient = um.from_h5(gradient)
-
-        #     individual_gradient = self._get_vector_of_values(
-        #         gradient=individual_gradient, parameters=parameters,
-        #     )
-        #     assert not np.any(
-        #         np.isnan(individual_gradient)
-        #     ), f"Nan values in individual_gradient for {event}"
-
-        #     angle = self._compute_angular_change(
-        #         full_gradient=full_grad.reshape(
-        #             full_grad.shape[0] * full_grad.shape[1]
-        #         ),
-        #         full_norm=full_grad_norm,
-        #         individual_gradient=individual_gradient.reshape(
-        #             individual_gradient.shape[0] * individual_gradient.shape[1]
-        #         ),
-        #     )
-        #     print(f"Angle computed for event: {event}: {angle}")
-        #     angular_changes[event] = angle
-        #     event_quality[event] = 0.0
         batch_grad = np.copy(full_grad)
         removal_order = 0
         while len(ctrl_group) > min_ctrl:
             removal_order += 1
             event_name, test_batch_grad = self._find_most_useless_event(
-                full_gradient=batch_grad,
+                full_gradient=full_grad,
+                batch_gradient=batch_grad,
                 events=ctrl_group,
                 unique_indices=unique_indices,
             )

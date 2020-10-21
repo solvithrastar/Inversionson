@@ -124,7 +124,7 @@ class LasifComponent(Component):
             attribute="old_control_group", new_value=existing
         )
         count -= len(existing)
-        if use_these:
+        if use_these is not None:
             count -= len(use_these)
             batch = list(set(use_these + existing))
             avail_events = list(

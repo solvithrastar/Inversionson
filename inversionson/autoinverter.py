@@ -2015,6 +2015,7 @@ class AutoInverter(object):
         self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
+        
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
         try:

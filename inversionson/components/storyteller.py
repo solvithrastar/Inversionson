@@ -104,11 +104,11 @@ class StoryTellerComponent(Component):
         header = self.comm.project.inversion_id
         self.markdown.add_header(header_style=1, text=header, new=True)
 
-        text = f"Welcome to the automatic documentation of the inversion"
+        text = "Welcome to the automatic documentation of the inversion"
         text += f" project {self.comm.project.inversion_id}. Here the "
-        text += f"inversion is documented iteration by iteration. \n"
-        text += f"This is currently just a test but hopefully it will "
-        text += f"work out beautifully."
+        text += "inversion is documented iteration by iteration. \n"
+        text += "This is currently just a test but hopefully it will "
+        text += "work out beautifully."
 
         self.markdown.add_paragraph(text)
 
@@ -203,7 +203,7 @@ class StoryTellerComponent(Component):
         self.markdown.add_header(
             header_style=2, text=f"Iteration: {iteration_number}"
         )
-        text = f"Here you can read all about what happened in iteration "
+        text = "Here you can read all about what happened in iteration "
         text += f"{iteration_number}."
 
         self.markdown.add_paragraph(text=text)
@@ -279,7 +279,7 @@ class StoryTellerComponent(Component):
         tr_region = float(iteration.split("_")[-1][:-2])
         text = f"Model for Iteration {iteration_number} was rejected "
         text += f"so now we shrink the trust region to: {tr_region} "
-        text += f"and try again."
+        text += "and try again."
 
         self.markdown.add_paragraph(text=text)
 
@@ -366,7 +366,7 @@ class StoryTellerComponent(Component):
             _, cg_red = self._get_misfit_reduction()
 
             text = f"Total misfit for iteration: {total_misfit:.3f} \n"
-            text += f"Misfit for the old control group: "
+            text += "Misfit for the old control group: "
             text += f"{old_control_group_misfit}"
             cg_red *= 100.0  # Get percentages
             text += (
@@ -381,7 +381,7 @@ class StoryTellerComponent(Component):
 
             _, cg_red = self._get_misfit_reduction()
 
-            text = f"Misfit for the old control group: "
+            text = "Misfit for the old control group: "
             text += f"{old_control_group_misfit:.3f}"
             cg_red *= 100.0
             if cg_red <= 0.0:

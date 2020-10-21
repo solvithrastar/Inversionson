@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
+import h5py
 
 
 class SalvusMeshComponent(Component):
@@ -60,6 +61,61 @@ class SalvusMeshComponent(Component):
             os.makedirs(os.path.dirname(mesh_file))
         m.write_h5(mesh_file)
 
+    def _check_if_mesh_has_field(
+        self,
+        check_mesh: str,
+        field_name: str,
+        elemental: bool,
+        global_string: bool,
+    ) -> bool:
+        """
+        Use h5py to quickly check whether field exists on mesh
+
+        :param check_mesh: path to mesh to check
+        :type check_mesh: str
+        :param field_name: Name of field
+        :type field_name: str
+        :param elemental: Is field an elemental field
+        :type elemental: bool
+        :param global_string: Is it a global string
+        :type global_string: bool
+        """
+        with h5py.File(check_mesh, mode="r") as mesh:
+            if global_string:
+                global_strings = list(mesh["MODEL"].attrs.keys())
+                if field_name in global_strings:
+                    return True
+                else:
+                    return False
+            if elemental:
+                if "element_data" in mesh["MODEL"].keys():
+                    elemental_fields = (
+                        mesh["MODEL/element_data"]
+                        .attrs.get("DIMENSION_LABELS")[1]
+                        .decode()
+                    )
+                    elemental_fields = (
+                        elemental_fields[2:-2].replace(" ", "").split("|")
+                    )
+                    if field_name in elemental_fields:
+                        return True
+                    else:
+                        return False
+                else:
+                    return False
+            else:
+                # Here we assume it's an element_nodal_field
+                nodal_fields = (
+                    mesh["MODEL/data"]
+                    .attrs.get("DIMENSION_LABELS")[1]
+                    .decode()
+                )
+                nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
+                if field_name in nodal_fields:
+                    return True
+                else:
+                    return False
+
     def add_field_from_one_mesh_to_another(
         self,
         from_mesh: str,
@@ -92,6 +148,21 @@ class SalvusMeshComponent(Component):
         import os
         import shutil
 
+        # has_field = self._check_if_mesh_has_field(
+        #     check_mesh=from_mesh,
+        #     field_name=field_name,
+        #     elemental=elemental,
+        #     global_string=global_string,
+        # )
+        has_field = self._check_if_mesh_has_field(
+            check_mesh=to_mesh,
+            field_name=field_name,
+            elemental=elemental,
+            global_string=global_string,
+        )
+        if has_field and not overwrite:
+            print(f"Field: {field_name} already exists on mesh")
+            return
         if not os.path.exists(to_mesh):
             print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
@@ -101,26 +172,26 @@ class SalvusMeshComponent(Component):
             tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
         if global_string:
-            if field_name in tm.global_strings.keys():
-                if not overwrite:
-                    print(f"Field {field_name} already exists on mesh")
-                    return
+            # if field_name in tm.global_strings.keys():
+            #     if not overwrite:
+            #         print(f"Field {field_name} already exists on mesh")
+            #         return
             field = fm.global_strings[field_name]
             tm.attach_global_variable(name=field_name, data=field)
             tm.write_h5(to_mesh)
             print(f"Attached field {field_name} to mesh {to_mesh}")
             return
         elif elemental:
-            if field_name in tm.elemental_fields.keys():
-                if not overwrite:
-                    print(f"Field {field_name} already exists on mesh")
-                    return
+            # if field_name in tm.elemental_fields.keys():
+            #     if not overwrite:
+            #         print(f"Field {field_name} already exists on mesh")
+            #         return
             field = fm.elemental_fields[field_name]
         else:
-            if field_name in tm.element_nodal_fields.keys():
-                if not overwrite:
-                    print(f"Field {field_name} already exists on mesh")
-                    return
+            # if field_name in tm.element_nodal_fields.keys():
+            #     if not overwrite:
+            #         print(f"Field {field_name} already exists on mesh")
+            #         return
             field = fm.element_nodal_fields[field_name]
         tm.attach_field(field_name, field)
         tm.write_h5(to_mesh)
