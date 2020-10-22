@@ -118,7 +118,7 @@ class BatchComponent(Component):
         return angle
 
     def _compute_angular_change(
-        self, full_gradient, full_norm, individual_gradient
+        self, full_gradient, full_norm, cntrl_gradient, individual_gradient
     ) -> float:
         """
         Compute the angular change fo the full gradient, when the individual
@@ -128,12 +128,15 @@ class BatchComponent(Component):
         :type full_gradient: np.array, np.float64
         :param full_norm: The norm of the full_gradient
         :type full_norm: float
+        :param cntrl_gradient: Numpy array that is the sum of all control
+        gradients
+        :type cntrl_gradient: np.array
         :param individual_gradient: Numpy array with the gradient to be removed
         :type individual_gradient: np.array, np.float64
         :return: The angular difference resulting from removing gradient
         :rtype: float
         """
-        test_grad = np.copy(full_gradient) - individual_gradient
+        test_grad = np.copy(cntrl_gradient) - individual_gradient
         test_grad_norm = np.linalg.norm(test_grad)
         value = np.dot(test_grad, full_gradient) / (test_grad_norm * full_norm)
         eps = 1.0e-6
@@ -252,6 +255,7 @@ class BatchComponent(Component):
     def _find_most_useless_event(
         self,
         full_gradient: np.ndarray,
+        cntrl_gradient: np.ndarray,
         events: list,
         unique_indices: np.ndarray,
     ) -> Union[str, np.ndarray]:
@@ -261,6 +265,8 @@ class BatchComponent(Component):
 
         :param full_gradient: Summed gradient for all events in events
         :type full_gradient: np.ndarray
+        :param cntrl_gradient: Summed gradient for all events in control group
+        :type cntrl_gradient: np.ndarray
         :param events: A list of event names
         :type events: list
         :return: Name of the event and the reduced gradient
@@ -294,6 +300,7 @@ class BatchComponent(Component):
 
             angle = self._compute_angular_change(
                 full_gradient=full_gradient,
+                cntrl_gradient=cntrl_gradient,
                 full_norm=full_gradient_norm,
                 individual_gradient=individual_gradient,
             )
@@ -302,7 +309,7 @@ class BatchComponent(Component):
         redundant_gradient = min(event_angles, key=event_angles.get)
         print(f"Most redundant: {redundant_gradient}")
         reduced_gradient = self._remove_individual_grad_from_full_grad(
-            full_gradient, redundant_gradient, unique_indices=unique_indices,
+            cntrl_gradient, redundant_gradient, unique_indices=unique_indices,
         )
         return redundant_gradient, reduced_gradient
 
@@ -424,7 +431,8 @@ class BatchComponent(Component):
         while len(ctrl_group) > min_ctrl:
             removal_order += 1
             event_name, test_batch_grad = self._find_most_useless_event(
-                full_gradient=batch_grad,
+                full_gradient=full_grad,
+                cntrl_gradient=batch_grad,
                 events=ctrl_group,
                 unique_indices=unique_indices,
             )
@@ -447,8 +455,8 @@ class BatchComponent(Component):
             else:
                 batch_grad = np.copy(test_batch_grad)
                 # del angular_changes[redundant_gradient]
-                # event_quality[event_name] = removal_order / len(events)
-                event_quality[event_name] = 1 / len(ctrl_group)
+                event_quality[event_name] = removal_order / len(events)
+                # event_quality[event_name] = 1 / len(ctrl_group)
                 ctrl_group.remove(event_name)
                 print(f"{event_name} does not continue to next iteration")
         if "it0000" not in iteration:

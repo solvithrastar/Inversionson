@@ -533,6 +533,7 @@ class SalvusFlowComponent(Component):
             site_name=self.comm.project.site_name, job_name=forward_job_name
         ).output_path
         meta = os.path.join(forward_job_path, "meta.json")
+        remote_mesh = os.path.join(forward_job_path, "mesh.h5")
 
         # gradient = os.path.join(
         #     self.comm.lasif.lasif_root,
@@ -554,7 +555,9 @@ class SalvusFlowComponent(Component):
         w.adjoint.gradient.parameterization = parameterization
         w.adjoint.gradient.output_filename = gradient
         w.adjoint.point_source = adj_src
-
+        
+        # Now set a remote mesh
+        w.set_mesh("REMOTE:" + str(remote_mesh))
         w.validate()
 
         return w
