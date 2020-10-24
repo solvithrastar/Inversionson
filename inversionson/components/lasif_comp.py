@@ -580,7 +580,7 @@ class LasifComponent(Component):
                 window_set=window_set,
                 weight_set=event,
                 events=[event],
-                num_processes=8,
+                num_processes=12,
             )
 
         if validation:  # We just return some random value as it is not used

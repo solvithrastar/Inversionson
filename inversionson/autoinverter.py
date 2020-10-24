@@ -715,12 +715,16 @@ class AutoInverter(object):
                 job_array.cancel()
             except:
                 pass
-        smoothing_config = self.comm.smoother.generate_smoothing_config(
-            event=event
-        )
-        self.comm.smoother.run_smoother(
-            smoothing_config=smoothing_config, event=event
-        )
+
+        if self.comm.project.remote_gradient_processing:
+            self.comm.smoother.run_remote_smoother(event=event)
+        else:
+            smoothing_config = self.comm.smoother.\
+                generate_smoothing_config(event=event
+            )
+            self.comm.smoother.run_smoother(
+                smoothing_config=smoothing_config, event=event
+            )
 
         self.comm.project.update_iteration_toml()
 
@@ -1648,7 +1652,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        self.assign_task_to_function(task_2, verbose_2)
+        return task_2, verbose_2
 
     def compute_misfit(self, task: str, verbose: str):
         """
@@ -1797,7 +1801,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        self.assign_task_to_function(task_2, verbose_2)
+        return task_2, verbose_2
 
     def compute_gradient(self, task: str, verbose: str):
         """
@@ -1946,7 +1950,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        self.assign_task_to_function(task_2, verbose_2)
+        return task_2, verbose_2
 
     def select_control_batch(self, task, verbose):
         """
@@ -1996,7 +2000,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        self.assign_task_to_function(task_2, verbose_2)
+        return task_2, verbose_2
 
     def finalize_iteration(self, task, verbose):
         """
@@ -2029,7 +2033,7 @@ class AutoInverter(object):
             message += "It gave an error and the task.toml has not been "
             message += "updated."
             raise InversionsonError(message)
-        self.assign_task_to_function(task_2, verbose_2)
+        return task_2, verbose_2
 
     def assign_task_to_function(self, task: str, verbose: str):
         """
@@ -2044,17 +2048,19 @@ class AutoInverter(object):
         print(f"More specifically: {verbose}")
 
         if task == "compute_misfit_and_gradient":
-            self.compute_misfit_and_gradient(task, verbose)
+            task, verbose = self.compute_misfit_and_gradient(task, verbose)
         elif task == "compute_misfit":
-            self.compute_misfit(task, verbose)
+            task, verbose = self.compute_misfit(task, verbose)
         elif task == "compute_gradient":
-            self.compute_gradient(task, verbose)
+            task, verbose = self.compute_gradient(task, verbose)
         elif task == "select_control_batch":
-            self.select_control_batch(task, verbose)
+            task, verbose = self.select_control_batch(task, verbose)
         elif task == "finalize_iteration":
-            self.finalize_iteration(task, verbose)
+            task, verbose = self.finalize_iteration(task, verbose)
         else:
             raise InversionsonError(f"Don't know task: {task}")
+
+        return task, verbose
 
     def run_inversion(self):
         """
@@ -2071,7 +2077,8 @@ class AutoInverter(object):
         task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
         self.task = task
 
-        self.assign_task_to_function(task, verbose)
+        while True:
+            task, verbose = self.assign_task_to_function(task, verbose)
 
 
 def read_information_toml(info_toml_path: str):

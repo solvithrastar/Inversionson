@@ -189,3 +189,118 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["submitted"]', True
             )
+
+    def run_remote_smoother(self, event: str, ):
+        """
+        Run the Smoother, the settings are specified in inversion toml. Make
+        sure that the smoothing config has already been generated
+
+        :param event: Name of event
+        :type event: str
+        """
+        from salvus.opt import smoothing
+        import salvus.flow.simple_config as sc
+        from salvus.flow.api import get_site
+        from salvus.flow import api as sapi
+
+        mesh = self.comm.lasif.get_simulation_mesh(event)
+        freq = 1.0 / self.comm.project.min_period
+        smoothing_lengths = self.comm.project.smoothing_lengths
+
+        # get remote gradient filename
+        job = self.comm.salvus_flow.get_job(event, "adjoint")
+        output_files = job.get_output_files()
+        remote_grad = str(output_files[0][('adjoint', 'gradient', 'output_filename')])
+
+        # make site stuff (hardcoded for now)
+        daint = get_site(self.comm.project.site_name)
+        username = daint.config["ssh_settings"]["username"]
+        remote_diff_dir = os.path.join("/scratch/snx3000", username, "diff_models")
+        local_diff_model_dir = "DIFF_MODELS"
+
+        if not os.path.exists(local_diff_model_dir):
+            os.mkdir(local_diff_model_dir)
+
+
+        if not daint.remote_exists(remote_diff_dir):
+            daint.remote_mkdir(remote_diff_dir)
+
+        sims = []
+        for param in self.comm.project.inversion_params:
+            if param.startswith("V"):
+                reference_velocity = param
+            elif param == "RHO":
+                if "VP" in self.comm.project.inversion_params:
+                    reference_velocity = "VP"
+                elif "VPV" in self.comm.project.inversion_params:
+                    reference_velocity = "VPV"
+
+            unique_id = "_".join([str(i).replace('.', '') for
+                                  i in smoothing_lengths]) + \
+                        "_" + str(self.comm.project.min_period)
+
+            diff_model_file = unique_id + f"diff_model_{param}.h5"
+            if self.comm.project.meshes == "multi-mesh":
+                diff_model_file = event + "_" + diff_model_file
+
+            remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
+
+            diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
+            
+            if not os.path.exists(diff_model_file):
+                smooth = smoothing.AnisotropicModelDependent(
+                    reference_frequency_in_hertz=freq,
+                    smoothing_lengths_in_wavelengths=smoothing_lengths,
+                    reference_model=mesh,
+                    reference_velocity=reference_velocity)
+                diff_model = smooth.get_diffusion_model(mesh)
+                diff_model.write_h5(diff_model_file)
+
+            if not daint.remote_exists(remote_diff_model):
+                daint.remote_put(diff_model_file, remote_diff_model)
+
+            sim = sc.simulation.Diffusion(mesh=diff_model_file)
+
+            if self.comm.project.meshes == "multi-mesh":
+                tensor_order = 4 
+            else:
+                tensor_order = 2
+
+            sim.domain.polynomial_order = tensor_order
+            sim.physics.diffusion_equation.time_step_in_seconds = self.comm.project.smoothing_timestep
+            sim.physics.diffusion_equation.courant_number = 0.06
+
+            sim.physics.diffusion_equation.initial_values.filename = "REMOTE:" + remote_grad
+            sim.physics.diffusion_equation.initial_values.format = "hdf5"
+            sim.physics.diffusion_equation.initial_values.field = f"{param}"
+            sim.physics.diffusion_equation.final_values.filename = f"{param}.h5"
+
+            sim.domain.mesh.filename = "REMOTE:" + remote_diff_model
+            sim.domain.model.filename = "REMOTE:" + remote_diff_model
+            sim.domain.geometry.filename = "REMOTE:" + remote_diff_model
+
+            sim.validate()
+
+            # append sim to array
+            sims.append(sim)
+
+        job = sapi.run_many_async(
+            input_files=sims,
+            site_name=self.comm.project.smoothing_site_name,
+            ranks_per_job=self.comm.project.smoothing_ranks,
+            wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
+        )
+        if self.comm.project.inversion_mode == "mini-batch":
+            self.comm.project.change_attribute(
+                f'smoothing_job["{event}"]["name"]', job.job_array_name
+            )
+            self.comm.project.change_attribute(
+                f'smoothing_job["{event}"]["submitted"]', True
+            )
+        else:
+            self.comm.project.change_attribute(
+                'smoothing_job["name"]', job.job_array_name
+            )
+            self.comm.project.change_attribute(
+                'smoothing_job["submitted"]', True
+            )

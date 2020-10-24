@@ -131,6 +131,9 @@ class BatchComponent(Component):
         :type full_gradient: np.array, np.float64
         :param full_norm: The norm of the full_gradient
         :type full_norm: float
+        :param cntrl_gradient: Numpy array that is the sum of all control
+        gradients
+        :type cntrl_gradient: np.array
         :param individual_gradient: Numpy array with the gradient to be removed
         :type individual_gradient: np.array, np.float64
         :param ctrl_grp_grad: Numpy array, containing the current control group
@@ -263,6 +266,7 @@ class BatchComponent(Component):
     def _find_most_useless_event(
         self,
         full_gradient: np.ndarray,
+        cntrl_gradient: np.ndarray,
         events: list,
         unique_indices: np.ndarray,
         batch_gradient: np.ndarray = None,
@@ -273,6 +277,8 @@ class BatchComponent(Component):
 
         :param full_gradient: Summed gradient for all events in events
         :type full_gradient: np.ndarray
+        :param cntrl_gradient: Summed gradient for all events in control group
+        :type cntrl_gradient: np.ndarray
         :param events: A list of event names
         :type events: list
         :param batch_gradient: Summed gradient for all events in events
@@ -309,6 +315,7 @@ class BatchComponent(Component):
 
             angle = self._compute_angular_change(
                 full_gradient=full_gradient,
+                cntrl_gradient=cntrl_gradient,
                 full_norm=full_gradient_norm,
                 individual_gradient=individual_gradient,
                 ctrl_grp_grad=batch_gradient,
@@ -423,9 +430,7 @@ class BatchComponent(Component):
             dropped_events = self._dropout(ctrl_group.copy())
 
             for event in dropped_events:
-                event_quality[event] = 1.0 / 2.0
-                # individual_gradient = um.from_h5(gradient)
-
+                event_quality[event] = 0.75
                 batch_grad = self._remove_individual_grad_from_full_grad(
                     batch_grad, event, unique_indices=unique_indices,
                 )
@@ -440,18 +445,7 @@ class BatchComponent(Component):
                 events=ctrl_group,
                 unique_indices=unique_indices,
             )
-            # redundant_gradient = min(angular_changes, key=angular_changes.get)
-            # gradient = self.comm.lasif.find_gradient(
-            #     iteration=iteration,
-            #     event=redundant_gradient,
-            #     smooth=True,
-            #     inversion_grid=inversion_grid,
-            # )
 
-            # removal_grad = self._get_vector_of_values(
-            #     gradient=um.from_h5(gradient), parameters=parameters,
-            # )
-            # test_batch_grad -= removal_grad
             angle = self._angle_between(full_grad, test_batch_grad,)
             print(f"Angle between test_batch and full gradient: {angle}")
             if angle >= self.comm.project.maximum_grad_divergence_angle:
@@ -459,36 +453,11 @@ class BatchComponent(Component):
             else:
                 batch_grad = np.copy(test_batch_grad)
                 # del angular_changes[redundant_gradient]
-                # event_quality[event_name] = removal_order / len(events)
-                event_quality[event_name] = 1 / len(ctrl_group)
+                event_quality[event_name] = removal_order / len(events)
+                # event_quality[event_name] = 1 / len(ctrl_group)
                 ctrl_group.remove(event_name)
                 print(f"{event_name} does not continue to next iteration")
                 print(f"Current size of control group: {len(ctrl_group)}")
-        # if "it0000" not in iteration:
-        #     grads_dropped = self._dropout(ctrl_group.copy())
-        #     tmp_event_qual = event_quality.copy()
-        #     best_non_ctrl_group_event = max(
-        #         tmp_event_qual, key=tmp_event_qual.get
-        #     )
-        #     for grad in grads_dropped:
-        #         # We replace one event by two to ensure a good angle.
-        #         non_ctrl_group_event = max(
-        #             tmp_event_qual, key=tmp_event_qual.get
-        #         )
-        #         print(f"Best non: {best_non_ctrl_group_event}")
-        #         print(f"Event Quality: {event_quality}")
-        #         event_quality[grad] = event_quality[best_non_ctrl_group_event]
-        #         ctrl_group.remove(grad)
-        #         ctrl_group.append(non_ctrl_group_event)
-        #         del tmp_event_qual[non_ctrl_group_event]
-        #         non_ctrl_group_event_2 = max(
-        #             tmp_event_qual, key=tmp_event_qual.get
-        #         )
-        #         ctrl_group.append(non_ctrl_group_event_2)
-        #         del tmp_event_qual[non_ctrl_group_event_2]
-        #         print(f"Event: {grad} randomly dropped from control group.\n")
-        #         print(f"Replaced by events: {non_ctrl_group_event} \n")
-        #         print(f" and {non_ctrl_group_event_2}")
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val
