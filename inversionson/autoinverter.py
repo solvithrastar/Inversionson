@@ -1976,7 +1976,7 @@ class AutoInverter(object):
             self.comm.minibatch.print_dp()
 
             control_group = self.comm.minibatch.select_optimal_control_group()
-            print(f"Selected Control group: {control_group}")
+            # print(f"Selected Control group: {control_group}")
             self.comm.salvus_opt.write_control_group_to_task_toml(
                 control_group=control_group
             )
@@ -2015,7 +2015,7 @@ class AutoInverter(object):
         self.comm.storyteller.document_task(task)
         self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
-        
+
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
         try:

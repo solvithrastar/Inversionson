@@ -12,6 +12,7 @@ import random
 from colorama import Fore, Back, Style
 import time
 import toml
+from tqdm import tqdm
 from typing import Union
 from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
@@ -49,8 +50,6 @@ class BatchComponent(Component):
                 continue
             if random.random() < self.comm.project.dropout_probability:
                 dropout.append(event)
-                # We don't want to drop more than one gradient
-                return dropout
         return dropout
 
     def _assert_parameter_in_mesh(self, mesh: str):  # Not used
@@ -385,7 +384,8 @@ class BatchComponent(Component):
         if self.comm.project.meshes == "multi-mesh":
             inversion_grid = True
         parameters = self.comm.project.inversion_params
-        for _i, event in enumerate(events):
+        print("Summing Gradients: \n")
+        for _i, event in tqdm(enumerate(events), total=len(events)):
             gradient = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event,
@@ -418,6 +418,20 @@ class BatchComponent(Component):
         event_quality = {}
         batch_grad = np.copy(full_grad)
         removal_order = 0
+        # Dropout now.
+        if "it0000" not in iteration:
+            dropped_events = self._dropout(ctrl_group.copy())
+
+            for event in dropped_events:
+                event_quality[event] = 1.0 / 2.0
+                # individual_gradient = um.from_h5(gradient)
+
+                batch_grad = self._remove_individual_grad_from_full_grad(
+                    batch_grad, event, unique_indices=unique_indices,
+                )
+                ctrl_group.remove(event)
+                print(f"Event: {event} randomly dropped from ctrl group")
+
         while len(ctrl_group) > min_ctrl:
             removal_order += 1
             event_name, test_batch_grad = self._find_most_useless_event(
@@ -449,35 +463,38 @@ class BatchComponent(Component):
                 event_quality[event_name] = 1 / len(ctrl_group)
                 ctrl_group.remove(event_name)
                 print(f"{event_name} does not continue to next iteration")
-        if "it0000" not in iteration:
-            grads_dropped = self._dropout(ctrl_group.copy())
-            tmp_event_qual = event_quality.copy()
-            best_non_ctrl_group_event = max(
-                tmp_event_qual, key=tmp_event_qual.get
-            )
-            for grad in grads_dropped:
-                # We replace one event by two to ensure a good angle.
-                non_ctrl_group_event = max(
-                    tmp_event_qual, key=tmp_event_qual.get
-                )
-                print(f"Best non: {best_non_ctrl_group_event}")
-                print(f"Event Quality: {event_quality}")
-                event_quality[grad] = event_quality[best_non_ctrl_group_event]
-                ctrl_group.remove(grad)
-                ctrl_group.append(non_ctrl_group_event)
-                del tmp_event_qual[non_ctrl_group_event]
-                non_ctrl_group_event_2 = max(
-                    tmp_event_qual, key=tmp_event_qual.get
-                )
-                ctrl_group.append(non_ctrl_group_event_2)
-                del tmp_event_qual[non_ctrl_group_event_2]
-                print(f"Event: {grad} randomly dropped from control group.\n")
-                print(f"Replaced by events: {non_ctrl_group_event} \n")
-                print(f" and {non_ctrl_group_event_2}")
+                print(f"Current size of control group: {len(ctrl_group)}")
+        # if "it0000" not in iteration:
+        #     grads_dropped = self._dropout(ctrl_group.copy())
+        #     tmp_event_qual = event_quality.copy()
+        #     best_non_ctrl_group_event = max(
+        #         tmp_event_qual, key=tmp_event_qual.get
+        #     )
+        #     for grad in grads_dropped:
+        #         # We replace one event by two to ensure a good angle.
+        #         non_ctrl_group_event = max(
+        #             tmp_event_qual, key=tmp_event_qual.get
+        #         )
+        #         print(f"Best non: {best_non_ctrl_group_event}")
+        #         print(f"Event Quality: {event_quality}")
+        #         event_quality[grad] = event_quality[best_non_ctrl_group_event]
+        #         ctrl_group.remove(grad)
+        #         ctrl_group.append(non_ctrl_group_event)
+        #         del tmp_event_qual[non_ctrl_group_event]
+        #         non_ctrl_group_event_2 = max(
+        #             tmp_event_qual, key=tmp_event_qual.get
+        #         )
+        #         ctrl_group.append(non_ctrl_group_event_2)
+        #         del tmp_event_qual[non_ctrl_group_event_2]
+        #         print(f"Event: {grad} randomly dropped from control group.\n")
+        #         print(f"Replaced by events: {non_ctrl_group_event} \n")
+        #         print(f" and {non_ctrl_group_event_2}")
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val
         print(f"Control batch events: {ctrl_group}")
+        print("\n \n ============================= \n \n")
+        print(f"Number of Control group events: {len(ctrl_group)}")
 
         return ctrl_group
 
