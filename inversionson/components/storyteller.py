@@ -259,7 +259,7 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+            iteration_number = int(iteration.split("_")[0][2:].lstrip("0"))
         tr_region = float(iteration.split("_")[-1][:-2])
         text = f"Model for Iteration {iteration_number} accepted for"
         text += f" trust region: {tr_region}."
@@ -275,7 +275,7 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            iteration_number = int(iteration.split("_")[0][2:].strip("0"))
+            iteration_number = int(iteration.split("_")[0][2:].lstrip("0"))
         tr_region = float(iteration.split("_")[-1][:-2])
         text = f"Model for Iteration {iteration_number} was rejected "
         text += f"so now we shrink the trust region to: {tr_region} "
