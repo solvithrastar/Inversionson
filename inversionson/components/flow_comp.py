@@ -356,7 +356,7 @@ class SalvusFlowComponent(Component):
             if rec["network_code"] + "_" + rec["station_code"] in adjoint_recs:
                 rec_name = rec["network_code"] + "_" + rec["station_code"]
                 meta_info_dict[rec_name] = {}
-                # this is the rotation from XYZ to ZNE, 
+                # this is the rotation from XYZ to ZNE,
                 # we still need to transpose to get ZND -> XYZ
                 meta_info_dict[rec_name]["rotation_on_input"] = {
                     "matrix": np.array(
@@ -525,15 +525,16 @@ class SalvusFlowComponent(Component):
         :return: Simulation object
         :rtype: object
         """
+        print("Constructing Adjoint Simulation now")
         from salvus.flow.simple_config import simulation
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
         forward_job_name = self.comm.project.forward_job[event]["name"]
-        forward_job_path = sapi.get_job(
+        forward_job = sapi.get_job(
             site_name=self.comm.project.site_name, job_name=forward_job_name
-        ).output_path
-        meta = os.path.join(forward_job_path, "meta.json")
-        remote_mesh = os.path.join(forward_job_path, "mesh.h5")
+        )
+        meta = forward_job.output_path / "meta.json"
+        remote_mesh = forward_job.input_path / "mesh.h5"
 
         # gradient = os.path.join(
         #     self.comm.lasif.lasif_root,
@@ -555,7 +556,7 @@ class SalvusFlowComponent(Component):
         w.adjoint.gradient.parameterization = parameterization
         w.adjoint.gradient.output_filename = gradient
         w.adjoint.point_source = adj_src
-        
+
         # Now set a remote mesh
         w.set_mesh("REMOTE:" + str(remote_mesh))
         w.validate()
@@ -601,12 +602,13 @@ class SalvusFlowComponent(Component):
 
         # Adjoint simulation takes longer and seems to be less predictable
         # we thus give it a longer wall time.
-
+        print("Submitting the job now")
+        start = time.time()
         if sim_type == "adjoint":
             wall_time = self.comm.project.wall_time * 2
         else:
             wall_time = self.comm.project.wall_time
-
+        start_sub = time.time()
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
@@ -614,6 +616,8 @@ class SalvusFlowComponent(Component):
             wall_time_in_seconds=wall_time,
             # output_folder=output_folder
         )
+        end_sub = time.time()
+        print(f"Only submission took: {end_sub - start_sub} seconds")
         # sapi.run(
         #        site_name=site,
         #        input_file=simulation,
@@ -621,10 +625,13 @@ class SalvusFlowComponent(Component):
         #        ranks=8,
         #        overwrite=True)
 
-        if self.comm.project.remote_mesh is None:
-            self.comm.project.\
-                change_attribute("remote_mesh",
-                                 "REMOTE:" + str(job.input_path / "mesh.h5"))
+        if (
+            self.comm.project.remote_mesh is None
+            and self.comm.project.meshes == "mono-mesh"
+        ):
+            self.comm.project.change_attribute(
+                "remote_mesh", "REMOTE:" + str(job.input_path / "mesh.h5")
+            )
 
         if sim_type == "forward":
             self.comm.project.change_attribute(
@@ -642,6 +649,8 @@ class SalvusFlowComponent(Component):
                 f'adjoint_job["{event}"]["submitted"]', True
             )
         self.comm.project.update_iteration_toml()
+        end = time.time()
+        print(f"Submitting took {end - start} seconds")
 
     def get_job_status(
         self, event: str, sim_type: str, iteration="current"

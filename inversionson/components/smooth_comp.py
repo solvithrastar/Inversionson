@@ -36,7 +36,6 @@ class SalvusSmoothComponent(Component):
         smoothing_config = {}
         freq = 1.0 / self.comm.project.min_period
         smoothing_lengths = self.comm.project.smoothing_lengths
-        import toml
 
         # Loop through parameters to assign smoothing objects to parameters.
         for param in self.comm.project.inversion_params:
@@ -67,8 +66,7 @@ class SalvusSmoothComponent(Component):
                     reference_velocity=reference_velocity,
                 )
             smoothing_config[param] = smooth
-        with open("./smoothing_config.toml", "w") as fh:
-            toml.dump(smoothing_config, fh)
+
         return smoothing_config
 
     def retrieve_smooth_gradient(self, event_name: str, iteration=None):
@@ -190,7 +188,9 @@ class SalvusSmoothComponent(Component):
                 'smoothing_job["submitted"]', True
             )
 
-    def run_remote_smoother(self, event: str, ):
+    def run_remote_smoother(
+        self, event: str,
+    ):
         """
         Run the Smoother, the settings are specified in inversion toml. Make
         sure that the smoothing config has already been generated
@@ -203,24 +203,30 @@ class SalvusSmoothComponent(Component):
         from salvus.flow.api import get_site
         from salvus.flow import api as sapi
 
-        mesh = self.comm.lasif.get_simulation_mesh(event)
+        if self.comm.project.meshes == "multi-mesh":
+            mesh = self.comm.lasif.find_event_mesh(event)
+        else:
+            mesh = self.comm.lasif.get_simulation_mesh(event)
         freq = 1.0 / self.comm.project.min_period
         smoothing_lengths = self.comm.project.smoothing_lengths
 
         # get remote gradient filename
         job = self.comm.salvus_flow.get_job(event, "adjoint")
         output_files = job.get_output_files()
-        remote_grad = str(output_files[0][('adjoint', 'gradient', 'output_filename')])
+        remote_grad = str(
+            output_files[0][("adjoint", "gradient", "output_filename")]
+        )
 
         # make site stuff (hardcoded for now)
         daint = get_site(self.comm.project.site_name)
         username = daint.config["ssh_settings"]["username"]
-        remote_diff_dir = os.path.join("/scratch/snx3000", username, "diff_models")
+        remote_diff_dir = os.path.join(
+            "/scratch/snx3000", username, "diff_models"
+        )
         local_diff_model_dir = "DIFF_MODELS"
 
         if not os.path.exists(local_diff_model_dir):
             os.mkdir(local_diff_model_dir)
-
 
         if not daint.remote_exists(remote_diff_dir):
             daint.remote_mkdir(remote_diff_dir)
@@ -235,9 +241,11 @@ class SalvusSmoothComponent(Component):
                 elif "VPV" in self.comm.project.inversion_params:
                     reference_velocity = "VPV"
 
-            unique_id = "_".join([str(i).replace('.', '') for
-                                  i in smoothing_lengths]) + \
-                        "_" + str(self.comm.project.min_period)
+            unique_id = (
+                "_".join([str(i).replace(".", "") for i in smoothing_lengths])
+                + "_"
+                + str(self.comm.project.min_period)
+            )
 
             diff_model_file = unique_id + f"diff_model_{param}.h5"
             if self.comm.project.meshes == "multi-mesh":
@@ -245,14 +253,17 @@ class SalvusSmoothComponent(Component):
 
             remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
 
-            diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
-            
+            diff_model_file = os.path.join(
+                local_diff_model_dir, diff_model_file
+            )
+
             if not os.path.exists(diff_model_file):
                 smooth = smoothing.AnisotropicModelDependent(
                     reference_frequency_in_hertz=freq,
                     smoothing_lengths_in_wavelengths=smoothing_lengths,
                     reference_model=mesh,
-                    reference_velocity=reference_velocity)
+                    reference_velocity=reference_velocity,
+                )
                 diff_model = smooth.get_diffusion_model(mesh)
                 diff_model.write_h5(diff_model_file)
 
@@ -262,18 +273,24 @@ class SalvusSmoothComponent(Component):
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
             if self.comm.project.meshes == "multi-mesh":
-                tensor_order = 4 
+                tensor_order = 4
             else:
                 tensor_order = 2
 
             sim.domain.polynomial_order = tensor_order
-            sim.physics.diffusion_equation.time_step_in_seconds = self.comm.project.smoothing_timestep
+            sim.physics.diffusion_equation.time_step_in_seconds = (
+                self.comm.project.smoothing_timestep
+            )
             sim.physics.diffusion_equation.courant_number = 0.06
 
-            sim.physics.diffusion_equation.initial_values.filename = "REMOTE:" + remote_grad
+            sim.physics.diffusion_equation.initial_values.filename = (
+                "REMOTE:" + remote_grad
+            )
             sim.physics.diffusion_equation.initial_values.format = "hdf5"
             sim.physics.diffusion_equation.initial_values.field = f"{param}"
-            sim.physics.diffusion_equation.final_values.filename = f"{param}.h5"
+            sim.physics.diffusion_equation.final_values.filename = (
+                f"{param}.h5"
+            )
 
             sim.domain.mesh.filename = "REMOTE:" + remote_diff_model
             sim.domain.model.filename = "REMOTE:" + remote_diff_model
