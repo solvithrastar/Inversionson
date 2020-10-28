@@ -11,6 +11,7 @@ from colorama import init
 from colorama import Fore, Style
 from typing import Union, List
 from inversionson.remote_helpers.helpers import preprocess_remote_gradient
+from salvus.flow import api
 
 init()
 
@@ -64,6 +65,66 @@ class AutoInverter(object):
         client.messages.create(
             body=string, from_=from_whatsapp, to=to_whatsapp
         )
+        
+    def jobs_on_remote_site(self, site_name: str, job_number: int) -> bool:
+        """
+        Check how many jobs are running or pending on the remote site
+        
+        :param site_name: Name of remote site
+        :type site_name: str
+        :param job_numer: Number of submitting jobs
+        :type job_number: int
+        """
+        max_submitted_jobs_per_user = 30
+        
+        if job_number == 1:
+            job_list = api.get_jobs(
+                limit=100,
+                site_name = site_name, 
+                job_status = ["running", "pending"],
+                update_jobs = True,
+            )
+            
+            finished_job = 0
+            for job in job_list:
+                status = job.update_status(force_update=False)
+                if status.name == "finished":
+                    finished_job += 1
+            remaining_job = len(job_list) - finished_job
+                    
+        elif job_number > 1:
+            job_array_list = api.get_job_arrays(
+                limit=100,
+                site_name = site_name, 
+                job_array_status = ["running", "pending"], 
+                update_job_arrays = True,
+            )
+            
+            remaining_job = 0
+            for job_array in job_array_list:
+                status = job_array.update_status()
+                for job_status in status:
+                    if job_status.name == "running" or job_status.name == "pending":
+                        remaining_job += 1
+
+        else:
+            raise InversionsonError(f"Don't accept {job_number}")
+
+        
+        if max_submitted_jobs_per_user - remaining_job >= job_number:
+            boolean = True
+        else:
+            boolean = False
+                
+        if not boolean:
+            print(
+                f"{remaining_job} jobs are on {site_name}: " 
+                "Sleeping for a minute before checking again"
+            )
+            time.sleep(60)
+            return self.jobs_on_remote_site(site_name, job_number)
+        
+        return boolean
 
     def prepare_iteration(self, first=False, validation=False):
         """
@@ -257,7 +318,12 @@ class AutoInverter(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w.set_mesh(self.comm.project.remote_mesh)
-
+            
+        boolean = self.jobs_on_remote_site(self.comm.project.site_name, 1)
+        if boolean:
+            print(f"Submit forward simulation to {self.comm.project.site_name}")
+            pass
+        
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w,
@@ -346,7 +412,12 @@ class AutoInverter(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w_adjoint.set_mesh(self.comm.project.remote_mesh)
-
+            
+        boolean = self.jobs_on_remote_site(self.comm.project.site_name, 1)
+        if boolean:
+            print(f"Submit adjoint simulation to {self.comm.project.site_name}")
+            pass 
+        
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w_adjoint,
@@ -719,6 +790,14 @@ class AutoInverter(object):
         if self.comm.project.remote_gradient_processing:
             self.comm.smoother.run_remote_smoother(event=event)
         else:
+            boolean = self.jobs_on_remote_site(
+                self.comm.project.smoothing_site_name, 
+                len(self.comm.project.inversion_params),
+            )
+            if boolean:
+                print(f"Submit smooth simulation to {self.comm.project.site_name}")
+                pass
+            
             smoothing_config = self.comm.smoother.\
                 generate_smoothing_config(event=event
             )
@@ -1425,6 +1504,7 @@ class AutoInverter(object):
                 )
             )
 
+            print(f"Event: {event} \n")         
             self.run_forward_simulation(event)
 
             print(Fore.RED + "\n =========================== \n")
@@ -1492,6 +1572,8 @@ class AutoInverter(object):
                         ":rocket: | Run adjoint simulation", use_aliases=True
                     )
                 )
+                
+                print(f"Event: {event} \n")
                 self.run_adjoint_simulation(event)
 
         self.compute_misfit_on_validation_data()
@@ -1711,7 +1793,8 @@ class AutoInverter(object):
                     ":rocket: | Run forward simulation", use_aliases=True
                 )
             )
-
+            
+            print(f"Event: {event} \n")
             self.run_forward_simulation(event)
 
             print(Fore.RED + "\n =========================== \n")
