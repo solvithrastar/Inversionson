@@ -77,40 +77,38 @@ class AutoInverter(object):
         """
         max_submitted_jobs_per_user = 30
         
-        if job_number == 1:
-            job_list = api.get_jobs(
-                limit=100,
-                site_name = site_name, 
-                job_status = ["running", "pending"],
-                update_jobs = True,
-            )
+        # Check job_status
+        job_list = api.get_jobs(
+            limit=100,
+            site_name = site_name, 
+            job_status = ["running", "pending"],
+            update_jobs = True,
+        )
             
-            finished_job = 0
-            for job in job_list:
-                status = job.update_status(force_update=False)
-                if status.name == "finished":
-                    finished_job += 1
-            remaining_job = len(job_list) - finished_job
-                    
-        elif job_number > 1:
-            job_array_list = api.get_job_arrays(
-                limit=100,
-                site_name = site_name, 
-                job_array_status = ["running", "pending"], 
-                update_job_arrays = True,
-            )
-            
-            remaining_job = 0
-            for job_array in job_array_list:
-                status = job_array.update_status()
-                for job_status in status:
-                    if job_status.name == "running" or job_status.name == "pending":
-                        remaining_job += 1
-
-        else:
-            raise InversionsonError(f"Don't accept {job_number}")
-
+        finished_job = 0
+        for job in job_list:
+            status = job.update_status(force_update=False)
+            if status.name == "finished":
+                finished_job += 1
         
+        remaining_job = len(job_list) - finished_job
+        
+        # check job_array_status
+        job_array_list = api.get_job_arrays(
+            limit=100,
+            site_name = site_name, 
+            job_array_status = ["running", "pending"], 
+            update_job_arrays = True,
+        )
+            
+        remaining_job_array = 0
+        for job_array in job_array_list:
+            status = job_array.update_status()
+            for job_status in status:
+                if job_status.name == "running" or job_status.name == "pending":
+                    remaining_job_array += 1
+                    
+        remaining_job += remaining_job_array
         if max_submitted_jobs_per_user - remaining_job >= job_number:
             boolean = True
         else:
