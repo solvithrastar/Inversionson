@@ -121,7 +121,7 @@ class BatchComponent(Component):
         full_gradient,
         full_norm,
         individual_gradient,
-        ctrl_grp_grad: None,
+        ctrl_grp_grad: np.ndarray = None,
     ) -> float:
         """
         Compute the angular change fo the full gradient, when the individual
@@ -159,7 +159,7 @@ class BatchComponent(Component):
 
     def _sum_relevant_values(
         self, grad, param_ind: list, unique_indices: np.ndarray
-    ):
+    ) -> np.ndarray:
         """
         Take the gradient, find inverted parameters and sum them together.
         Reduces a 3D array to a 2D array.
@@ -200,7 +200,7 @@ class BatchComponent(Component):
 
     def _get_vector_of_values(
         self, gradient, parameters: list, unique_indices: np.ndarray
-    ):
+    ) -> np.ndarray:
         """
         Take a full gradient, find it's unique values and relevant parameters,
         manipulate all of these into a vector of summed parameter values.
@@ -266,24 +266,21 @@ class BatchComponent(Component):
     def _find_most_useless_event(
         self,
         full_gradient: np.ndarray,
-        cntrl_gradient: np.ndarray,
         events: list,
         unique_indices: np.ndarray,
-        batch_gradient: np.ndarray = None,
+        cntrl_gradient: np.ndarray,
     ) -> Union[str, np.ndarray]:
         """
         For a given gradient, which of the events which compose the full_grad
-        is the least inflential for it?
+        is has the smallest influence on its summed direction?
 
         :param full_gradient: Summed gradient for all events in events
         :type full_gradient: np.ndarray
-        :param cntrl_gradient: Summed gradient for all events in control group
-        :type cntrl_gradient: np.ndarray
         :param events: A list of event names
         :type events: list
-        :param batch_gradient: Summed gradient for all events in events
-            pass None if you don't want to compare batch grad to full grad
-        :type batch_gradient: np.ndarray
+        :param cntrl_gradient: Summed gradient for all events in current
+        control group
+        :type cntrl_gradient: np.ndarray
         :return: Name of the event and the reduced gradient
         :rtype: Union[str, np.ndarray]
         """
@@ -315,27 +312,21 @@ class BatchComponent(Component):
 
             angle = self._compute_angular_change(
                 full_gradient=full_gradient,
-                cntrl_gradient=cntrl_gradient,
                 full_norm=full_gradient_norm,
                 individual_gradient=individual_gradient,
-                ctrl_grp_grad=batch_gradient,
+                ctrl_grp_grad=cntrl_gradient,
             )
             event_angles[event] = angle
             print(f"Angle computed for event: {event}: {angle}")
         redundant_gradient = min(event_angles, key=event_angles.get)
         print(f"Most redundant: {redundant_gradient}")
-        if batch_gradient is not None:
-            reduced_gradient = self._remove_individual_grad_from_full_grad(
-                batch_gradient,
-                redundant_gradient,
-                unique_indices=unique_indices,
-            )
-        else:
-            reduced_gradient = self._remove_individual_grad_from_full_grad(
-                full_gradient,
-                redundant_gradient,
-                unique_indices=unique_indices,
-            )
+
+        reduced_gradient = self._remove_individual_grad_from_full_grad(
+            cntrl_gradient,
+            redundant_gradient,
+            unique_indices=unique_indices,
+        )
+
         return redundant_gradient, reduced_gradient
 
     def get_random_event(self, n: int, existing: list) -> list:
@@ -441,7 +432,7 @@ class BatchComponent(Component):
             removal_order += 1
             event_name, test_batch_grad = self._find_most_useless_event(
                 full_gradient=full_grad,
-                batch_gradient=batch_grad,
+                cntrl_gradient=batch_grad,
                 events=ctrl_group,
                 unique_indices=unique_indices,
             )
