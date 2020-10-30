@@ -466,7 +466,7 @@ class LasifComponent(Component):
         :rtype: dict
         """
         return lapi.get_receivers(
-            comm=self.lasif_comm, event=event_name, load_from_file=True
+            lasif_root=self.lasif_comm, event=event_name, load_from_file=True
         )
 
     def get_simulation_mesh(self, event_name: str, iteration="current") -> str:
