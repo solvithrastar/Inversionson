@@ -341,7 +341,11 @@ class SalvusMeshComponent(Component):
         simulation_mesh = self.comm.lasif.get_simulation_mesh(
             event_name=None, iteration="current"
         )
-        if os.path.exists(simulation_mesh):
+
+        sim_mesh_dir = os.path.dirname(simulation_mesh)
+        success_file = os.path.join(sim_mesh_dir, "success.txt")
+
+        if os.path.exists(simulation_mesh) and os.path.exists(success_file):
             print("Mesh already exists, will not add fields")
             return
         else:
@@ -351,12 +355,30 @@ class SalvusMeshComponent(Component):
                 ]["domain_file"],
                 simulation_mesh,
             )
-        fields = self.comm.project.inversion_params
-        for field in fields:
-            print(f"Writing field: {field}")
-            self.add_field_from_one_mesh_to_another(
-                from_mesh=opt_model, to_mesh=simulation_mesh, field_name=field,
-            )
+
+        with h5py.File(simulation_mesh, mode="r+") as f_new:
+            with h5py.File(
+                    opt_model,
+                    mode="r") as f:
+                dim_labels = (
+                    f["MODEL/data"]
+                        .attrs.get("DIMENSION_LABELS")[1]
+                        .decode()[1:-1]
+                        .replace(" ", "")
+                        .split("|")
+                )
+                # This assumes the indices are the same in both files,
+                # which seems to be the case as far as DP could tell.
+                for param in self.comm.project.inversion_params:
+                    print("Writing field:", param)
+                    i = dim_labels.index(param)
+                    f_new["MODEL/data"][:, i, :] = f["MODEL/data"][:, i, :]
+
+        # When all fields are successfully copied write a file to indicate
+        # success to prevent the issue that we continue
+        # with the initial model when something here crashes unexpectedly.
+        with open(success_file, "w") as text_file:
+            text_file.write("All fields written successfully.")
 
     def sum_two_fields_on_a_mesh(
         self,
