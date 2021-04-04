@@ -99,7 +99,7 @@ class ProjectComponent(Component):
         """
         import pathlib
 
-        allowed_interp_modes = ["gll_2_gll"]
+        allowed_interp_modes = ["local", "remote"]
         if "inversion_id" not in self.info.keys():
             raise ValueError("The inversion needs a name, Key: inversion_id")
 
@@ -109,19 +109,6 @@ class ProjectComponent(Component):
                 " Key: inversion_path"
             )
 
-        if "model_interpolation_mode" not in self.info.keys():
-            raise InversionsonError(
-                "We need information on how you want to interpolate "
-                "the model to simulation meshes. "
-                "Key: model_interpolation_mode "
-            )
-
-        if self.info["model_interpolation_mode"] not in allowed_interp_modes:
-            raise InversionsonError(
-                f"The allowable model_interpolation_modes are: "
-                f" {allowed_interp_modes}"
-            )
-
         if "meshes" not in self.info.keys():
             raise InversionsonError(
                 "We need information on which sorts of meshes you use. "
@@ -129,15 +116,15 @@ class ProjectComponent(Component):
                 "Key: meshes"
             )
 
-        if "gradient_interpolation_mode" not in self.info.keys():
+        if "interpolation_mode" not in self.info.keys():
             raise InversionsonError(
                 "We need information on how you want to interpolate "
-                "the model to simulation meshes. "
-                "Key: gradient_interpolation_mode "
+                "between meshes, local or remote. "
+                "Key: interpolation_mode "
             )
 
         if (
-            self.info["gradient_interpolation_mode"]
+            self.info["interpolation_mode"]
             not in allowed_interp_modes
         ):
             raise InversionsonError(
@@ -159,7 +146,24 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need specific computational info on diffusion_equation"
             )
+        if self.info["interpolation_mode"] == "remote":
+            if "interpolation" not in self.info["HPC"].keys():
+                raise InversionsonError(
+                    "We need to know some info on your remote interpolations"
+                )
 
+            if "model_wall_time" not in self.info["HPC"]["interpolation"].keys():
+                raise InversionsonError(
+                    "We need to know the wall time of your model "
+                    " interpolations. Key: HPC.interpolation.model_wall_time"
+                )
+
+            if "gradient_wall_time" not in self.info["HPC"]["interpolation"].keys():
+                raise InversionsonError(
+                    "We need to know the wall time of your model "
+                    " interpolations. Key: HPC.interpolation.gradient_wall_time"
+                )
+        
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the site where jobs are submitted. "
@@ -494,10 +498,7 @@ class ProjectComponent(Component):
             self.elem_per_quarter = self.info["Meshing"][
                 "elements_per_azimuthal_quarter"
             ]
-        self.model_interpolation_mode = self.info["model_interpolation_mode"]
-        self.gradient_interpolation_mode = self.info[
-            "gradient_interpolation_mode"
-        ]
+        self.interpolation_mode = self.info["interpolation_mode"]
         self.cut_source_radius = self.info[
             "cut_source_region_from_gradient_in_km"
         ]
@@ -508,6 +509,9 @@ class ProjectComponent(Component):
         self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
         self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
+        if self.interpolation_mode == "remote":
+            self.model_interp_wall_time = self.info["HPC"]["interpolation"]["model_wall_time"]
+            self.grad_interp_wall_time = self.info["HPC"]["interpolation"]["gradient_wall_time"]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]

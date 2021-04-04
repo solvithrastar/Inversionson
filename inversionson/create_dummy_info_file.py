@@ -23,8 +23,7 @@ def create_info(root=None):
     info["Meshing"] = {}
     info["Meshing"]["elements_per_azimuthal_quarter"] = 4
     meshes_comment = "Pick between 'multi-mesh' or 'mono-mesh'"
-    info["model_interpolation_mode"] = "gll_2_gll"
-    info["gradient_interpolation_mode"] = "gll_2_gll"
+    info["interpolation_mode"] = "remote"
     info["HPC"] = {}
     info["HPC"]["wave_propagation"] = {
         "site_name": "daint",
@@ -80,6 +79,7 @@ def create_info(root=None):
     clip_grad_comment += "quantile where the gradient will be clipped. "
     clip_grad_comment += "If 1.0 nothing will be cut"
     info["comments"] = {}
+    info["comments"]["interpolation_mode"] = "Either local or remote"
     info["comments"]["clip_gradient"] = clip_grad_comment
     info["comments"]["cut_gradient"] = cut_stuff_gradient
     info["comments"]["absorbing_boundaries"] = absorbing_boundaries

@@ -1,4 +1,7 @@
 from salvus.flow.simple_config import simulation
+from salvus.flow.sites import job, remote_io_site
+import salvus.flow.sites as sites
+import salvus.flow.api as sapi
 from .component import Component
 import os
 import shutil
@@ -163,3 +166,63 @@ class MultiMeshComponent(Component):
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
         else:
             raise ValueError(f"Mode: {mode} not implemented")
+
+    def construct_remote_interpolation_job(self, event: str, gradient=False):
+        """
+        Construct a custom Salvus job which can be submitted to an HPC cluster
+        The job can either do an interpolation of model or gradient
+
+        :param event: Name of event
+        :type event: str
+        :param gradient: Are we interpolating the gradient?, defaults to False
+        :type gradient: bool, optional
+        """
+        mesh_to_interpolate_to = self.comm.lasif.find_remote_mesh(
+            event=event,
+            gradient=gradient,
+            interpolate_to=True,
+        )
+        mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
+            event=event,
+            gradient=gradient,
+            interpolate_to=False,
+        )
+        interpolation_script = self.find_interpolation_script(
+            gradient=gradient
+        )
+
+        description = "Interpolation of "
+        description += "gradient " if gradient else "model "
+        description += f"for event {event}"
+
+        wall_time = self.comm.project.model_interp_wall_time
+        if gradient:
+            wall_time = self.comm.project.grad_interp_wall_time
+
+        int_job = job.Job(
+            site=sapi.get_site(self.comm.project.site_name),
+            commands=[
+                remote_io_site.site_utils.RemoteCommand(
+                    f"cp {mesh_to_interpolate_from} ./from_mesh.h5", False
+                ),
+                remote_io_site.site_utils.RemoteCommand(
+                    f"cp {mesh_to_interpolate_to} ./to_mesh.h5", False
+                ),
+                remote_io_site.site_utils.RemoteCommand(
+                    f"cp {interpolation_script} ./interpolate.py", False
+                ),
+                remote_io_site.site_utils.RemoteCommand(
+                    f"mkdir output", False
+                ),
+                remote_io_site.site_utils.RemoteCommand(
+                    f"python interpolate.py", False
+                ),
+                remote_io_site.site_utils.RemoteCommand(
+                    f"mv ./to_mesh.h5 ./output/."
+                )
+            ],
+            job_type="interpolation",
+            job_description=description,
+            job_info={},
+            wall_time_in_seconds=wall_time,
+        )
