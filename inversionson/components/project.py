@@ -594,6 +594,11 @@ class ProjectComponent(Component):
         validation = False
         if "validation" in iteration:
             validation = True
+
+        remote_interp = False
+        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
+            remote_interp = True
+
         if os.path.exists(iteration_toml):
             warnings.warn(
                 f"Iteration toml for iteration: {iteration} already exists. backed it up",
@@ -632,6 +637,13 @@ class ProjectComponent(Component):
             "retrieved": False,
             "reposts": 0,
         }
+        if remote_interp:
+            i_job_dict = {
+                "name": "",
+                "submitted": False,
+                "retrieved": False,
+                "reposts": 0,
+            }
         if validation:
             f_job_dict["windows_selected"] = False
         if not validation:
@@ -657,6 +669,8 @@ class ProjectComponent(Component):
         ):
             if validation:
                 jobs = {"forward": f_job_dict}
+                if remote_interp:
+                    jobs["model_interp"] = i_job_dict
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs = {
@@ -664,6 +678,9 @@ class ProjectComponent(Component):
                         "adjoint": a_job_dict,
                         "smoothing": s_job_dict,
                     }
+                    if remote_interp:
+                        jobs["model_interp"] = i_job_dict
+                        jobs["gradient_interp"] = i_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
@@ -677,6 +694,9 @@ class ProjectComponent(Component):
                         "forward": f_job_dict,
                         "adjoint": a_job_dict,
                     }
+                    if remote_interp and self.meshes == "multi-mesh":
+                        jobs["model_interp"] = i_job_dict
+                        jobs["gradient_interp"] = i_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
