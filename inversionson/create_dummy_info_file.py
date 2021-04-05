@@ -35,6 +35,11 @@ def create_info(root=None):
         "wall_time": 1000,
         "ranks": 24,
     }
+    info["HPC"]["interpolation"] = {
+        "site_name": "daint",
+        "model_wall_time": 60 * 5,
+        "gradient_wall_time": 60 * 15,
+    }
     info["inversion_parameters"] = [
         "VPV",
         "VPH",

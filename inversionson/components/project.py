@@ -519,6 +519,9 @@ class ProjectComponent(Component):
             self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
                 "gradient_wall_time"
             ]
+            self.interpolation_site = self.info["HPC"]["interpolation"][
+                "site_name"
+            ]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]

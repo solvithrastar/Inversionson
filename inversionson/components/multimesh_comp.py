@@ -102,7 +102,7 @@ class MultiMeshComponent(Component):
         dicretisation. In minibatch approach gradients are not summed,
         they are all interpolated to the same discretisation and salvus opt
         deals with them individually.
-        
+
         :param event: Name of event
         :type event: str
         :param smooth: Whether the smoothed gradient should be used
@@ -187,9 +187,7 @@ class MultiMeshComponent(Component):
             gradient=gradient,
             interpolate_to=False,
         )
-        interpolation_script = self.find_interpolation_script(
-            gradient=gradient
-        )
+        interpolation_script = self.find_interpolation_script()
 
         description = "Interpolation of "
         description += "gradient " if gradient else "model "
@@ -200,7 +198,7 @@ class MultiMeshComponent(Component):
             wall_time = self.comm.project.grad_interp_wall_time
 
         int_job = job.Job(
-            site=sapi.get_site(self.comm.project.site_name),
+            site=sapi.get_site(self.comm.project.interpolation_site),
             commands=[
                 remote_io_site.site_utils.RemoteCommand(
                     f"cp {mesh_to_interpolate_from} ./from_mesh.h5", False
@@ -211,18 +209,72 @@ class MultiMeshComponent(Component):
                 remote_io_site.site_utils.RemoteCommand(
                     f"cp {interpolation_script} ./interpolate.py", False
                 ),
+                remote_io_site.site_utils.RemoteCommand("mkdir output", False),
                 remote_io_site.site_utils.RemoteCommand(
-                    f"mkdir output", False
+                    "python interpolate.py", False
                 ),
                 remote_io_site.site_utils.RemoteCommand(
-                    f"python interpolate.py", False
+                    "mv ./to_mesh.h5 ./output/."
                 ),
-                remote_io_site.site_utils.RemoteCommand(
-                    f"mv ./to_mesh.h5 ./output/."
-                )
             ],
             job_type="interpolation",
             job_description=description,
             job_info={},
             wall_time_in_seconds=wall_time,
         )
+
+    def find_interpolation_script(self) -> str:
+        """
+        Check to see if remote interpolation script is available.
+        If not, create one and put it there
+        """
+        # get_remote
+        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
+        username = hpc_cluster.config["ssh_settings"]["username"]
+
+        remote_script_path = os.path.join(
+            "/users", username, "scripts", "interpolation.py"
+        )
+        if not hpc_cluster.remote_exists(remote_script_path):
+            self._make_remote_interpolation_script(hpc_cluster)
+        return remote_script_path
+
+    def _make_remote_interpolation_script(self, hpc_cluster):
+        """
+        Executed if remote interpolation script can not be found
+        We see if it exists locally.
+        If not, we create it locally and copy to cluster.
+        """
+
+        # get_remote
+        username = hpc_cluster.config["ssh_settings"]["username"]
+
+        remote_script_dir = os.path.join("/users", username, "scripts")
+        local_script = os.path.join(
+            self.comm.project.paths["inversion_root"], "interpolation.py"
+        )
+
+        if not hpc_cluster.remote_exists(remote_script_dir):
+            hpc_cluster.remote_mkdir(remote_script_dir)
+
+        print("New interpolation script will be generated")
+        if not os.path.exists(local_script):
+            interp_script = f"""import multi_mesh.api
+            fm = "from_mesh.h5"
+            tm = "to_mesh.h5"
+            multi_mesh.api.gll_2_gll_layered_multi(
+                fm,
+                tm,
+                nelem_to_search=20,
+                layers="nocore",
+                parameters={self.comm.project.inversion_params}
+                )
+            """
+            with open(local_script, "w+") as fh:
+                fh.write(interp_script)
+
+        remote_interp_script = os.path.join(
+            remote_script_dir, "interpolation.py"
+        )
+        if not hpc_cluster.remote_exists(remote_interp_script):
+            hpc_cluster.remote_put(local_script, remote_interp_script)
