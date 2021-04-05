@@ -694,7 +694,7 @@ class ProjectComponent(Component):
                         "forward": f_job_dict,
                         "adjoint": a_job_dict,
                     }
-                    if remote_interp and self.meshes == "multi-mesh":
+                    if remote_interp:
                         jobs["model_interp"] = i_job_dict
                         jobs["gradient_interp"] = i_job_dict
                 it_dict["events"][str(_i)] = {
@@ -788,6 +788,9 @@ class ProjectComponent(Component):
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
+        remote_interp = False
+        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
+            remote_interp = True
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
                 f"Iteration toml for iteration: {iteration} does not exists"
@@ -815,6 +818,9 @@ class ProjectComponent(Component):
             jobs = {"forward": self.forward_job[event]}
             if not validation:
                 jobs["adjoint"] = self.adjoint_job[event]
+            if remote_interp:
+                jobs["model_interp"] = self.model_interp_job[event]
+                jobs["grad_interp"] = self.grad_interp_job[event]
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
