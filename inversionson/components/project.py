@@ -108,6 +108,10 @@ class ProjectComponent(Component):
                 "We need a given path for the inversion root directory."
                 " Key: inversion_path"
             )
+        if self.info["dropout_probability"] >= 1.0:
+            raise InversionsonError(
+                "The dropout probability should be between 0.0 and 0.99."
+            )
 
         if "meshes" not in self.info.keys():
             raise InversionsonError(
@@ -165,6 +169,14 @@ class ProjectComponent(Component):
                 raise InversionsonError(
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.gradient_wall_time"
+                )
+            if (
+                "remote_mesh_directory"
+                not in self.info["HPC"]["interpolation"].keys()
+            ):
+                raise InversionsonError(
+                    "We need to know the location where the meshes are stored"
+                    ". Key: HPC.interpolation.remote_mesh_directory"
                 )
 
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
@@ -383,22 +395,20 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "Information regarding inversion monitoring is missing"
             )
+        if (
+            self.info["inversion_monitoring"][
+                "iterations_between_validation_checks"
+            ]
+            != 0
+        ):
             if (
-                self.info["inversion_monitoring"][
-                    "iterations_between_validation_checks"
-                ]
-                != 0
+                len(self.info["inversion_monitoring"]["validation_dataset"])
+                == 0
             ):
-                if (
-                    len(
-                        self.info["inversion_monitoring"]["validation_dataset"]
-                    )
-                    == 0
-                ):
-                    raise InversionsonError(
-                        "You need to specify a validation dataset if you want"
-                        " to check it regularly."
-                    )
+                raise InversionsonError(
+                    "You need to specify a validation dataset if you want"
+                    " to check it regularly."
+                )
 
     def __setup_components(self):
         """
@@ -522,6 +532,7 @@ class ProjectComponent(Component):
             self.interpolation_site = self.info["HPC"]["interpolation"][
                 "site_name"
             ]
+            self.remote_mesh_dir = self.info["HPC"]["remote_mesh_directory"]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]

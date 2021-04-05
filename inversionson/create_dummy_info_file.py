@@ -39,6 +39,7 @@ def create_info(root=None):
         "site_name": "daint",
         "model_wall_time": 60 * 5,
         "gradient_wall_time": 60 * 15,
+        "remote_mesh_directory": "/path_to_directory_containing_meshes",
     }
     info["inversion_parameters"] = [
         "VPV",

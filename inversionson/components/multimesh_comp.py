@@ -222,6 +222,7 @@ class MultiMeshComponent(Component):
             job_info={},
             wall_time_in_seconds=wall_time,
         )
+        return int_job
 
     def find_interpolation_script(self) -> str:
         """

@@ -11,6 +11,7 @@ import toml
 import numpy as np
 from typing import Union
 import pathlib
+from salvus.flow.api import get_site
 
 
 class LasifComponent(Component):
@@ -55,6 +56,42 @@ class LasifComponent(Component):
                 return True
         else:
             return False
+
+    def find_remote_mesh(
+        self,
+        event: str,
+        gradient: bool = False,
+        interpolate_to: bool = True,
+    ) -> pathlib.Path:
+        """
+        Find the path to the relevant mesh on the hpc cluster
+
+        :param event: Name of event
+        :type event: str
+        :param gradient: Is it a gradient? If not, it's a model,
+            defaults to False
+        :type gradient: bool, optional
+        :param interpolate_to: Mesh to interpolate to?, defaults to True
+        :type interpolate_to: bool, optional
+        :return: The path to the correct mesh
+        :rtype: pathlib.Path
+        """
+        if gradient:
+            if interpolate_to:
+                print("Here I need cubed sphere mesh with zeros")
+            else:
+                print(
+                    "Here I need to find the location of the job which "
+                    "smoothed the gradient. Or computed it, depending on "
+                    "reply from Christian"
+                )
+        else:
+            if interpolate_to:
+                print("Here I need a smoothie mesh from /project")
+            else:
+                print("Here I need a cubed sphere mesh with the model.")
+        hpc_cluster = get_site(self.comm.project.interpolation_site)
+        remote_mesh_dir = self.comm.project.remote_mesh_dir
 
     def set_up_iteration(self, name: str, events=[]):
         """
@@ -166,7 +203,7 @@ class LasifComponent(Component):
     def list_events(self, iteration=None):
         """
         Make lasif list events, supposed to be used when all events
-        are used per iteration. IF only for an iteration, pass 
+        are used per iteration. IF only for an iteration, pass
         an iteration value.
 
         :param iteration: Name of iteration, defaults to None
@@ -192,7 +229,7 @@ class LasifComponent(Component):
     def find_event_mesh(self, event: str) -> pathlib.Path:
         """
         Find the path for an event mesh
-        
+
         :param event: Name of event
         :type event: str
         :return: Path to where the mesh is stored.
@@ -255,7 +292,7 @@ class LasifComponent(Component):
     def find_stf(self, iteration: str) -> pathlib.Path:
         """
         Get path to source time function file
-        
+
         :param iteration: Name of iteration
         :type iteration: str
         """
@@ -288,7 +325,7 @@ class LasifComponent(Component):
         :type summed: bool
         :param smooth: Do you want the smoothed gradient, defaults to False
         :type smooth: bool
-        :param inversion_grid: Do you want the gradient on inversion 
+        :param inversion_grid: Do you want the gradient on inversion
             discretization?, defaults to False
         :type inversion_grid: bool
         :param just_give_path: If True, the gradient does not have to exist,
@@ -333,7 +370,10 @@ class LasifComponent(Component):
                     )
             else:
                 gradient = os.path.join(
-                    gradients, f"ITERATION_{iteration}", event, "gradient.h5",
+                    gradients,
+                    f"ITERATION_{iteration}",
+                    event,
+                    "gradient.h5",
                 )
 
         if not smooth and self.comm.project.inversion_mode == "mini-batch":
@@ -382,7 +422,7 @@ class LasifComponent(Component):
     ) -> str:
         """
         Make a plot where stations are color coded by their respective misfits
-        
+
         :param event: Name of event
         :type event: str
         :param iteration: Name of iteration, defaults to "current"
@@ -394,7 +434,10 @@ class LasifComponent(Component):
             iteration = self.comm.project.current_iteration
 
         lapi.plot_station_misfits(
-            self.lasif_comm, event=event, iteration=iteration, save=True,
+            self.lasif_comm,
+            event=event,
+            iteration=iteration,
+            save=True,
         )
         filename = os.path.join(
             self.lasif_root,
@@ -431,7 +474,7 @@ class LasifComponent(Component):
     def get_master_model(self) -> str:
         """
         Get the path to the inversion grid used in inversion
-        
+
         :return: Path to inversion grid
         :rtype: str
         """
@@ -482,7 +525,9 @@ class LasifComponent(Component):
             iteration = self.comm.project.current_iteration
         if self.comm.project.meshes == "multi-mesh":
             return lapi.get_simulation_mesh(
-                self.lasif_comm, event_name, iteration,
+                self.lasif_comm,
+                event_name,
+                iteration,
             )
         else:
             # return self.lasif_comm.project.lasif_config["domain_settings"][
@@ -796,7 +841,7 @@ class LasifComponent(Component):
     ) -> list:
         """
         Filter the list of iterations
-        
+
         :return: List of validation iterations
         :rtype: list
         """
@@ -810,7 +855,7 @@ class LasifComponent(Component):
     def get_validation_iteration_numbers(self) -> dict:
         """
         List lasif iterations, give dict of them with numbers as keys
-        
+
         :return: [description]
         :rtype: dict
         """
