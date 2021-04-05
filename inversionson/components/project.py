@@ -123,10 +123,7 @@ class ProjectComponent(Component):
                 "Key: interpolation_mode "
             )
 
-        if (
-            self.info["interpolation_mode"]
-            not in allowed_interp_modes
-        ):
+        if self.info["interpolation_mode"] not in allowed_interp_modes:
             raise InversionsonError(
                 f"The allowable model_interpolation_modes are: "
                 f" {allowed_interp_modes}"
@@ -152,18 +149,24 @@ class ProjectComponent(Component):
                     "We need to know some info on your remote interpolations"
                 )
 
-            if "model_wall_time" not in self.info["HPC"]["interpolation"].keys():
+            if (
+                "model_wall_time"
+                not in self.info["HPC"]["interpolation"].keys()
+            ):
                 raise InversionsonError(
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.model_wall_time"
                 )
 
-            if "gradient_wall_time" not in self.info["HPC"]["interpolation"].keys():
+            if (
+                "gradient_wall_time"
+                not in self.info["HPC"]["interpolation"].keys()
+            ):
                 raise InversionsonError(
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.gradient_wall_time"
                 )
-        
+
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the site where jobs are submitted. "
@@ -426,7 +429,7 @@ class ProjectComponent(Component):
         problem when working with hdf5 files.
         This method can only handle a few cases. If it doesn't
         recognize the case it will return an unmodified list.
-        
+
         :param parameters: parameters to be arranged
         :type parameters: list
         """
@@ -470,7 +473,7 @@ class ProjectComponent(Component):
     def get_inversion_attributes(self, first=False):
         """
         Read crucial components into memory to keep them easily accessible.
-        
+
         :param first: Befor components are set up, defaults to False
         :type first: bool, optional
         """
@@ -510,8 +513,12 @@ class ProjectComponent(Component):
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
         self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
         if self.interpolation_mode == "remote":
-            self.model_interp_wall_time = self.info["HPC"]["interpolation"]["model_wall_time"]
-            self.grad_interp_wall_time = self.info["HPC"]["interpolation"]["gradient_wall_time"]
+            self.model_interp_wall_time = self.info["HPC"]["interpolation"][
+                "model_wall_time"
+            ]
+            self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
+                "gradient_wall_time"
+            ]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]
@@ -820,7 +827,7 @@ class ProjectComponent(Component):
                 jobs["adjoint"] = self.adjoint_job[event]
             if remote_interp:
                 jobs["model_interp"] = self.model_interp_job[event]
-                jobs["grad_interp"] = self.grad_interp_job[event]
+                jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
@@ -853,6 +860,9 @@ class ProjectComponent(Component):
         iteration = self.comm.salvus_opt.get_newest_iteration_name()
         if validation:
             iteration = f"validation_{iteration}"
+        remote_interp = False
+        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
+            remote_interp = True
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
@@ -877,6 +887,9 @@ class ProjectComponent(Component):
             self.misfits = {}
             self.updated = {}
         self.forward_job = {}
+        if remote_interp:
+            self.model_interp_job = {}
+            self.gradient_interp_job = {}
 
         if self.meshes == "mono-mesh":
             if "remote_simulation_mesh" not in it_dict.keys():
@@ -904,6 +917,13 @@ class ProjectComponent(Component):
             self.forward_job[event] = it_dict["events"][str(_i)]["job_info"][
                 "forward"
             ]
+            if remote_interp:
+                self.model_interp_job[event] = it_dict["events"][str(_i)][
+                    "job_info"
+                ]["model_interp"]
+                self.gradient_interp_job[event] = it_dict["events"][str(_i)][
+                    "job_info"
+                ]["gradient_interp"]
         if self.inversion_mode == "mono-batch" and not validation:
             self.smoothing_job = it_dict["smoothing"]
 
