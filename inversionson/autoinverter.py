@@ -11,6 +11,7 @@ from colorama import init
 from colorama import Fore, Style
 from typing import Union, List
 from inversionson.remote_helpers.helpers import preprocess_remote_gradient
+from salvus.flow.api import get_site
 
 init()
 
@@ -94,7 +95,9 @@ class AutoInverter(object):
                 if self.comm.project.meshes == "multi-mesh":
                     for event in self.comm.project.events_in_iteration:
                         if not self.comm.lasif.has_mesh(event):
-                            self.comm.salvus_mesher.create_mesh(event=event,)
+                            self.comm.salvus_mesher.create_mesh(
+                                event=event,
+                            )
                             self.comm.salvus_mesher.add_region_of_interest(
                                 event=event
                             )
@@ -120,12 +123,22 @@ class AutoInverter(object):
         self.comm.project.change_attribute("current_iteration", it_name)
         self.comm.lasif.set_up_iteration(it_name, events)
         if self.comm.project.meshes == "multi-mesh":
+            if self.comm.project.interpolation_mode == "remote":
+                interp_site = get_site(self.comm.project.interpolation_site)
+            else:
+                interp_site = None
             for event in events:
-                if not self.comm.lasif.has_mesh(event):
+                if not self.comm.lasif.has_mesh(
+                    event, hpc_cluster=interp_site
+                ):
                     self.comm.salvus_mesher.create_mesh(event=event)
-                    self.comm.lasif.move_mesh(event, it_name)
+                    self.comm.lasif.move_mesh(
+                        event, it_name, hpc_cluster=interp_site
+                    )
                 else:
-                    self.comm.lasif.move_mesh(event, it_name)
+                    self.comm.lasif.move_mesh(
+                        event, it_name, hpc_cluster=interp_site
+                    )
         else:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
@@ -428,7 +441,7 @@ class AutoInverter(object):
     def retrieve_gradient(self, event: str, smooth=False):
         """
         Move gradient from salvus_flow folder to lasif folder
-        
+
         :param event: Name of event
         :type event: str
         :param smooth: Am I returning gradient from smoothing? Default: False
@@ -443,7 +456,9 @@ class AutoInverter(object):
                 return
         if smooth:
             sim_type = "smoothing"
-            self.comm.smoother.retrieve_smooth_gradient(event_name=event,)
+            self.comm.smoother.retrieve_smooth_gradient(
+                event_name=event,
+            )
         else:
             sim_type = "adjoint"
             self.comm.salvus_flow.retrieve_outputs(
@@ -522,7 +537,7 @@ class AutoInverter(object):
     def get_first_batch_of_events(self) -> list:
         """
         Get the initial batch of events to compute misfits and gradients for
-        
+
         :return: list of events to use
         :rtype: list
         """
@@ -719,8 +734,8 @@ class AutoInverter(object):
         if self.comm.project.remote_gradient_processing:
             self.comm.smoother.run_remote_smoother(event=event)
         else:
-            smoothing_config = self.comm.smoother.\
-                generate_smoothing_config(event=event
+            smoothing_config = self.comm.smoother.generate_smoothing_config(
+                event=event
             )
             self.comm.smoother.run_smoother(
                 smoothing_config=smoothing_config, event=event
@@ -866,7 +881,10 @@ class AutoInverter(object):
                 if sim_type == "smoothing":
                     if "master" in events_already_retrieved:
                         return "All retrieved"
-                    return self.monitor_jobs(sim_type, events=events,)
+                    return self.monitor_jobs(
+                        sim_type,
+                        events=events,
+                    )
             else:
                 print(
                     f"Recovered {len(events_already_retrieved)} out of "
@@ -874,7 +892,10 @@ class AutoInverter(object):
                 )
 
                 time.sleep(60)
-                return self.monitor_jobs(sim_type, events=events,)
+                return self.monitor_jobs(
+                    sim_type,
+                    events=events,
+                )
 
         for event in events_retrieved_now:
             self.comm.project.change_attribute(
@@ -885,7 +906,9 @@ class AutoInverter(object):
         return events_retrieved_now
 
     def monitor_job_arrays(
-        self, sim_type: str, events: list = None,
+        self,
+        sim_type: str,
+        events: list = None,
     ) -> Union[List[str], str]:
         """
         Monitor the progress of a SalvusJobArray. It only returns when all the
@@ -895,10 +918,10 @@ class AutoInverter(object):
         In the future this will be more developed for mono-batch mono-mesh
         inversions where it makes sense to use job arrays, especially for
         the adjoint simulations. Note that this does not currently work though.
-        
+
         :param sim_type: forward, adjoint, smoothing
         :type sim_type: str
-        :param events: List of events, if none, all events in iteration used, 
+        :param events: List of events, if none, all events in iteration used,
             defaults to None
         :type events: list, optional
         :param reposts: How often each array has been reposted, defaults to {}
@@ -954,7 +977,8 @@ class AutoInverter(object):
                                 print("I'll wait for a minute and check again")
                                 time.sleep(60)
                                 return self.monitor_job_arrays(
-                                    sim_type=sim_type, events=events,
+                                    sim_type=sim_type,
+                                    events=events,
                                 )
 
                         print(
@@ -1136,7 +1160,8 @@ class AutoInverter(object):
             )
         else:
             self.comm.project.change_attribute(
-                attribute="smoothing_job", new_value=jobs,
+                attribute="smoothing_job",
+                new_value=jobs,
             )
         self.comm.project.update_iteration_toml()
 
@@ -1149,7 +1174,7 @@ class AutoInverter(object):
     ) -> bool:
         """
         Check whether validation misfit needs to be computed or not
-        
+
         :param iteration: Name of iteration
         :type iteration: str
         :param event: Name of event
@@ -1319,7 +1344,9 @@ class AutoInverter(object):
                 ):
 
                     self.misfit_quantification(
-                        event, validation=True, window_set=iteration,
+                        event,
+                        validation=True,
+                        window_set=iteration,
                     )
                     # Use storyteller to report recently computed misfit
                     self.comm.storyteller.report_validation_misfit(
@@ -1343,7 +1370,9 @@ class AutoInverter(object):
                         window_set=last_iteration,
                     ):
                         self.misfit_quantification(
-                            event, validation=True, window_set=last_iteration,
+                            event,
+                            validation=True,
+                            window_set=last_iteration,
                         )
                         self.comm.storyteller.report_validation_misfit(
                             iteration=iteration,
@@ -1380,14 +1409,15 @@ class AutoInverter(object):
         # leave the validation iteration.
         iteration = iteration[11:]
         self.comm.project.change_attribute(
-            attribute="current_iteration", new_value=iteration,
+            attribute="current_iteration",
+            new_value=iteration,
         )
         self.comm.project.get_iteration_attributes()
 
     def compute_misfit_and_gradient(self, task: str, verbose: str):
         """
         A task associated with the initial iteration of FWI
-        
+
         :param task: Task issued by salvus opt
         :type task: str
         :param verbose: Detailed info regarding task
@@ -1558,7 +1588,8 @@ class AutoInverter(object):
             print(Fore.GREEN + "\n ===================== \n")
             print(
                 emoji.emojize(
-                    ":floppy_disk: | Summing gradients", use_aliases=True,
+                    ":floppy_disk: | Summing gradients",
+                    use_aliases=True,
                 )
             )
 
