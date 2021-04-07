@@ -57,7 +57,14 @@ class LasifComponent(Component):
         else:
             return False
 
-    def has_remote_mesh(self, event: str, gradient: bool, hpc_cluster=None):
+    def has_remote_mesh(
+        self,
+        event: str,
+        gradient: bool,
+        interpolate_to: bool = True,
+        hpc_cluster=None,
+        iteration: str = None,
+    ):
         """
         Just to check if remote mesh exists
 
@@ -65,14 +72,21 @@ class LasifComponent(Component):
         :type event: str
         :param gradient: Is it a gradient?
         :type gradient: bool
+        :param interpolate_to: Mesh to interpolate to?, defaults to True
+        :type interpolate_to: bool, optional
         :param hpc_cluster: you can pass the site object. Defaults to None
         :type hpc_cluster: salvus.flow.Site, optional
+        :param iteration: Name of an iteration, defaults to None
+        :type iteration: str, optional
         """
 
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
         mesh = self.find_remote_mesh(
-            event=event, hpc_cluster=hpc_cluster, check_if_exists=False
+            event=event,
+            hpc_cluster=hpc_cluster,
+            check_if_exists=False,
+            iteration=iteration,
         )
 
         return hpc_cluster.remote_exists(mesh), mesh
@@ -84,6 +98,7 @@ class LasifComponent(Component):
         interpolate_to: bool = True,
         check_if_exists: bool = False,
         hpc_cluster=None,
+        iteration: str = None,
     ) -> pathlib.Path:
         """
         Find the path to the relevant mesh on the hpc cluster
@@ -98,12 +113,16 @@ class LasifComponent(Component):
         :param check_if_exists: Check if the file exists?, defaults to False
         :type check_if_exists: bool, optional
         :param hpc_cluster: you can pass the site object. Defaults to None
-        :type hpc_cluster: salvus.flow.Site
+        :type hpc_cluster: salvus.flow.Site, optional
+        :param iteration: Name of an iteration, defaults to None
+        :type iteration: str, optional
         :return: The path to the correct mesh
         :rtype: pathlib.Path
         """
         hpc_cluster = get_site(self.comm.project.interpolation_site)
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+        if iteration is None:
+            iteration = self.comm.project.current_iteration
         if gradient:
             if interpolate_to:
                 print("Here I need cubed sphere mesh with zeros")
@@ -118,12 +137,7 @@ class LasifComponent(Component):
                 print("Here I need a smoothie mesh from /project")
                 mesh = remote_mesh_dir / event / "mesh.h5"
             else:
-                mesh = (
-                    remote_mesh_dir
-                    / "models"
-                    / self.comm.project.current_iteration
-                    / "mesh.h5"
-                )
+                mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
                 print("Here I need a cubed sphere mesh with the model.")
 
         if check_if_exists:
@@ -132,6 +146,158 @@ class LasifComponent(Component):
                     "Mesh for event {event} does not exist"
                 )
         return mesh
+
+    def has_mesh(self, event: str) -> bool:
+        """
+        Check whether mesh has been constructed for respective event
+
+        :param event: Name of event
+        :type event: str
+        :return: Answer whether mesh exists
+        :rtype: bool
+        """
+        # If interpolations are remote, we check for mesh remotely too
+        if self.comm.project.interpolation_mode == "remote":
+            has, _ = self.has_remote_mesh(event, gradient=False)
+        else:
+            has, _ = lapi.find_event_mesh(self.lasif_comm, event)
+
+        return has
+
+    def find_event_mesh(self, event: str) -> pathlib.Path:
+        """
+        Find the path for an event mesh
+
+        :param event: Name of event
+        :type event: str
+        :return: Path to where the mesh is stored.
+        :rtype: Pathlib.Path
+        """
+        if self.comm.project.meshes == "mono-mesh":
+            mesh = self.lasif_comm.project.lasif_config["domain_settings"][
+                "domain_file"
+            ]
+            return mesh
+        has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
+        if not has:
+            raise InversionsonError(
+                f"Mesh for event: {event} can not be found."
+            )
+        return pathlib.Path(mesh)
+
+    def _move_mesh_to_cluster(self, event: str, hpc_cluster=None):
+        """
+        Move the mesh to the cluster for interpolation
+
+        :param event: Name of event
+        :type event: str
+        """
+        if event is None:
+            # This happens when we want to move the model to the cluster
+            self._move_model_to_cluster(hpc_cluster)
+            return
+        has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
+
+        if not has:
+            raise InversionsonError(f"Mesh for event {event} does not exist.")
+        # Get remote connection
+        if hpc_cluster is None:
+            hpc_cluster = get_site(self.comm.project.interpolation_site)
+
+        path_to_mesh = self.find_remote_mesh(
+            event=event,
+            interpolate_to=True,
+            check_if_exists=False,
+            hpc_cluster=hpc_cluster,
+        )
+        if not hpc_cluster.remote_exists(path_to_mesh.parent):
+            hpc_cluster.remote_mkdir(path_to_mesh.parent)
+        hpc_cluster.remote_put(event_mesh, path_to_mesh)
+
+    def _move_model_to_cluster(
+        self, hpc_cluster=None, overwrite: bool = False
+    ):
+        """
+        The model is moved to a dedicated directory on cluster
+
+        :param hpc_cluster: A Salvus site object, defaults to None
+        :type hpc_cluster: salvus.flow.Site, optional
+        :param overwrite: Overwrite mesh already there?, defaults to False
+        :type overwrite: bool, optional
+        """
+        if hpc_cluster is None:
+            hpc_cluster = get_site(self.comm.project.interpolation_site)
+        iteration = self.comm.project.current_iteration
+        local_model = self.comm.multi_mesh.find_model_file(iteration)
+
+        has, path_to_mesh = self.has_remote_mesh(
+            event=None,
+            interpolate_to=False,
+            hpc_cluster=hpc_cluster,
+            iteration=iteration,
+        )
+        if has:
+            if overwrite:
+                hpc_cluster.remote_put(local_model, path_to_mesh)
+            else:
+                print(f"Model for iteration {iteration} already on cluster")
+                return
+        else:
+            if not hpc_cluster.remote_exits(path_to_mesh.parent):
+                hpc_cluster.remote_mkdir(path_to_mesh.parent)
+            hpc_cluster.remote_put(local_model, path_to_mesh)
+
+    def move_mesh(self, event: str, iteration: str, hpc_cluster=None):
+        """
+        Move mesh to simulation mesh path, where model will be added to it
+
+        :param event: Name of event
+        :type event: str
+        :param iteration: Name of iteration
+        :type iteration: str
+        """
+        import shutil
+
+        # If we use mono-mesh we copy the salvus opt mesh here.
+        if self.comm.project.meshes == "mono-mesh":
+            self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
+            return
+        if self.comm.project.interpolation_mode == "remote":
+            if event is None:
+                self._move_model_to_cluster(
+                    hpc_cluster=hpc_cluster, overwrite=False
+                )
+            else:
+                self._move_mesh_to_cluster(
+                    event=event, hpc_cluster=hpc_cluster
+                )
+            return
+
+        has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
+
+        if not has:
+            raise ValueError(f"{event_mesh} does not exist")
+        else:
+            event_iteration_mesh = lapi.get_simulation_mesh(
+                self.lasif_comm, event, iteration
+            )
+            if not os.path.exists(event_iteration_mesh):
+                if not os.path.exists(os.path.dirname(event_iteration_mesh)):
+                    os.makedirs(os.path.dirname(event_iteration_mesh))
+                shutil.copy(event_mesh, event_iteration_mesh)
+                event_xdmf = event_mesh[:-2] + "xdmf"
+                event_iteration_xdmf = event_iteration_mesh[:-2] + "xdmf"
+                shutil.copy(event_xdmf, event_iteration_xdmf)
+                print(
+                    f"Mesh for event: {event} has been moved to correct path for "
+                    f"iteration: {iteration} and is ready for interpolation."
+                )
+            else:
+                print(
+                    f"Mesh for event: {event} already exists in the "
+                    f"correct path for iteration {iteration}. "
+                    f"Will not move new one."
+                )
 
     def set_up_iteration(self, name: str, events=[]):
         """
@@ -252,114 +418,6 @@ class LasifComponent(Component):
         return lapi.list_events(
             self.lasif_root, just_list=True, iteration=iteration, output=True
         )
-
-    def has_mesh(self, event: str) -> bool:
-        """
-        Check whether mesh has been constructed for respective event
-
-        :param event: Name of event
-        :type event: str
-        :return: Answer whether mesh exists
-        :rtype: bool
-        """
-        # If interpolations are remote, we check for mesh remotely too
-        if self.comm.project.interpolation_mode == "remote":
-            has, _ = self.has_remote_mesh(event, gradient=False)
-        else:
-            has, _ = lapi.find_event_mesh(self.lasif_comm, event)
-
-        return has
-
-    def find_event_mesh(self, event: str) -> pathlib.Path:
-        """
-        Find the path for an event mesh
-
-        :param event: Name of event
-        :type event: str
-        :return: Path to where the mesh is stored.
-        :rtype: Pathlib.Path
-        """
-        if self.comm.project.meshes == "mono-mesh":
-            mesh = self.lasif_comm.project.lasif_config["domain_settings"][
-                "domain_file"
-            ]
-            return mesh
-        has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
-        if not has:
-            raise InversionsonError(
-                f"Mesh for event: {event} can not be found."
-            )
-        return pathlib.Path(mesh)
-
-    def move_mesh_to_cluster(self, event: str, hpc_cluster=None):
-        """
-        Move the mesh to the cluster for interpolation
-
-        :param event: Name of event
-        :type event: str
-        """
-        has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
-
-        if not has:
-            raise InversionsonError(f"Mesh for event {event} does not exist.")
-        # Get remote connection
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.interpolation_site)
-
-        path_to_mesh = self.find_remote_mesh(
-            event=event,
-            interpolate_to=True,
-            check_if_exists=False,
-            hpc_cluster=hpc_cluster,
-        )
-        if not hpc_cluster.remote_exists(path_to_mesh.parent):
-            hpc_cluster.remote_mkdir(path_to_mesh.parent)
-        hpc_cluster.remote_put(event_mesh, path_to_mesh)
-
-    def move_mesh(self, event: str, iteration: str, hpc_cluster=None):
-        """
-        Move mesh to simulation mesh path, where model will be added to it
-
-        :param event: Name of event
-        :type event: str
-        :param iteration: Name of iteration
-        :type iteration: str
-        """
-        import shutil
-
-        # If we use mono-mesh we copy the salvus opt mesh here.
-        if self.comm.project.meshes == "mono-mesh":
-            self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
-            return
-        if self.comm.project.interpolation_mode == "remote":
-            self.move_mesh_to_cluster(event=event, hpc_cluster=hpc_cluster)
-            return
-
-        has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
-
-        if not has:
-            raise ValueError(f"{event_mesh} does not exist")
-        else:
-            event_iteration_mesh = lapi.get_simulation_mesh(
-                self.lasif_comm, event, iteration
-            )
-            if not os.path.exists(event_iteration_mesh):
-                if not os.path.exists(os.path.dirname(event_iteration_mesh)):
-                    os.makedirs(os.path.dirname(event_iteration_mesh))
-                shutil.copy(event_mesh, event_iteration_mesh)
-                event_xdmf = event_mesh[:-2] + "xdmf"
-                event_iteration_xdmf = event_iteration_mesh[:-2] + "xdmf"
-                shutil.copy(event_xdmf, event_iteration_xdmf)
-                print(
-                    f"Mesh for event: {event} has been moved to correct path for "
-                    f"iteration: {iteration} and is ready for interpolation."
-                )
-            else:
-                print(
-                    f"Mesh for event: {event} already exists in the "
-                    f"correct path for iteration {iteration}. "
-                    f"Will not move new one."
-                )
 
     def find_stf(self, iteration: str) -> pathlib.Path:
         """

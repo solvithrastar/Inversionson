@@ -1,3 +1,4 @@
+from inversionson import InversionsonError
 from salvus.flow.simple_config import simulation
 from salvus.flow.sites import job, remote_io_site
 import salvus.flow.sites as sites
@@ -18,44 +19,48 @@ class MultiMeshComponent(Component):
         super(MultiMeshComponent, self).__init__(communicator, component_name)
         self.physical_models = self.comm.salvus_opt.models
 
-    def interpolate_to_simulation_mesh(self, event: str, interp_folder=None):
+    def find_model_file(self, iteration: str):
         """
-        Interpolate current master model to a simulation mesh.
+        Find the mesh which contains the model for this iteration
 
-        :param event: Name of event
-        :type event: str
+        :param iteration: Name of iteration
+        :type iteration: str
+        """
+        model = os.path.join(self.physical_models, iteration + ".h5")
+        if "validation" in iteration:
+            iteration = iteration.replace("validation_", "")
+
+            if (
+                self.comm.project.when_to_validate > 1
+                and iteration != "it0000_model"
+            ):
+                it_number = (
+                    self.comm.salvus_opt.get_number_of_newest_iteration()
+                )
+                old_it = it_number - self.comm.project.when_to_validate + 1
+                model = (
+                    self.comm.salvus_mesher.average_meshes
+                    / f"it_{old_it}_to_{it_number}"
+                    / "mesh.h5"
+                )
+            else:
+                model = os.path.join(self.physical_models, iteration + ".h5")
+        return model
+
+    def add_fields_for_interpolation_to_mesh(self, gradient=False):
+        """
+        In order to do a layered interpolation, we need some fields to be
+        present in the model.
+
+        :param gradient: We preparing for gradient interpolation?
+            defaults to False
+        :type gradient: bool, optional
         """
         iteration = self.comm.project.current_iteration
-        mode = self.comm.project.model_interpolation_mode
-        simulation_mesh = lapi.get_simulation_mesh(
-            self.comm.lasif.lasif_comm, event, iteration
-        )
-        if mode == "gll_2_gll":
-
-            model = os.path.join(self.physical_models, iteration + ".h5")
-            if "validation" in iteration:
-                iteration = iteration.replace("validation_", "")
-
-                if (
-                    self.comm.project.when_to_validate > 1
-                    and iteration != "it0000_model"
-                ):
-                    it_number = (
-                        self.comm.salvus_opt.get_number_of_newest_iteration()
-                    )
-                    old_it = it_number - self.comm.project.when_to_validate + 1
-                    model = (
-                        self.comm.salvus_mesher.average_meshes
-                        / f"it_{old_it}_to_{it_number}"
-                        / "mesh.h5"
-                    )
-                else:
-                    model = os.path.join(
-                        self.physical_models, iteration + ".h5"
-                    )
-
-            # There are many more knobs to tune but for now lets stick to
-            # defaults.
+        if gradient:
+            raise InversionsonError("Not yet implemented")
+        else:
+            model = self.find_model_file(iteration)
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=self.comm.project.domain_file,
                 to_mesh=model,
@@ -77,6 +82,38 @@ class MultiMeshComponent(Component):
                 global_string=True,
                 overwrite=False,
             )
+
+    def interpolate_to_simulation_mesh(self, event: str, interp_folder=None):
+        """
+        Interpolate current master model to a simulation mesh.
+
+        :param event: Name of event
+        :type event: str
+        """
+        iteration = self.comm.project.current_iteration
+        mode = self.comm.project.interpolation_mode
+        if mode == "remote":
+            job = self.construct_remote_interpolation_job(
+                event=event, gradient=False
+            )
+            self.comm.project.change_attribute(
+                attribute=f'model_interp_job["{event}"]["name"]',
+                new_value=job.full_name,
+            )
+            job.launch()
+            self.comm.project.change_attribute(
+                attribute=f'model_interp_job["{event}"]["submitted"]',
+                new_value=True,
+            )
+            print(f"Interpolation job for event {event} submitted")
+        else:
+            simulation_mesh = lapi.get_simulation_mesh(
+                self.comm.lasif.lasif_comm, event, iteration
+            )
+            model = self.find_model_file(iteration)
+
+            # There are many more knobs to tune but for now lets stick to
+            # defaults.
             mapi.gll_2_gll_layered(
                 from_gll=model,
                 to_gll=simulation_mesh,
@@ -85,14 +122,6 @@ class MultiMeshComponent(Component):
                 parameters=self.comm.project.modelling_params,
                 stored_array=interp_folder,
             )
-        elif mode == "exodus_2_gll":
-            model = os.path.join(self.physical_models, iteration + ".e")
-            # This function can be further specified for different inputs.
-            # For now, let's leave it at the default values.
-            # This part is not really maintained for now
-            mapi.exodus2gll(mesh=model, gll_model=simulation_mesh)
-        else:
-            raise ValueError(f"Mode: {mode} not supported")
 
     def interpolate_gradient_to_model(
         self, event: str, smooth=True, interp_folder=None

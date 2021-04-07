@@ -93,6 +93,10 @@ class AutoInverter(object):
             # Should never happen though
             if len(self.comm.project.events_in_iteration) != 0:
                 if self.comm.project.meshes == "multi-mesh":
+                    self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
+                    self.comm.lasif.move_mesh(
+                        event=None, iteration=it_name, hpc_cluster=None
+                    )
                     for event in self.comm.project.events_in_iteration:
                         if not self.comm.lasif.has_mesh(event):
                             self.comm.salvus_mesher.create_mesh(
@@ -127,6 +131,10 @@ class AutoInverter(object):
                 interp_site = get_site(self.comm.project.interpolation_site)
             else:
                 interp_site = None
+            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
+            self.comm.lasif.move_mesh(
+                event=None, iteration=it_name, hpc_cluster=interp_site
+            )
             for event in events:
                 if not self.comm.lasif.has_mesh(
                     event, hpc_cluster=interp_site
@@ -166,17 +174,25 @@ class AutoInverter(object):
                 "Will not do interpolation."
             )
             return
-        interp_folder = os.path.join(
-            self.comm.project.inversion_root, "INTERPOLATION", event, "model"
-        )
-        if not os.path.exists(interp_folder):
-            os.makedirs(interp_folder)
+        if self.comm.project.interpolation_mode == "local":
+            interp_folder = os.path.join(
+                self.comm.project.inversion_root,
+                "INTERPOLATION",
+                event,
+                "model",
+            )
+            if not os.path.exists(interp_folder):
+                os.makedirs(interp_folder)
+        else:
+            interp_folder = None
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
             event, interp_folder=interp_folder
         )
-        self.comm.project.change_attribute(
-            attribute=f'forward_job["{event}"]["interpolated"]', new_value=True
-        )
+        if self.comm.project.interpolation_mode == "local":
+            self.comm.project.change_attribute(
+                attribute=f'forward_job["{event}"]["interpolated"]',
+                new_value=True,
+            )
         self.comm.project.update_iteration_toml()
 
     def interpolate_gradient(self, event: str):
