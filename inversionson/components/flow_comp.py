@@ -5,6 +5,7 @@ import os
 import time
 import numpy as np
 from typing import Union
+import json
 
 
 class SalvusFlowComponent(Component):
@@ -36,14 +37,21 @@ class SalvusFlowComponent(Component):
         """
         inversion_id = self.comm.project.inversion_id
         old_iter = True
+        sim_types = [
+            "forward",
+            "adjoint",
+            "smoothing",
+            "model_interp",
+            "gradient_interp",
+        ]
         if iteration == "current":
             iteration = self.comm.project.current_iteration
         if iteration == self.comm.project.current_iteration:
             old_iter = False
-        if sim_type not in ["forward", "adjoint", "smoothing"]:
+        if sim_type not in sim_types:
             raise ValueError(
                 f"Simulation type {sim_type} not supported. Only supported "
-                f"ones are forward and adjoint"
+                f"ones are {sim_types}"
             )
 
         if new:
@@ -90,6 +98,10 @@ class SalvusFlowComponent(Component):
                     job = self.comm.project.forward_job[event]["name"]
                 elif sim_type == "adjoint":
                     job = self.comm.project.adjoint_job[event]["name"]
+                elif sim_type == "model_interp":
+                    job = self.comm.project.model_interp_job[event]["name"]
+                elif sim_type == "gradient_interp":
+                    job = self.comm.project.gradient_interp_job[event]["name"]
                 else:
                     if self.comm.project.inversion_mode == "mono-batch":
                         job = self.comm.project.smoothing_job["name"]
@@ -108,7 +120,7 @@ class SalvusFlowComponent(Component):
     ) -> object:
         """
         Get Salvus.Flow Job Object, or JobArray Object
-        
+
         :param event: Name of event
         :type event: str
         :param sim_type: type of simulation
@@ -135,6 +147,26 @@ class SalvusFlowComponent(Component):
                     raise InversionsonError(
                         f"Adjoint job for event: {event} has not been "
                         "submitted"
+                    )
+            elif sim_type == "model_interp":
+                if self.comm.project.model_interp_job[event]["submitted"]:
+                    job_name = self.comm.project.model_interp_job[event][
+                        "name"
+                    ]
+                else:
+                    raise InversionsonError(
+                        f"Model interpolation job for event: {event} "
+                        "has not been submitted"
+                    )
+            elif sim_type == "gradient_interp":
+                if self.comm.project.gradient_interp_job[event]["submitted"]:
+                    job_name = self.comm.project.gradient_interp_job[event][
+                        "name"
+                    ]
+                else:
+                    raise InversionsonError(
+                        f"Gradient interpolation job for event: {event} "
+                        "has not been submitted"
                     )
             elif sim_type == "smoothing":
                 if self.comm.project.inversion_mode == "mono-batch":
@@ -169,7 +201,10 @@ class SalvusFlowComponent(Component):
                 job_array_name=job_name, site_name=site_name
             )
         else:
-            site_name = self.comm.project.site_name
+            if "interp" in sim_type:
+                site_name = self.comm.project.interpolation_site
+            else:
+                site_name = self.comm.project.site_name
             job = sapi.get_job(job_name=job_name, site_name=site_name)
 
         return job
@@ -314,25 +349,25 @@ class SalvusFlowComponent(Component):
                 adjoint_sources.append(rec)
 
         p.close()
-        if self.comm.project.meshes == "multi-mesh":
-            adj_src = [
-                source.seismology.VectorPoint3DZNE(
-                    latitude=rec["latitude"],
-                    longitude=rec["longitude"],
-                    fz=1.0,
-                    fn=1.0,
-                    fe=1.0,
-                    source_time_function=stf.Custom(
-                        filename=adjoint_filename,
-                        dataset_name="/"
-                        + rec["network-code"]
-                        + "_"
-                        + rec["station-code"],
-                    ),
-                )
-                for rec in adjoint_sources
-            ]
-            return adj_src
+        # if self.comm.project.meshes == "multi-mesh":
+        #     adj_src = [
+        #         source.seismology.VectorPoint3DZNE(
+        #             latitude=rec["latitude"],
+        #             longitude=rec["longitude"],
+        #             fz=1.0,
+        #             fn=1.0,
+        #             fe=1.0,
+        #             source_time_function=stf.Custom(
+        #                 filename=adjoint_filename,
+        #                 dataset_name="/"
+        #                 + rec["network-code"]
+        #                 + "_"
+        #                 + rec["station-code"],
+        #             ),
+        #         )
+        #         for rec in adjoint_sources
+        #     ]
+        #     return adj_src
         # Get path to meta.json to obtain receiver position, use again for adjoint
         meta_json_filename = os.path.join(
             self.comm.project.lasif_root,
@@ -344,7 +379,6 @@ class SalvusFlowComponent(Component):
         )
 
         # Build meta info dict
-        import json
 
         with open(meta_json_filename) as json_file:
             data = json.load(json_file)
@@ -357,7 +391,7 @@ class SalvusFlowComponent(Component):
                 rec_name = rec["network_code"] + "_" + rec["station_code"]
                 meta_info_dict[rec_name] = {}
                 # this is the rotation from XYZ to ZNE,
-                # we still need to transpose to get ZND -> XYZ
+                # we still need to transpose to get ZNE -> XYZ
                 meta_info_dict[rec_name]["rotation_on_input"] = {
                     "matrix": np.array(
                         rec["rotation_on_output"]["matrix"]
@@ -450,6 +484,8 @@ class SalvusFlowComponent(Component):
         import salvus.flow.simple_config as sc
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
+        if self.comm.project.interpolation_mode == "remote":
+            mesh = f"REMOTE:{mesh}"
 
         w = sc.simulation.Waveform(
             mesh=mesh, sources=sources, receivers=receivers
@@ -669,7 +705,9 @@ class SalvusFlowComponent(Component):
         """
 
         job = self.get_job(
-            event=event, sim_type=sim_type, iteration=iteration,
+            event=event,
+            sim_type=sim_type,
+            iteration=iteration,
         )
         return job.update_status(force_update=True)
 

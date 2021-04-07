@@ -99,6 +99,7 @@ class LasifComponent(Component):
         check_if_exists: bool = False,
         hpc_cluster=None,
         iteration: str = None,
+        already_interpolated: bool = False,
     ) -> pathlib.Path:
         """
         Find the path to the relevant mesh on the hpc cluster
@@ -116,10 +117,14 @@ class LasifComponent(Component):
         :type hpc_cluster: salvus.flow.Site, optional
         :param iteration: Name of an iteration, defaults to None
         :type iteration: str, optional
+        :param already_interpolated: If mesh has been interpolated,
+            we find it in the interpolation job folder, defaults to False
+        :type already_interpolated: bool, optional
         :return: The path to the correct mesh
         :rtype: pathlib.Path
         """
-        hpc_cluster = get_site(self.comm.project.interpolation_site)
+        if hpc_cluster is None:
+            hpc_cluster = get_site(self.comm.project.interpolation_site)
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
@@ -133,12 +138,20 @@ class LasifComponent(Component):
                     "reply from Christian"
                 )
         else:
-            if interpolate_to:
-                print("Here I need a smoothie mesh from /project")
-                mesh = remote_mesh_dir / event / "mesh.h5"
+            if already_interpolated:
+                job = self.comm.salvus_flow.get_job(
+                    event=event,
+                    sim_type="model_interp",
+                    iteration=iteration,
+                )
+                mesh = job.stdout_path.parent / "output" / "mesh.h5"
             else:
-                mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
-                print("Here I need a cubed sphere mesh with the model.")
+                if interpolate_to:
+                    print("Here I need a smoothie mesh from /project")
+                    mesh = remote_mesh_dir / event / "mesh.h5"
+                else:
+                    mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
+                    print("Here I need a cubed sphere mesh with the model.")
 
         if check_if_exists:
             if not hpc_cluster.remote_exists(mesh):
@@ -654,6 +667,15 @@ class LasifComponent(Component):
         if iteration == "current":
             iteration = self.comm.project.current_iteration
         if self.comm.project.meshes == "multi-mesh":
+            if self.comm.project.interpolation_mode == "remote":
+                path = str(
+                    self.find_remote_mesh(
+                        event=event_name,
+                        iteration=iteration,
+                        already_interpolated=True,
+                    )
+                )
+                return path
             return lapi.get_simulation_mesh(
                 self.lasif_comm,
                 event_name,

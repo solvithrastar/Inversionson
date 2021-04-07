@@ -243,7 +243,7 @@ class MultiMeshComponent(Component):
                     "python interpolate.py", False
                 ),
                 remote_io_site.site_utils.RemoteCommand(
-                    "mv ./to_mesh.h5 ./output/."
+                    "mv ./to_mesh.h5 ./output/mesh.h5"
                 ),
             ],
             job_type="interpolation",
