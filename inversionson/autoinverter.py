@@ -12,6 +12,7 @@ from colorama import Fore, Style
 from typing import Union, List
 from inversionson.remote_helpers.helpers import preprocess_remote_gradient
 from salvus.flow.api import get_site
+from inversionson import autoinverter_helpers as helpers
 
 init()
 
@@ -155,46 +156,6 @@ class AutoInverter(object):
         self.comm.project.create_iteration_toml(it_name)
         self.comm.project.get_iteration_attributes(validation)
 
-    def interpolate_model(self, event: str):
-        """
-        Interpolate model to a simulation mesh
-
-        :param event: Name of event
-        :type event: str
-        """
-        if self.comm.project.forward_job[event]["submitted"]:
-            print(
-                f"Event {event} has already been submitted. "
-                "Will not do interpolation."
-            )
-            return
-        if self.comm.project.forward_job[event]["interpolated"]:
-            print(
-                f"Mesh for {event} has already been interpolated. "
-                "Will not do interpolation."
-            )
-            return
-        if self.comm.project.interpolation_mode == "local":
-            interp_folder = os.path.join(
-                self.comm.project.inversion_root,
-                "INTERPOLATION",
-                event,
-                "model",
-            )
-            if not os.path.exists(interp_folder):
-                os.makedirs(interp_folder)
-        else:
-            interp_folder = None
-        self.comm.multi_mesh.interpolate_to_simulation_mesh(
-            event, interp_folder=interp_folder
-        )
-        if self.comm.project.interpolation_mode == "local":
-            self.comm.project.change_attribute(
-                attribute=f'forward_job["{event}"]["interpolated"]',
-                new_value=True,
-            )
-        self.comm.project.update_iteration_toml()
-
     def interpolate_gradient(self, event: str):
         """
         Interpolate gradient to master mesh
@@ -222,80 +183,6 @@ class AutoInverter(object):
         self.comm.project.change_attribute(
             attribute=f'adjoint_job["{event}"]["interpolated"]', new_value=True
         )
-        self.comm.project.update_iteration_toml()
-
-    def run_forward_simulation(self, event: str):
-        """
-        Submit forward simulation to daint and possibly monitor aswell
-
-        :param event: Name of event
-        :type event: str
-        """
-        # Check status of simulation
-        job_info = self.comm.project.forward_job[event]
-        if job_info["submitted"]:
-            if job_info["retrieved"]:
-                print(f"Simulation for event {event} already done.")
-                print(
-                    "If you want it redone, change its status in iteration toml"
-                )
-                return
-            else:
-                status = str(
-                    self.comm.salvus_flow.get_job_status(
-                        event=event, sim_type="forward"
-                    )
-                )
-                if status == "JobStatus.running":
-                    print(f"Forward job for event {event} is running ")
-                    print("Will not resubmit. ")
-                    print("You can work with jobs using salvus-flow")
-                    return
-                elif status == "JobStatus.pending":
-                    print(f"Forward job for event {event} is pending ")
-                    print("Will not resubmit. ")
-                    return
-                elif status == "JobStatus.unknown":
-                    print(f"Status of job for event {event} is unknown")
-                    print(f"Will resubmit")
-                elif status == "JobStatus.cancelled":
-                    print(f"Status of job for event {event} is cancelled")
-                    print(f"Will resubmit")
-                elif status == "JobStatus.finished":
-                    print(f"Status of job for event {event} is finished")
-                    # print("Will retrieve and update toml")
-                    # self.comm.project.change_attribute(
-                    #         attribute=f"forward_job[\"{event}\"][\"retrieved\"]",
-                    #         new_value=True)
-                    # self.comm.project.update_iteration_toml()
-                    return
-                else:
-                    print("Jobstatus unknown for event {event}")
-                    print("Will resubmit")
-
-        receivers = self.comm.salvus_flow.get_receivers(event)
-        source = self.comm.salvus_flow.get_source_object(event)
-        # print("Adding correct fields to mesh, in a test phase currently")
-        # self.comm.salvus_mesher.add_fluid_and_roi_from_lasif_mesh()
-        w = self.comm.salvus_flow.construct_simulation(
-            event, source, receivers
-        )
-
-        if (
-            self.comm.project.remote_mesh is not None
-            and self.comm.project.meshes == "mono-mesh"
-        ):
-            w.set_mesh(self.comm.project.remote_mesh)
-
-        self.comm.salvus_flow.submit_job(
-            event=event,
-            simulation=w,
-            sim_type="forward",
-            site=self.comm.project.site_name,
-            wall_time=self.comm.project.wall_time,
-            ranks=self.comm.project.ranks,
-        )
-        self.comm.project.forward_job[event]["submitted"] = True
         self.comm.project.update_iteration_toml()
 
     def calculate_station_weights(self, event: str):
@@ -1221,18 +1108,10 @@ class AutoInverter(object):
 
         return quantify_misfit
 
-    def compute_misfit_on_validation_data(self):
+    def time_for_validation(self) -> bool:
         """
-        We define a validation dataset and compute misfits on it for an average
-        model of the past few iterations. *Currently we do not average*
-        We will both compute the misfit on the initial window set and two
-        newer sets.
-
-        Probably a good idea to only run this after a model has been accepted
-        and on the first one of course.
+        Check whether it is time to run a validation iteration
         """
-        if self.comm.project.when_to_validate == 0:
-            return
         run_function = False
 
         iteration_number = (
@@ -1245,11 +1124,25 @@ class AutoInverter(object):
             run_function = True
         if (iteration_number + 1) % self.comm.project.when_to_validate == 0:
             run_function = True
-        # I could always call this at the beginning of iterations and
-        # this function figures our whether it is the correct thing to do.
+        return run_function
 
-        if not run_function:
+    def compute_misfit_on_validation_data(self):
+        """
+        We define a validation dataset and compute misfits on it for an average
+        model of the past few iterations. *Currently we do not average*
+        We will both compute the misfit on the initial window set and two
+        newer sets.
+
+        Probably a good idea to only run this after a model has been accepted
+        and on the first one of course.
+        """
+        if self.comm.project.when_to_validate == 0:
             return
+        if not self.time_for_validation():
+            return
+        iteration_number = (
+            self.comm.salvus_opt.get_number_of_newest_iteration()
+        )
         print(Fore.GREEN + "\n ================== \n")
         print(
             emoji.emojize(
@@ -1282,146 +1175,26 @@ class AutoInverter(object):
             self.comm.salvus_mesher.get_average_model(
                 iteration_range=(from_it, to_it)
             )
-        for event in self.comm.project.validation_dataset:
-            if self.comm.project.meshes == "multi-mesh":
-                print(Fore.CYAN + "\n ============================= \n")
-                print(
-                    emoji.emojize(
-                        ":globe_with_meridians: :point_right: "
-                        ":globe_with_meridians: | Interpolation Stage",
-                        use_aliases=True,
-                    )
+            if self.comm.project.interpolation_mode == "remote":
+                self.comm.lasif.move_mesh(
+                    event=None,
+                    iteration=None,
+                    validation=True,
                 )
-                print(f"{event} interpolation")
+        val_forward_helper = helpers.ForwardHelper(
+            self.comm, self.comm.project.validation_dataset
+        )
+        assert "validation_" in self.comm.project.current_iteration
+        val_forward_helper.dispatch_forward_simulations(verbose=True)
+        assert val_forward_helper.assert_all_simulations_dispatched()
+        val_forward_helper.retrieve_forward_simulations(
+            adjoint=False,
+            verbose=True,
+            validation=True,
+        )
+        assert val_forward_helper.assert_all_simulations_retrieved()
 
-                self.interpolate_model(event)
-
-            print(f"Preparing validation simulation for event {event}")
-            self.run_forward_simulation(event=event)
-
-            print(Fore.RED + "\n =========================== \n")
-            print(
-                emoji.emojize(
-                    ":trident: | Calculate station weights", use_aliases=True
-                )
-            )
-
-            self.calculate_station_weights(event)
-
-        # Retrieve waveforms
-        print(Fore.BLUE + "\n ========================= \n")
-
-        events_retrieved = "None retrieved"
-        i = 0
-        while events_retrieved != "All retrieved":
-            print(Fore.BLUE)
-            print(
-                emoji.emojize(
-                    ":hourglass: | Waiting for jobs", use_aliases=True
-                )
-            )
-            i += 1
-            events_retrieved_now = self.monitor_jobs(
-                sim_type="forward", events=self.comm.project.validation_dataset
-            )
-
-            if events_retrieved_now == "All retrieved":
-                events_retrieved_now = self.comm.project.validation_dataset
-                events_retrieved = "All retrieved"
-            for event in events_retrieved_now:
-                print(f"{event} retrieved")
-                print(Fore.GREEN + "\n ===================== \n")
-                print(
-                    emoji.emojize(
-                        ":floppy_disk: | Process data if " "needed",
-                        use_aliases=True,
-                    )
-                )
-
-                self.process_data(event)
-
-                print(Fore.WHITE + "\n ===================== \n")
-                print(
-                    emoji.emojize(":foggy: | Select windows", use_aliases=True)
-                )
-
-                self.select_windows(event)
-
-                print(Fore.MAGENTA + "\n ==================== \n")
-                print(
-                    emoji.emojize(":zap: | Quantify Misfit", use_aliases=True)
-                )
-                validation_iterations = (
-                    self.comm.lasif.get_validation_iteration_numbers()
-                )
-                iteration = self.comm.project.current_iteration
-                if self.need_misfit_quantification(
-                    iteration=iteration, event=event, window_set=iteration
-                ):
-
-                    self.misfit_quantification(
-                        event,
-                        validation=True,
-                        window_set=iteration,
-                    )
-                    # Use storyteller to report recently computed misfit
-                    self.comm.storyteller.report_validation_misfit(
-                        iteration=iteration,
-                        window_set=iteration,
-                        event=event,
-                        total_sum=False,
-                    )
-
-                if len(validation_iterations.keys()) > 1:
-                    # We have at least two window sets to compute misfit on
-                    last_number = (
-                        max(validation_iterations.keys())
-                        - self.comm.project.when_to_validate
-                    )
-                    last_iteration = validation_iterations[last_number]
-                    # Figure out what the last validation iteration was.
-                    if self.need_misfit_quantification(
-                        iteration=iteration,
-                        event=event,
-                        window_set=last_iteration,
-                    ):
-                        self.misfit_quantification(
-                            event,
-                            validation=True,
-                            window_set=last_iteration,
-                        )
-                        self.comm.storyteller.report_validation_misfit(
-                            iteration=iteration,
-                            window_set=last_iteration,
-                            event=event,
-                            total_sum=False,
-                        )
-
-                    if last_number != -1:
-                        # We have three window sets to compute misfits on
-                        if self.need_misfit_quantification(
-                            iteration=iteration,
-                            event=event,
-                            window_set=validation_iterations[-1],
-                        ):
-                            self.misfit_quantification(
-                                event,
-                                validation=True,
-                                window_set=validation_iterations[-1],
-                            )
-                            self.comm.storyteller.report_validation_misfit(
-                                iteration=self.comm.project.current_iteration,
-                                window_set=validation_iterations[-1],
-                                event=event,
-                                total_sum=False,
-                            )
-
-                self.comm.storyteller.report_validation_misfit(
-                    iteration=self.comm.project.current_iteration,
-                    window_set=self.comm.project.current_iteration,
-                    event=event,
-                    total_sum=True,
-                )
+        iteration = self.comm.project.current_iteration
         # leave the validation iteration.
         iteration = iteration[11:]
         self.comm.project.change_attribute(
@@ -1450,95 +1223,12 @@ class AutoInverter(object):
 
         print(f"Current Iteration: {self.comm.project.current_iteration}")
 
-        for event in self.comm.project.events_in_iteration:
-            if self.comm.project.meshes == "multi-mesh":
-                print(Fore.CYAN + "\n ============================= \n")
-                print(
-                    emoji.emojize(
-                        ":globe_with_meridians: :point_right: "
-                        ":globe_with_meridians: | Interpolation Stage",
-                        use_aliases=True,
-                    )
-                )
-                print(f"{event} interpolation")
-
-                self.interpolate_model(event)
-
-            print(Fore.YELLOW + "\n ============================ \n")
-            print(
-                emoji.emojize(
-                    ":rocket: | Run forward simulation", use_aliases=True
-                )
-            )
-
-            self.run_forward_simulation(event)
-
-            print(Fore.RED + "\n =========================== \n")
-            print(
-                emoji.emojize(
-                    ":trident: | Calculate station weights", use_aliases=True
-                )
-            )
-
-            self.calculate_station_weights(event)
-
-        print(Fore.BLUE + "\n ========================= \n")
-
-        events_retrieved = "None retrieved"
-        i = 0
-        while events_retrieved != "All retrieved":
-            i += 1
-            # time.sleep(5)
-            print(Fore.BLUE)
-            print(
-                emoji.emojize(
-                    ":hourglass: | Waiting for forward jobs", use_aliases=True
-                )
-            )
-            events_retrieved_now = self.monitor_jobs("forward")
-            print(f"Events retrieved: {events_retrieved_now}")
-
-            if len(events_retrieved_now) == 0:
-                print(f"Events retrieved: {events_retrieved_now}")
-                print("No new events retrieved, lets wait")
-                continue
-                # Should not happen
-            if events_retrieved_now == "All retrieved":
-                events_retrieved_now = self.comm.project.events_in_iteration
-                events_retrieved = "All retrieved"
-            for event in events_retrieved_now:
-                print(f"{event} retrieved")
-                print(Fore.GREEN + "\n ===================== \n")
-                print(
-                    emoji.emojize(
-                        ":floppy_disk: | Process data if needed",
-                        use_aliases=True,
-                    )
-                )
-
-                self.process_data(event)
-
-                print(Fore.WHITE + "\n ===================== \n")
-                print(
-                    emoji.emojize(":foggy: | Select windows", use_aliases=True)
-                )
-
-                self.select_windows(event)
-
-                print(Fore.MAGENTA + "\n ==================== \n")
-                print(
-                    emoji.emojize(":zap: | Quantify Misfit", use_aliases=True)
-                )
-
-                self.misfit_quantification(event)
-
-                print(Fore.YELLOW + "\n ==================== \n")
-                print(
-                    emoji.emojize(
-                        ":rocket: | Run adjoint simulation", use_aliases=True
-                    )
-                )
-                self.run_adjoint_simulation(event)
+        forward_helper = helpers.ForwardHelper(
+            self.comm, self.comm.project.events_in_iteration
+        )
+        forward_helper.dispatch_forward_simulations(verbose=True)
+        assert forward_helper.assert_all_simulations_dispatched()
+        forward_helper.retrieve_forward_simulations(adjoint=True, verbose=True)
 
         self.compute_misfit_on_validation_data()
 
@@ -1550,7 +1240,7 @@ class AutoInverter(object):
             )
         )
 
-        self.wait_for_all_jobs_to_finish("forward")
+        assert forward_helper.assert_all_simulations_retrieved()
 
         events_retrieved_adjoint = "None retrieved"
         while events_retrieved_adjoint != "All retrieved":

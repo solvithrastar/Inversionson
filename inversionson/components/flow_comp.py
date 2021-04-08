@@ -564,7 +564,7 @@ class SalvusFlowComponent(Component):
         print("Constructing Adjoint Simulation now")
         from salvus.flow.simple_config import simulation
 
-        mesh = self.comm.lasif.get_simulation_mesh(event)
+        # mesh = self.comm.lasif.get_simulation_mesh(event)
         forward_job_name = self.comm.project.forward_job[event]["name"]
         forward_job = sapi.get_job(
             site_name=self.comm.project.site_name, job_name=forward_job_name
@@ -583,7 +583,7 @@ class SalvusFlowComponent(Component):
         # if not os.path.exists(os.path.dirname(gradient)):
         #     os.makedirs(os.path.dirname(gradient))
 
-        w = simulation.Waveform(mesh=mesh)
+        w = simulation.Waveform()
         w.adjoint.forward_meta_json_filename = f"REMOTE:{meta}"
         if "VPV" in self.comm.project.inversion_params:
             parameterization = "tti"
@@ -638,7 +638,6 @@ class SalvusFlowComponent(Component):
 
         # Adjoint simulation takes longer and seems to be less predictable
         # we thus give it a longer wall time.
-        print("Submitting the job now")
         start = time.time()
         if sim_type == "adjoint":
             wall_time = self.comm.project.wall_time * 2
@@ -653,7 +652,6 @@ class SalvusFlowComponent(Component):
             # output_folder=output_folder
         )
         end_sub = time.time()
-        print(f"Only submission took: {end_sub - start_sub} seconds")
         # sapi.run(
         #        site_name=site,
         #        input_file=simulation,

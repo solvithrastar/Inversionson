@@ -64,6 +64,7 @@ class LasifComponent(Component):
         interpolate_to: bool = True,
         hpc_cluster=None,
         iteration: str = None,
+        validation: bool = False,
     ):
         """
         Just to check if remote mesh exists
@@ -87,6 +88,7 @@ class LasifComponent(Component):
             hpc_cluster=hpc_cluster,
             check_if_exists=False,
             iteration=iteration,
+            validation=validation,
         )
 
         return hpc_cluster.remote_exists(mesh), mesh
@@ -100,6 +102,7 @@ class LasifComponent(Component):
         hpc_cluster=None,
         iteration: str = None,
         already_interpolated: bool = False,
+        validation: bool = False,
     ) -> pathlib.Path:
         """
         Find the path to the relevant mesh on the hpc cluster
@@ -150,8 +153,17 @@ class LasifComponent(Component):
                     print("Here I need a smoothie mesh from /project")
                     mesh = remote_mesh_dir / event / "mesh.h5"
                 else:
-                    mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
-                    print("Here I need a cubed sphere mesh with the model.")
+                    if validation:
+                        mesh = (
+                            remote_mesh_dir
+                            / "average_models"
+                            / iteration
+                            / "mesh.h5"
+                        )
+                    else:
+                        mesh = (
+                            remote_mesh_dir / "models" / iteration / "mesh.h5"
+                        )
 
         if check_if_exists:
             if not hpc_cluster.remote_exists(mesh):
@@ -228,7 +240,10 @@ class LasifComponent(Component):
         hpc_cluster.remote_put(event_mesh, path_to_mesh)
 
     def _move_model_to_cluster(
-        self, hpc_cluster=None, overwrite: bool = False
+        self,
+        hpc_cluster=None,
+        overwrite: bool = False,
+        validation: bool = False,
     ):
         """
         The model is moved to a dedicated directory on cluster
@@ -248,6 +263,7 @@ class LasifComponent(Component):
             interpolate_to=False,
             hpc_cluster=hpc_cluster,
             iteration=iteration,
+            validation=validation,
         )
         if has:
             if overwrite:
@@ -260,7 +276,9 @@ class LasifComponent(Component):
                 hpc_cluster.remote_mkdir(path_to_mesh.parent)
             hpc_cluster.remote_put(local_model, path_to_mesh)
 
-    def move_mesh(self, event: str, iteration: str, hpc_cluster=None):
+    def move_mesh(
+        self, event: str, iteration: str, hpc_cluster=None, validation=False
+    ):
         """
         Move mesh to simulation mesh path, where model will be added to it
 
@@ -278,7 +296,9 @@ class LasifComponent(Component):
         if self.comm.project.interpolation_mode == "remote":
             if event is None:
                 self._move_model_to_cluster(
-                    hpc_cluster=hpc_cluster, overwrite=False
+                    hpc_cluster=hpc_cluster,
+                    overwrite=False,
+                    validation=validation,
                 )
             else:
                 self._move_mesh_to_cluster(
@@ -904,8 +924,6 @@ class LasifComponent(Component):
         self,
         window_set_name: str,
         event: str,
-        mpi=False,
-        n=4,
         validation=False,
     ):
         """
@@ -915,10 +933,6 @@ class LasifComponent(Component):
         :type window_set_name: str
         :param event: Name of event to pick windows on
         :type event: str
-        :param mpi: Switch on/off for running with MPI
-        :type mpi: bool
-        :param n: How many ranks to use
-        :type n: int
         """
         # Check if window set exists:
         from inversionson.utils import double_fork
@@ -926,46 +940,18 @@ class LasifComponent(Component):
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
         )
-        # Need to tackle this differently for mono-batch
-        if os.path.exists(path) and not validation:
-            print(f"Window set for event {event} exists.")
-            return
-        mpi = False
-        if mpi:
-            double_fork()
-            os.chdir(self.comm.project.lasif_root)
-            command = f"/home/solvi/miniconda3/envs/lasif/bin/mpirun -n {n} lasif select_windows "
-            command += f"{self.comm.project.current_iteration} "
-            command += f"{window_set_name} {event}"
-            # process = subprocess.Popen(
-            #     command,
-            #     shell=True,
-            #     stdout=subprocess.PIPE,
-            #     bufsize=1,
-            #     stderr=subprocess.PIPE,
-            # )
-            os.system(command)
-            # print("Running the window selection")
-            # # for line in process.stdout:
-            # #     print(line, end=" \n", flush=True)
-            # print("\n\n Error messages: \n\n")
-            # for line in process.stderr:
-            #     print(line, end=" \n", flush=True)
-            # # process.wait()
-            # print(process.returncode)
-            # if process.returncode != 0:
-            #     raise InversionsonError("Window selection ended weirdly")
-            os.chdir(self.comm.project.inversion_root)
-            double_fork()
-            # sys.exit("Did that work?")
-        else:
-            lapi.select_windows_multiprocessing(
-                self.lasif_comm,
-                iteration=self.comm.project.current_iteration,
-                window_set=window_set_name,
-                events=[event],
-                num_processes=12,
-            )
+        if self.comm.project.inversion_mode == "mini-batch":
+            if os.path.exists(path) and not validation:
+                print(f"Window set for event {event} exists.")
+                return
+
+        lapi.select_windows_multiprocessing(
+            self.lasif_comm,
+            iteration=self.comm.project.current_iteration,
+            window_set=window_set_name,
+            events=[event],
+            num_processes=8,
+        )
 
     def find_seismograms(self, event: str, iteration: str) -> str:
         """

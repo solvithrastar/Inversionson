@@ -27,7 +27,7 @@ class MultiMeshComponent(Component):
         :type iteration: str
         """
         model = os.path.join(self.physical_models, iteration + ".h5")
-        if "validation" in iteration:
+        if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
 
             if (
@@ -83,7 +83,9 @@ class MultiMeshComponent(Component):
                 overwrite=False,
             )
 
-    def interpolate_to_simulation_mesh(self, event: str, interp_folder=None):
+    def interpolate_to_simulation_mesh(
+        self, event: str, interp_folder=None, validation=False
+    ):
         """
         Interpolate current master model to a simulation mesh.
 
@@ -94,7 +96,9 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event, gradient=False
+                event=event,
+                gradient=False,
+                validation=validation,
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',
@@ -196,7 +200,9 @@ class MultiMeshComponent(Component):
         else:
             raise ValueError(f"Mode: {mode} not implemented")
 
-    def construct_remote_interpolation_job(self, event: str, gradient=False):
+    def construct_remote_interpolation_job(
+        self, event: str, gradient=False, validation=False
+    ):
         """
         Construct a custom Salvus job which can be submitted to an HPC cluster
         The job can either do an interpolation of model or gradient
@@ -215,6 +221,7 @@ class MultiMeshComponent(Component):
             event=event,
             gradient=gradient,
             interpolate_to=False,
+            validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
 
