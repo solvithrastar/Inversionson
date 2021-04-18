@@ -734,6 +734,16 @@ class ForwardHelper(object):
             time.sleep(15)
 
 
+# Might be a good idea to do Interpolations and then Smoothing
+# Will be way less transfer of data
+# I will have to do some h5py magic on daint inside the second
+# interpolation job though.
+# That should be doable though.
+# Question is... what do I need?
+# I have a mesh which I interpolate to. This mesh can be ready
+# The output gradient may need a few things, not sure.
+# Maybe I have a problem with stuff being added to the core via smoothing
+# But that doesn't have to be a problem.
 class AdjointHelper(object):
     def __init__(self, comm, events):
         self.comm = comm
@@ -746,7 +756,123 @@ class AdjointHelper(object):
         for event in self.events:
             self.__dispatch_adjoint_simulation(event)
 
-    def __dispatch_adjoint_simulation(self, event: str):
+    def process_gradients(self, events=None, interpolate=False, verbose=False):
+        """
+        Wait for adjoint simulations. As soon as one is finished,
+        we do the appropriate processing of the gradient.
+        In the multi-mesh case, that involves an interpolation
+        to the inversion grid.
+        """
+        if events is None:
+            events = self.events
+        self.__process_gradients(
+            events=events, interpolate=interpolate, verbose=verbose
+        )
+
+    def __submitted_retrieved(self, event: str, sim_type="adjoint"):
+        """
+        Get a tuple of boolean values whether job as been submitted
+        and retrieved
+
+        :param event: Name of event
+        :type event: str
+        :param sim_type: Type of simulation
+        :type sim_type: str
+        """
+        if sim_type == "adjoint":
+            job_info = self.comm.project.adjoint_job[event]
+        elif sim_type == "gradient_interp":
+            job_info = self.comm.project.gradient_interp_job[event]
+        elif sim_type == "smoothing":
+            if self.comm.project.inversion_mode == "mini-batch":
+                job_info = self.comm.project.smoothing_job[event]
+            else:
+                job_info = self.comm.project.smoothing_job
+        return job_info["submitted"], job_info["retrieved"]
+
+    def __process_gradients(
+        self, events: list, interpolate: bool, verbose: bool
+    ):
+
+        adj_job_listener = RemoteJobListener(
+            comm=self.comm, job_type="adjoint", events=events
+        )
+        if interpolate:
+            interp_job_listener = RemoteJobListener(
+                comm=self.comm, job_type="gradient_interp", events=events
+            )
+        while len(adj_job_listener.events_already_retrieved) != len(events):
+            adj_job_listener.monitor_jobs()
+            for event in adj_job_listener.events_retrieved_now:
+                self.__cut_and_clip_gradient(event=event, verbose=verbose)
+                self.comm.project.change_attribute(
+                    attribute=f'adjoint_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                self.comm.project.update_iteration_toml()
+                if interpolate:
+                    self.__dispatch_raw_gradient_interpolation(
+                        event, verbose=verbose
+                    )
+                else:
+                    self.__dispatch_smoothing(
+                        event, interpolate, verbose=verbose
+                    )
+
+            for event in adj_job_listener.to_repost:
+                self.comm.project.change_attribute(
+                    attribute=f'adjoint_job["{event}"]["submitted"]',
+                    new_value=False,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__dispatch_adjoint_simulation(
+                    event=event, verbose=verbose
+                )
+            print(
+                f"Sent {len(adj_job_listener.events_retrieved_now)} "
+                "gradients to regularisation"
+            )
+            if interpolate:
+                interp_job_listener.monitor_jobs()
+                for event in interp_job_listener.events_retrieved_now:
+                    self.comm.project.change_attribute(
+                        attribute=f'gradient_interp_job["{event}"]["retrieved"]',
+                        new_value=True,
+                    )
+                    self.comm.project.update_iteration_toml()
+                    self.__dispatch_smoothing(
+                        event, interpolate, verbose=verbose
+                    )
+                for event in interp_job_listener.to_repost:
+                    self.comm.project.change_attribute(
+                        attribute=f'gradient_interp_job["{event}"]["submitted"]',
+                        new_value=False,
+                    )
+                    self.comm.project.update_iteration_toml()
+                    self.__dispatch_raw_gradient_interpolation(event)
+                interp_job_listener.events_retrieved_now = []
+                interp_job_listener.to_repost = []
+            print("Waiting 15 seconds before trying again")
+            adj_job_listener.to_repost = []
+            adj_job_listener.events_retrieved_now = []
+            time.sleep(15)
+
+    def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
+        """
+        Take the gradient out of the adjoint simulations and
+        interpolate them to the inversion grid prior to smoothing.
+        """
+        submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
+        if submitted:
+            return
+
+        # Find the adjoint job
+        # Find path to gradient
+        # Create interpolation job based on this gradient
+        # And one kept in the Project folder.
+        # Submit the job
+
+    def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
         Dispatch an adjoint simulation
 
@@ -782,3 +908,31 @@ class AdjointHelper(object):
 
         # Can't really recall how we do with retrieving gradients now.
         # I'll have to work on that a bit.
+
+    def __dispatch_smoothing(
+        self, event: str, interpolate: bool, verbose: bool = False
+    ):
+        """
+        Dispatch a smoothing job for event
+
+        :param event: Name of event
+        :type event: str
+        :param interpolate: Are we using the multi_mesh approach?
+        :type interpolate: bool
+        :param verbose: Print information, defaults to False
+        :type verbose: bool, optional
+        """
+        submitted, _ = self.__submitted_retrieved(event, "smoothing")
+        if submitted:
+            if verbose:
+                print(f"Already submitted event {event} for smoothing")
+            return
+
+        if interpolate:
+            # make sure interpolation has been retrieved
+            _, retrieved = self.__submitted_retrieved(event, "gradient_interp")
+            if not retrieved:
+                if verbose:
+                    print(f"Event {event} has not been interpolated")
+                return
+        self.comm.smoothing.run_remote_smoother(event)
