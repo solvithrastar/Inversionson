@@ -145,26 +145,45 @@ class MultiMeshComponent(Component):
         pass this if the directory exists and you want to use the matrices
         """
         iteration = self.comm.project.current_iteration
-        mode = self.comm.project.gradient_interpolation_mode
-        gradient = self.comm.lasif.find_gradient(
-            iteration, event, smooth=smooth
-        )
-        simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=event)
+        mode = self.comm.project.interpolation_mode
+        if mode == "remote":
+            job = self.construct_remote_interpolation_job(
+                event=event,
+                gradient=True,
+                validation=False,
+            )
+            self.comm.project.change_attribute(
+                attribute=f'gradient_interp_job["{event}"]["name"]',
+                new_value=job.full_name,
+            )
+            job.launch()
+            self.comm.project.change_attribute(
+                attribute=f'gradient_interp_job["{event}"]["submitted"]',
+                new_value=True,
+            )
+            print(f"Interpolation job for event {event} submitted")
+            self.comm.project.update_iteration_toml()
+        else:
+            gradient = self.comm.lasif.find_gradient(
+                iteration, event, smooth=smooth
+            )
+            simulation_mesh = self.comm.lasif.get_simulation_mesh(
+                event_name=event
+            )
 
-        master_model = self.comm.lasif.get_master_model()
+            master_model = self.comm.lasif.get_master_model()
 
-        master_disc_gradient = self.comm.lasif.find_gradient(
-            iteration=iteration,
-            event=event,
-            smooth=True,
-            inversion_grid=True,
-            just_give_path=True,
-        )
-        shutil.copy(master_model, master_disc_gradient)
-        self.comm.salvus_mesher.fill_inversion_params_with_zeroes(
-            mesh=master_disc_gradient
-        )
-        if mode == "gll_2_gll":
+            master_disc_gradient = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event,
+                smooth=True,
+                inversion_grid=True,
+                just_give_path=True,
+            )
+            shutil.copy(master_model, master_disc_gradient)
+            self.comm.salvus_mesher.fill_inversion_params_with_zeroes(
+                mesh=master_disc_gradient
+            )
             self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
                 from_mesh=simulation_mesh,
                 to_mesh=gradient,
@@ -197,8 +216,6 @@ class MultiMeshComponent(Component):
                 stored_array=interp_folder,
             )
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
-        else:
-            raise ValueError(f"Mode: {mode} not implemented")
 
     def construct_remote_interpolation_job(
         self, event: str, gradient=False, validation=False

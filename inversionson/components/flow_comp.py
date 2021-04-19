@@ -643,7 +643,6 @@ class SalvusFlowComponent(Component):
             wall_time = self.comm.project.wall_time * 2
         else:
             wall_time = self.comm.project.wall_time
-        start_sub = time.time()
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
@@ -651,13 +650,6 @@ class SalvusFlowComponent(Component):
             wall_time_in_seconds=wall_time,
             # output_folder=output_folder
         )
-        end_sub = time.time()
-        # sapi.run(
-        #        site_name=site,
-        #        input_file=simulation,
-        #        output_folder=output_folder,
-        #        ranks=8,
-        #        overwrite=True)
 
         if (
             self.comm.project.remote_mesh is None

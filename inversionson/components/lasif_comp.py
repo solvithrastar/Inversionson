@@ -1,4 +1,7 @@
 from __future__ import absolute_import
+import shutil
+
+from numpy.lib.function_base import gradient
 
 from .component import Component
 import lasif.api as lapi
@@ -133,13 +136,12 @@ class LasifComponent(Component):
             iteration = self.comm.project.current_iteration
         if gradient:
             if interpolate_to:
-                print("Here I need cubed sphere mesh with zeros")
+                mesh = remote_mesh_dir / "standard_gradient" / "mesh.h5"
             else:
-                print(
-                    "Here I need to find the location of the job which "
-                    "smoothed the gradient. Or computed it, depending on "
-                    "reply from Christian"
+                output = self.comm.salvus_flow.get_job_file_paths(
+                    event=event, sim_type="adjoint"
                 )
+                mesh = output[0][("adjoint", "gradient", "output_filename")]
         else:
             if already_interpolated:
                 job = self.comm.salvus_flow.get_job(
@@ -167,6 +169,10 @@ class LasifComponent(Component):
 
         if check_if_exists:
             if not hpc_cluster.remote_exists(mesh):
+                if gradient and interpolate_to:
+                    self._move_mesh_to_cluster(
+                        event=None, gradient=gradient, hpc_cluster=hpc_cluster
+                    )
                 raise InversionsonError(
                     "Mesh for event {event} does not exist"
                 )
@@ -210,7 +216,9 @@ class LasifComponent(Component):
             )
         return pathlib.Path(mesh)
 
-    def _move_mesh_to_cluster(self, event: str, hpc_cluster=None):
+    def _move_mesh_to_cluster(
+        self, event: str, gradient=False, hpc_cluster=None
+    ):
         """
         Move the mesh to the cluster for interpolation
 
@@ -218,8 +226,11 @@ class LasifComponent(Component):
         :type event: str
         """
         if event is None:
-            # This happens when we want to move the model to the cluster
-            self._move_model_to_cluster(hpc_cluster)
+            if gradient:
+                self._move_gradient_to_cluster(hpc_cluster)
+            else:
+                # This happens when we want to move the model to the cluster
+                self._move_model_to_cluster(hpc_cluster)
             return
         has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
 
@@ -261,6 +272,7 @@ class LasifComponent(Component):
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
             interpolate_to=False,
+            gradient=False,
             hpc_cluster=hpc_cluster,
             iteration=iteration,
             validation=validation,
@@ -275,6 +287,44 @@ class LasifComponent(Component):
             if not hpc_cluster.remote_exits(path_to_mesh.parent):
                 hpc_cluster.remote_mkdir(path_to_mesh.parent)
             hpc_cluster.remote_put(local_model, path_to_mesh)
+
+    def _move_gradient_to_cluster(
+        self, hpc_cluster=None, overwrite: bool = False
+    ):
+        """
+        Empty gradient moved to a dedicated directory on cluster
+
+        :param hpc_cluster: A Salvus site object, defaults to None
+        :type hpc_cluster: salvus.flow.Site, optional
+        """
+        if hpc_cluster is None:
+            hpc_cluster = get_site(self.comm.project.interpolation_site)
+
+        has, path_to_mesh = self.has_remote_mesh(
+            event=None,
+            interpolate_to=True,
+            gradient=True,
+            hpc_cluster=hpc_cluster,
+            iteration=None,
+            validation=False,
+        )
+
+        if has and not overwrite:
+            print("Empty gradient already on cluster")
+            return
+
+        local_grad = (
+            self.lasif_comm.project.paths["models"] / "GRADIENT" / "mesh.h5"
+        )
+        if not os.path.exists(local_grad.parent):
+            os.makedirs(local_grad.parent)
+        inversion_grid = self.get_master_model()
+        shutil.copy(inversion_grid, local_grad)
+        self.comm.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
+
+        if not hpc_cluster.remote_exits(path_to_mesh.parent):
+            hpc_cluster.remote_mkdir(path_to_mesh.parent)
+        hpc_cluster.remote_put(local_grad, path_to_mesh)
 
     def move_mesh(
         self, event: str, iteration: str, hpc_cluster=None, validation=False

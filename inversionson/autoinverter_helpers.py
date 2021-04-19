@@ -56,10 +56,16 @@ class RemoteJobListener(object):
                 raise InversionsonError("Too many reposts")
             self.to_repost.append(event)
             reposts += 1
-            self.comm.project.change_attribute(
-                attribute=f'{self.job_type}_job["{event}"]["reposts"]',
-                new_value=reposts,
-            )
+            if self.job_type == "smoothing" and event is None:
+                self.comm.project.change_attribute(
+                    attribute=f'{self.job_type}_job["reposts"]',
+                    new_value=reposts,
+                )
+            else:
+                self.comm.project.change_attribute(
+                    attribute=f'{self.job_type}_job["{event}"]["reposts"]',
+                    new_value=reposts,
+                )
         elif status == "cancelled":
             print("What to do here?")
         else:
@@ -84,8 +90,31 @@ class RemoteJobListener(object):
                 self.events_retrieved_now.append(event)
         self.comm.project.update_iteration_toml()
 
-    def __monitor_job_array(self, job_dict):
-        pass
+    def __monitor_job_array(self, job_dict, events=None):
+        if events is None:
+            events = self.events
+        if self.comm.project.inversion_mode == "mini-batch":
+            if job_dict["retrieved"]:
+                self.events_already_retrieved = events
+            else:
+                reposts = job_dict["reposts"]
+                status = self.__check_status_of_job(None, reposts)
+            if status == "finished":
+                self.events_already_retrieved = events
+        else:
+            events_left = list(
+                set(events) - set(self.events_already_retrieved)
+            )
+            for event in events_left:
+                if job_dict[event]["retrieved"]:
+                    self.events_already_retrieved.append(event)
+                    continue
+                else:
+                    reposts = job_dict[event]["reposts"]
+                    status = self.__check_status_of_job(event, reposts)
+                if status == "finished":
+                    self.events_retrieved_now.append(event)
+            self.comm.project.update_iteration_toml()
 
 
 class ForwardHelper(object):
@@ -801,6 +830,7 @@ class AdjointHelper(object):
             interp_job_listener = RemoteJobListener(
                 comm=self.comm, job_type="gradient_interp", events=events
             )
+            mode = self.comm.project.interpolation_mode
         while len(adj_job_listener.events_already_retrieved) != len(events):
             adj_job_listener.monitor_jobs()
             for event in adj_job_listener.events_retrieved_now:
@@ -811,9 +841,17 @@ class AdjointHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 if interpolate:
-                    self.__dispatch_raw_gradient_interpolation(
-                        event, verbose=verbose
-                    )
+                    if mode == "remote":
+                        self.__dispatch_raw_gradient_interpolation(
+                            event, verbose=verbose
+                        )
+                    else:
+                        # Here we do interpolate as false as the interpolate
+                        # refers to remote interpolation in this case.
+                        # It is related to where the gradient can be found.
+                        self.__dispatch_smoothing(
+                            event, interpolate=False, verbose=verbose
+                        )
                 else:
                     self.__dispatch_smoothing(
                         event, interpolate, verbose=verbose
@@ -864,8 +902,14 @@ class AdjointHelper(object):
         """
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
         if submitted:
+            if verbose:
+                print(f"Interpolation for gradient {event} has been submitted")
             return
 
+        # Here I need to make sure that the correct layers are interpolated
+        # I can just do this by specifying the layers, rather than saying
+        # nocore. That's less nice though of course
+        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False)
         # Find the adjoint job
         # Find path to gradient
         # Create interpolation job based on this gradient
@@ -901,10 +945,6 @@ class AdjointHelper(object):
             wall_time=self.comm.project.wall_time,
             ranks=self.comm.project.ranks,
         )
-        self.comm.project.change_attribute(
-            attribute=f'adjoint_job["{event}"]["submitted"]', new_value=True
-        )
-        self.comm.project.update_iteration_toml()
 
         # Can't really recall how we do with retrieving gradients now.
         # I'll have to work on that a bit.
