@@ -93,7 +93,7 @@ class RemoteJobListener(object):
     def __monitor_job_array(self, job_dict, events=None):
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mini-batch":
+        if self.comm.project.inversion_mode == "mono-batch":
             if job_dict["retrieved"]:
                 self.events_already_retrieved = events
             else:
@@ -798,6 +798,24 @@ class AdjointHelper(object):
             events=events, interpolate=interpolate, verbose=verbose
         )
 
+    def assert_all_simulations_dispatched(self):
+        all = True
+        for event in self.events:
+            submitted, _ = self.__submitted_retrieved(event)
+            if not submitted:
+                all = False
+                break
+        return all
+
+    def assert_all_simulations_retrieved(self):
+        all = True
+        for event in self.events:
+            _, retrieved = self.__submitted_retrieved(event)
+            if not retrieved:
+                all = False
+                break
+        return all
+
     def __submitted_retrieved(self, event: str, sim_type="adjoint"):
         """
         Get a tuple of boolean values whether job as been submitted
@@ -908,13 +926,9 @@ class AdjointHelper(object):
 
         # Here I need to make sure that the correct layers are interpolated
         # I can just do this by specifying the layers, rather than saying
-        # nocore. That's less nice though of course
+        # nocore. That's less nice though of course. Could be specified
+        # in the config file. Then it should work fine.
         self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False)
-        # Find the adjoint job
-        # Find path to gradient
-        # Create interpolation job based on this gradient
-        # And one kept in the Project folder.
-        # Submit the job
 
     def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
@@ -975,4 +989,225 @@ class AdjointHelper(object):
                 if verbose:
                     print(f"Event {event} has not been interpolated")
                 return
-        self.comm.smoothing.run_remote_smoother(event)
+        if self.comm.project.inversion_mode == "mono-batch":
+            self.comm.salvus_flow.retrieve_outputs(
+                event_name=event, sim_type="adjoint"
+            )
+            print(f"Gradient for event {event} has been retrieved.")
+        else:
+            self.comm.smoothing.run_remote_smoother(event)
+
+
+class SmoothingHelper(object):
+    def __init__(self, comm, events):
+        self.comm = comm
+        self.events = events
+
+    def dispatch_smoothing_simulations(self, verbose=False):
+        if self.comm.project.inversion_mode == "mini-batch":
+            if (
+                self.comm.project.interpolation_mode == "remote"
+                and self.comm.project.meshes == "multi-mesh"
+            ):
+                interpolate = True
+            else:
+                interpolate = False
+            for event in self.events:
+                self.__dispatch_smoothing_simulation(
+                    event, interpolate=interpolate, verbose=verbose
+                )
+        else:
+            self.__dispatch_smoothing_simulation(event=None, verbose=verbose)
+
+    def monitor_interpolations_send_out_smoothjobs(self, verbose=False):
+        # take newly retrieved interpolations, send out smooth jobs.
+        # Simple as that.
+        events = self.events
+        int_job_listener = RemoteJobListener(
+            comm=self.comm,
+            job_type="gradient_interp",
+            events=events,
+        )
+        while len(int_job_listener.events_already_retrieved) != len(events):
+            int_job_listener.monitor_jobs()
+            for event in int_job_listener.events_retrieved_now:
+                self.comm.project.change_attribute(
+                    attribute=f'gradient_interp_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__dispatch_smoothing_simulation(
+                    event=event, verbose=verbose
+                )
+
+            for event in int_job_listener.to_repost:
+                self.comm.project.change_attribute(
+                    attribute=f'gradient_interp_job["{event}"]["submitted"]',
+                    new_value=False,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__dispatch_raw_gradient_interpolation(
+                    event=event, verbose=verbose
+                )
+            print(
+                f"Dispatched {len(int_job_listener.events_retrieved_now)} "
+                "Smoothing jobs"
+            )
+            print("Waiting 15 seconds before trying again")
+            int_job_listener.to_repost = []
+            int_job_listener.events_retrieved_now = []
+            time.sleep(15)
+
+    def sum_gradients(self):
+        from inversionson.utils import sum_gradients
+
+        grad_mesh = self.comm.lasif.find_gradient(
+            iteration=self.comm.project.current_iteration,
+            event=None,
+            summed=True,
+            smooth=False,
+            just_give_path=True,
+        )
+        if os.path.exists(grad_mesh):
+            print("Gradient has already been summed. Moving on")
+        gradients = []
+        for event in self.events:
+            gradients.append(
+                self.comm.lasif.find_gradient(
+                    iteration=self.comm.project.current_iteration,
+                    event=event,
+                    summed=False,
+                    smooth=False,
+                    just_give_path=False,
+                )
+            )
+        shutil.copy(gradients[0], grad_mesh)
+        sum_gradients(mesh=grad_mesh, gradients=gradients)
+
+    def __submitted_retrieved(self, event: str, sim_type="smoothing"):
+
+        if sim_type == "smoothing":
+            if self.comm.project.inversion_mode == "mini-batch":
+                job_info = self.comm.project.smoothing_job[event]
+            else:
+                job_info = self.comm.project.smoothing_job
+
+        elif sim_type == "gradient_interp":
+            job_info = self.comm.project.gradient_interp_job[event]
+
+        return job_info["submitted"], job_info["retrieved"]
+
+    def __dispatch_smoothing_simulation(
+        self, event: str, interpolate: bool = False, verbose: bool = False
+    ):
+        submitted, retrieved = self.__submitted_retrieved(event)
+        # See if smoothing job already submitted
+        if submitted:
+            sub_ret = "submitted"
+            if retrieved:
+                sub_ret = "retrieved"
+            if verbose:
+                print(f"Event {event} has been {sub_ret}. Moving on.")
+            return
+        if event is None:
+            config = self.comm.smoother.generate_smoothing_config()
+            self.comm.smoother.run_smoother(
+                config, event=None, iteration=self.comm.project.iteration
+            )
+            return
+
+        if interpolate:
+            submitted, retrieved = self.__submitted_retrieved(
+                event, sim_type="gradient_interp"
+            )
+            if not submitted:
+                self.comm.multi_mesh.interpolate_gradient_to_model(
+                    event, smooth=False
+                )
+            else:
+                if retrieved:
+                    self.comm.smoother.run_remote_smoother(event)
+                else:
+                    if verbose:
+                        print(
+                            f"Event {event} is being interpolated,"
+                            " can't smooth yet"
+                        )
+
+    def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
+        """
+        Take the gradient out of the adjoint simulations and
+        interpolate them to the inversion grid prior to smoothing.
+        """
+        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False)
+
+    def retrieve_smooth_gradients(self, events=None, verbose=verbose):
+        if events is None:
+            events = self.events
+        smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
+
+        while len(smooth_job_listener.events_already_retrieved) != len(events):
+            smooth_job_listener.monitor_jobs()
+            for event in smooth_job_listener.events_retrieved_now:
+                if self.comm.project.inversion_mode == "mono-batch":
+                    attribute = 'smoothing_job["retrieved"]'
+                else:
+                    attribute = f'smoothing_job["{event}"]["retrieved"]'
+                self.comm.project.change_attribute(
+                    attribute=attribute,
+                    new_value=True,
+                )
+                self.comm.project.update_iteration_toml()
+                self.comm.smoother.retrieve_smooth_gradient(event_name=event)
+
+            for event in smooth_job_listener.to_repost:
+                if self.comm.project.inversion_mode == "mono-batch":
+                    attribute = 'smoothing_job["submitted"]'
+                else:
+                    attribute = f'smoothing_job["{event}"]["submitted"]'
+                self.comm.project.change_attribute(
+                    attribute=attribute,
+                    new_value=False,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__dispatch_smoothing_simulation(
+                    event=event, verbose=verbose
+                )
+            print(
+                f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
+                "Smooth gradients"
+            )
+            print("Waiting 15 seconds before trying again")
+            smooth_job_listener.to_repost = []
+            smooth_job_listener.events_retrieved_now = []
+            time.sleep(15)
+
+    def assert_all_simulations_dispatched(self):
+        all = True
+        if self.comm.project.inversion_mode == "mono-batch":
+            submitted, _ = self.__submitted_retrieved(None)
+            if submitted:
+                return True
+            else:
+                return False
+        for event in self.events:
+            submitted, _ = self.__submitted_retrieved(event)
+            if not submitted:
+                all = False
+                break
+        return all
+
+    def assert_all_simulations_retrieved(self):
+        all = True
+        if self.comm.project.inversion_mode == "mono-batch":
+            _, retrieved = self.__submitted_retrieved(None)
+            if retrieved:
+                return True
+            else:
+                return False
+        for event in self.events:
+            _, retrieved = self.__submitted_retrieved(event)
+            if not retrieved:
+                all = False
+                break
+        return all

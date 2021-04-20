@@ -1242,121 +1242,31 @@ class AutoInverter(object):
 
         assert forward_helper.assert_all_simulations_retrieved()
 
-        events_retrieved_adjoint = "None retrieved"
-        while events_retrieved_adjoint != "All retrieved":
-            print(Fore.BLUE)
-            print(
-                emoji.emojize(
-                    ":hourglass: | Waiting for adjoint jobs", use_aliases=True
-                )
-            )
-            # time.sleep(15)
-            # TODO: Do a check to see if I can send any events in for smoothing first.
-            events_retrieved_adjoint_now = self.monitor_jobs("adjoint")
-            # if events_retrieved_adjoint_now == "All retrieved" and i != 1:
-            #     break
-            # else:
-            if len(events_retrieved_adjoint_now) == 0:
-                print("No new events retrieved, lets wait")
-                continue
-                # Should not happen
-            if events_retrieved_adjoint_now == "All retrieved":
-                events_retrieved_adjoint_now = (
-                    self.comm.project.events_in_iteration
-                )
-                events_retrieved_adjoint = "All retrieved"
-            for event in events_retrieved_adjoint_now:
-                print(f"{event} retrieved")
-
-                print(Fore.GREEN + "\n ===================== \n")
-                print(
-                    emoji.emojize(
-                        ":floppy_disk: | Cut sources and "
-                        "receivers from gradient",
-                        use_aliases=True,
-                    )
-                )
-                if not self.comm.project.remote_gradient_processing:
-                    self.preprocess_gradient(event)
-                if self.comm.project.inversion_mode == "mini-batch":
-                    print(Fore.YELLOW + "\n ==================== \n")
-                    print(
-                        emoji.emojize(
-                            ":rocket: | Run Diffusion equation",
-                            use_aliases=True,
-                        )
-                    )
-                    print(f"Event: {event} gradient will be smoothed")
-
-                    self.smooth_gradient(event)
-
-        if self.comm.project.inversion_mode == "mono-batch":
-            print(Fore.GREEN + "\n ===================== \n")
-            print(
-                emoji.emojize(
-                    ":floppy_disk: | Summing gradients",
-                    use_aliases=True,
-                )
-            )
-
-            self.sum_gradients()
-
-            print(Fore.YELLOW + "\n ==================== \n")
-            print(
-                emoji.emojize(
-                    ":rocket: | Run Diffusion equation", use_aliases=True
-                )
-            )
-            print(f"Gradient will be smoothed")
-
-            self.smooth_gradient(event=None)
-
-        events_retrieved_smoothing = "None retrieved"
-        while events_retrieved_smoothing != "All retrieved":
-
-            print(Fore.BLUE)
-            print(
-                emoji.emojize(
-                    ":hourglass: | Waiting for smoothing jobs",
-                    use_aliases=True,
-                )
-            )
-
-            events_retrieved_smoothing_now = self.monitor_job_arrays(
-                "smoothing"
-            )
-            if len(events_retrieved_smoothing_now) == 0:
-                print("No new events retrieved, lets wait")
-                continue
-            if events_retrieved_smoothing_now == "All retrieved":
-                events_retrieved_smoothing_now = (
-                    self.comm.project.events_in_iteration
-                )
-                events_retrieved_smoothing = "All retrieved"
-
-            if self.comm.project.meshes == "multi-mesh":
-                for event in events_retrieved_smoothing_now:
-                    print(f"{event} retrieved")
-                    print(Fore.CYAN + "\n ============================= \n")
-                    print(
-                        emoji.emojize(
-                            ":globe_with_meridians: :point_right: "
-                            ":globe_with_meridians: | Interpolation Stage",
-                            use_aliases=True,
-                        )
-                    )
-                    print(f"{event} interpolation")
-
-                    self.interpolate_gradient(event)
-
-        print(Fore.BLUE + "\n ========================= \n")
-        print(
-            emoji.emojize(
-                ":hourglass: | Making sure all adjoint jobs are " "done",
-                use_aliases=True,
-            )
+        adjoint_helper = helpers.AdjointHelper(
+            self.comm, self.comm.project.events_in_iteration
         )
-        self.wait_for_all_jobs_to_finish("smoothing")
+        adjoint_helper.dispatch_adjoint_simulations(verbose=True)
+        assert adjoint_helper.assert_all_simulations_dispatched()
+        interpolate = False
+        if self.comm.project.meshes == "multi-mesh":
+            interpolate = True
+        adjoint_helper.process_gradients(interpolate=interpolate, verbose=True)
+        assert adjoint_helper.assert_all_simulations_retrieved()
+
+        if self.comm.project.inversion_mode == "mini-batch":
+            smoothing_helper = helpers.SmoothingHelper(
+                self.comm, self.comm.project.events_in_iteration
+            )
+            smoothing_helper.dispatch_smoothing_simulations()
+            assert smoothing_helper.assert_all_simulations_dispatched()
+            smoothing_helper.retrieve_smooth_gradients()
+        else:
+            smoothing_helper = helpers.SmoothingHelper(self.comm, None)
+            smoothing_helper.sum_gradients()
+            smoothing_helper.dispatch_smoothing_simulations(events=None)
+            assert smoothing_helper.assert_all_simulations_dispatched()
+            smoothing_helper.retrieve_smooth_gradients(events=None)
+        assert smoothing_helper.assert_all_simulations_retrieved()
 
         print(Fore.RED + "\n =================== \n")
         print(
