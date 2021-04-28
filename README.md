@@ -1,6 +1,6 @@
 # Inversionson
 
-There exists an open-access paper about Inversionson. If you use Inversionson, please consider citing it:
+There exists an [open-access paper about Inversionson](https://eartharxiv.org/repository/view/2132/). If you use Inversionson, please consider citing it:
 
 ```bibtex
 @article{thrastarson2021inversionson,
