@@ -1,5 +1,16 @@
 # Inversionson
 
+There exists an open-access paper about Inversionson. If you use Inversionson, please consider citing it:
+
+```bibtex
+@article{thrastarson2021inversionson,
+  title={Inversionson: Fully Automated Seismic Waveform Inversions},
+  author={Thrastarson, Solvi and van Herwaarden, Dirk-Philip and Fichtner, Andreas},
+  year={2021},
+  publisher={EarthArXiv}
+}
+```
+
 Inversionson is a workflow manager which automatically performs a Full-waveform inversion(FWI) of seismic data. It has built in support for various types of FWI workflows:
 * A standard workflow like for example in [Krischer et al, 2018](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2017JB015289)
 * The dynamic mini-batch workflow described by [van Herwaarden et al, 2020](https://academic.oup.com/gji/article/221/2/1427/5743423)
