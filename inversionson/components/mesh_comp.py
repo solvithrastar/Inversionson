@@ -45,11 +45,12 @@ class SalvusMeshComponent(Component):
         sm = SmoothieSEM()
         sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = self.comm.project.min_period
-        sm.basic.elements_per_wavelength = 1.8
+        sm.basic.elements_per_wavelength = 1.5
         sm.basic.number_of_lateral_elements = (
             self.comm.project.elem_per_quarter
         )
         sm.advanced.tensor_order = 4
+        # sm.spherical.ellipticity = 0.0033528106647474805
         sm.source.latitude = source_info["latitude"]
         sm.source.longitude = source_info["longitude"]
         sm.refinement.lateral_refinements.append(
@@ -92,7 +93,6 @@ class SalvusMeshComponent(Component):
                     elemental_fields = (
                         mesh["MODEL/element_data"]
                         .attrs.get("DIMENSION_LABELS")[1]
-                        .decode()
                     )
                     elemental_fields = (
                         elemental_fields[2:-2].replace(" ", "").split("|")
@@ -108,7 +108,6 @@ class SalvusMeshComponent(Component):
                 nodal_fields = (
                     mesh["MODEL/data"]
                     .attrs.get("DIMENSION_LABELS")[1]
-                    .decode()
                 )
                 nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
                 if field_name in nodal_fields:
@@ -362,8 +361,7 @@ class SalvusMeshComponent(Component):
                     mode="r") as f:
                 dim_labels = (
                     f["MODEL/data"]
-                        .attrs.get("DIMENSION_LABELS")[1]
-                        .decode()[1:-1]
+                        .attrs.get("DIMENSION_LABELS")[1][1:-1]
                         .replace(" ", "")
                         .split("|")
                 )

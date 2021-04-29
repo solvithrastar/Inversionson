@@ -92,6 +92,7 @@ class LasifComponent(Component):
             check_if_exists=False,
             iteration=iteration,
             validation=validation,
+            interpolate_to=interpolate_to,
         )
 
         return hpc_cluster.remote_exists(mesh), mesh
@@ -152,7 +153,6 @@ class LasifComponent(Component):
                 mesh = job.stdout_path.parent / "output" / "mesh.h5"
             else:
                 if interpolate_to:
-                    print("Here I need a smoothie mesh from /project")
                     mesh = remote_mesh_dir / event / "mesh.h5"
                 else:
                     if validation:
@@ -227,9 +227,11 @@ class LasifComponent(Component):
         """
         if event is None:
             if gradient:
+                print("Moving example gradient to cluster")
                 self._move_gradient_to_cluster(hpc_cluster)
             else:
                 # This happens when we want to move the model to the cluster
+                print("Moving model to cluster")
                 self._move_model_to_cluster(hpc_cluster)
             return
         has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
@@ -248,7 +250,9 @@ class LasifComponent(Component):
         )
         if not hpc_cluster.remote_exists(path_to_mesh.parent):
             hpc_cluster.remote_mkdir(path_to_mesh.parent)
-        hpc_cluster.remote_put(event_mesh, path_to_mesh)
+        print(f"Moving mesh for event {event} to cluster")
+        if not hpc_cluster.remote_exists(path_to_mesh):
+            hpc_cluster.remote_put(event_mesh, path_to_mesh)
 
     def _move_model_to_cluster(
         self,
@@ -284,7 +288,7 @@ class LasifComponent(Component):
                 print(f"Model for iteration {iteration} already on cluster")
                 return
         else:
-            if not hpc_cluster.remote_exits(path_to_mesh.parent):
+            if not hpc_cluster.remote_exists(path_to_mesh.parent):
                 hpc_cluster.remote_mkdir(path_to_mesh.parent)
             hpc_cluster.remote_put(local_model, path_to_mesh)
 
@@ -322,7 +326,7 @@ class LasifComponent(Component):
         shutil.copy(inversion_grid, local_grad)
         self.comm.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
 
-        if not hpc_cluster.remote_exits(path_to_mesh.parent):
+        if not hpc_cluster.remote_exists(path_to_mesh.parent):
             hpc_cluster.remote_mkdir(path_to_mesh.parent)
         hpc_cluster.remote_put(local_grad, path_to_mesh)
 

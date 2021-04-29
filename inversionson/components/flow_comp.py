@@ -1,11 +1,13 @@
 from .component import Component
 import salvus.flow.api as sapi
+from salvus.flow.sites import job as s_job
 from inversionson import InversionsonError
 import os
 import time
 import numpy as np
 from typing import Union
 import json
+import pathlib
 
 
 class SalvusFlowComponent(Component):
@@ -132,6 +134,8 @@ class SalvusFlowComponent(Component):
             iteration == "current"
             or iteration == self.comm.project.current_iteration
         ):
+            if "interp" in sim_type:
+                return self.__get_custom_job(event=event, sim_type=sim_type)
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["submitted"]:
                     job_name = self.comm.project.forward_job[event]["name"]
@@ -147,26 +151,6 @@ class SalvusFlowComponent(Component):
                     raise InversionsonError(
                         f"Adjoint job for event: {event} has not been "
                         "submitted"
-                    )
-            elif sim_type == "model_interp":
-                if self.comm.project.model_interp_job[event]["submitted"]:
-                    job_name = self.comm.project.model_interp_job[event][
-                        "name"
-                    ]
-                else:
-                    raise InversionsonError(
-                        f"Model interpolation job for event: {event} "
-                        "has not been submitted"
-                    )
-            elif sim_type == "gradient_interp":
-                if self.comm.project.gradient_interp_job[event]["submitted"]:
-                    job_name = self.comm.project.gradient_interp_job[event][
-                        "name"
-                    ]
-                else:
-                    raise InversionsonError(
-                        f"Gradient interpolation job for event: {event} "
-                        "has not been submitted"
                     )
             elif sim_type == "smoothing":
                 if self.comm.project.inversion_mode == "mono-batch":
@@ -201,13 +185,64 @@ class SalvusFlowComponent(Component):
                 job_array_name=job_name, site_name=site_name
             )
         else:
-            if "interp" in sim_type:
-                site_name = self.comm.project.interpolation_site
-            else:
-                site_name = self.comm.project.site_name
+            site_name = self.comm.project.site_name
             job = sapi.get_job(job_name=job_name, site_name=site_name)
 
         return job
+
+    def __get_custom_job(self, event: str, sim_type: str):
+        """
+        A get_job function which handles job types which are not of type
+        salvus.flow.sites.salvus_job.SalvusJob
+
+        :param event: Name of event
+        :type event: str
+        :param sim_type: Type of simulation
+        :type sim_type: str
+        """
+        gradient=False
+        if sim_type == "model_interp":
+            if self.comm.project.model_interp_job[event]["submitted"]:
+                job_name = self.comm.project.model_interp_job[event][
+                    "name"
+                ]
+            else:
+                raise InversionsonError(
+                    f"Model interpolation job for event: {event} "
+                    "has not been submitted"
+                )
+        elif sim_type == "gradient_interp":
+            gradient=True
+            if self.comm.project.gradient_interp_job[event]["submitted"]:
+                job_name = self.comm.project.gradient_interp_job[event][
+                    "name"
+                ]
+            else:
+                raise InversionsonError(
+                    f"Gradient interpolation job for event: {event} "
+                    "has not been submitted"
+                )
+        site_name = self.comm.project.interpolation_site
+        db_job = sapi._get_config()["db"].get_jobs(
+            limit=1, site_name=site_name, job_name=job_name,
+        )[0]
+
+        job = s_job.Job(
+            site=sapi.get_site(site_name=db_job.site.site_name),
+            commands=self.comm.multi_mesh.get_interp_commands(event, gradient),
+            job_type=db_job.job_type,
+            job_info=db_job.info,
+            jobname=db_job.job_name,
+            job_description=db_job.description,
+            wall_time_in_seconds=db_job.wall_time_in_seconds,
+            working_dir=pathlib.Path(db_job.working_directory),
+            tmpdir_root=pathlib.Path(db_job.temp_directory_root) if db_job.temp_directory_root else None,
+            rundir_root=pathlib.Path(db_job.run_directory_root) if db_job.run_directory_root else None,
+            job_groups=[i.group_name for i in db_job.groups],
+            initialize_on_site=False,
+        )
+        return job
+
 
     def retrieve_outputs(self, event_name: str, sim_type: str):
         """
@@ -737,12 +772,8 @@ class SalvusFlowComponent(Component):
         events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
 
         for _i, event in enumerate(events_in_iteration):
-            job_name = iter_info["events"][str(_i)]["job_info"][sim_type][
-                "name"
-            ]
-            job = sapi.get_job(
-                site_name=self.comm.project.site_name, job_name=job_name
-            )
+
+            job = self.get_job(event=event, sim_type=sim_type)
             job.delete()
 
     def submit_smoothing_job(self, event: str, simulation, par):

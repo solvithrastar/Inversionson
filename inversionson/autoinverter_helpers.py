@@ -32,18 +32,30 @@ class RemoteJobListener(object):
         self.events_retrieved_now = []
         self.to_repost = []
         if events is None:
-            events = self.comm.project.events_in_iteration
+            self.events = self.comm.project.events_in_iteration
+        else:
+            self.events = events
 
     def monitor_jobs(self):
+        if self.job_type == "forward":
+            job_dict = self.comm.project.forward_job
+        elif self.job_type == "adjoint":
+            job_dict = self.comm.project.adjoint_job
+        elif self.job_type == "model_interp":
+            job_dict = self.comm.project.model_interp_job
+        elif self.job_type == "gradient_interp":
+            job_dict = self.comm.project.gradient_interp_job
+        else:
+            job_dict = self.comm.project.smoothing_job
         if self.job_type in [
             "forward",
             "adjoint",
             "model_interp",
             "gradient_interp",
         ]:
-            self.__monitor_jobs()
+            self.__monitor_jobs(job_dict=job_dict)
         elif self.job_type == "smoothing":
-            self.__monitor_job_array()
+            self.__monitor_job_array(job_dict=job_dict)
         else:
             raise InversionsonError(f"Job type {self.job_type} not recognised")
 
@@ -81,9 +93,11 @@ class RemoteJobListener(object):
                 )
         elif status == "cancelled":
             print("What to do here?")
+        elif status == "finished":
+            return status
         else:
             warnings.warn(
-                f"Inversionson does not recognise job status: " f"{status}",
+                f"Inversionson does not recognise job status:  {status}",
                 InversionsonWarning,
             )
         return status
@@ -166,7 +180,6 @@ class ForwardHelper(object):
         if events is None:
             events = self.events
         self.__retrieve_forward_simulations(
-            self,
             events=events,
             adjoint=adjoint,
             windows=windows,
@@ -225,6 +238,13 @@ class ForwardHelper(object):
                 os.makedirs(interp_folder)
         else:
             interp_folder = None
+        if mode == "remote":
+            if self.comm.project.model_interp_job[event]["submitted"]:
+                print(
+                    f"Interpolation for event {event} has already been "
+                    "submitted. Will not do interpolation."
+                )
+                return
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
             event,
             interp_folder=interp_folder,
@@ -532,6 +552,15 @@ class ForwardHelper(object):
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
         if submitted:
             return
+        
+        if verbose:
+            print(Fore.YELLOW + "\n ============================ \n")
+            print(
+                emoji.emojize(
+                    ":rocket: | Run adjoint simulation", use_aliases=True
+                )
+            )
+            print(f"Event: {event}")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src
@@ -624,7 +653,6 @@ class ForwardHelper(object):
         int_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
         )
-
         while len(int_job_listener.events_already_retrieved) != len(
             self.events
         ):
@@ -632,15 +660,21 @@ class ForwardHelper(object):
             for event in int_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(event, verbose)
                 self.__compute_station_weights(event, verbose)
+                self.comm.project.change_attribute(
+                    attribute=f'model_interp_job["{event}"]["retrieved"]',
+                    new_value=True
+                )
+                self.comm.project.update_iteration_toml()
             for event in int_job_listener.to_repost:
                 self.__run_forward_simulation(event, verbose)
             print(
                 f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                 "simulations"
             )
-            print("Waiting 15 seconds before trying again")
+            
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
+            print("Waiting 15 seconds before trying again")
             time.sleep(15)
 
     def __dispatch_forwards_normal(self, verbose):
@@ -698,8 +732,20 @@ class ForwardHelper(object):
             for event in vint_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(event, verbose)
                 self.__compute_station_weights(event, verbose)
+                self.comm.project.change_attribute(
+                    attribute=f'model_interp_job["{event}"]["retrieved"]',
+                    new_value=True
+                )
+                self.comm.project.update_iteration_toml()
             for event in vint_job_listener.to_repost:
-                self.__run_forward_simulation(event, verbose)
+                self.comm.project.change_attribute(
+                    attribute=f'model_interp_job["{event}"]["submitted"]',
+                    new_value=False,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__interpolate_model(
+                    event=event, mode="remote", validation=True
+                )
             print(
                 f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
                 "simulations"
@@ -770,10 +816,10 @@ class ForwardHelper(object):
                 f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                 "seismograms"
             )
-            print("Waiting 15 seconds before trying again")
+            print("Waiting 30 seconds before trying again")
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
-            time.sleep(15)
+            time.sleep(30)
 
 
 # Might be a good idea to do Interpolations and then Smoothing
@@ -1210,7 +1256,7 @@ class SmoothingHelper(object):
         """
         self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False)
 
-    def retrieve_smooth_gradients(self, events=None, verbose=verbose):
+    def retrieve_smooth_gradients(self, events=None, verbose=False):
         if events is None:
             events = self.events
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")

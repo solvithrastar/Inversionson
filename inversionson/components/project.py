@@ -532,7 +532,7 @@ class ProjectComponent(Component):
             self.interpolation_site = self.info["HPC"]["interpolation"][
                 "site_name"
             ]
-            self.remote_mesh_dir = self.info["HPC"]["remote_mesh_directory"]
+            self.remote_mesh_dir = self.info["HPC"]["interpolation"]["remote_mesh_directory"]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]

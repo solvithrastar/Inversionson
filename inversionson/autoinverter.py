@@ -96,7 +96,7 @@ class AutoInverter(object):
                 if self.comm.project.meshes == "multi-mesh":
                     self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
                     self.comm.lasif.move_mesh(
-                        event=None, iteration=it_name, hpc_cluster=None
+                        event=None, iteration=it_name, hpc_cluster=None,
                     )
                     for event in self.comm.project.events_in_iteration:
                         if not self.comm.lasif.has_mesh(event):
@@ -275,7 +275,9 @@ class AutoInverter(object):
             self.comm, self.comm.project.events_in_iteration
         )
         forward_helper.dispatch_forward_simulations(verbose=True)
+        print("Making sure all forward simulations have been dispatched")
         assert forward_helper.assert_all_simulations_dispatched()
+        print("Retrieving forward simulations")
         forward_helper.retrieve_forward_simulations(adjoint=True, verbose=True)
 
         self.compute_misfit_on_validation_data()

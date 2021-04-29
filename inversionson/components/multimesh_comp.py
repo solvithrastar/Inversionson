@@ -102,7 +102,7 @@ class MultiMeshComponent(Component):
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',
-                new_value=job.full_name,
+                new_value=job.job_name,
             )
             job.launch()
             self.comm.project.change_attribute(
@@ -154,7 +154,7 @@ class MultiMeshComponent(Component):
             )
             self.comm.project.change_attribute(
                 attribute=f'gradient_interp_job["{event}"]["name"]',
-                new_value=job.full_name,
+                new_value=job.job_name,
             )
             job.launch()
             self.comm.project.change_attribute(
@@ -229,6 +229,35 @@ class MultiMeshComponent(Component):
         :param gradient: Are we interpolating the gradient?, defaults to False
         :type gradient: bool, optional
         """
+
+        description = "Interpolation of "
+        description += "gradient " if gradient else "model "
+        description += f"for event {event}"
+
+        wall_time = self.comm.project.model_interp_wall_time
+        if gradient:
+            wall_time = self.comm.project.grad_interp_wall_time
+
+        int_job = job.Job(
+            site=sapi.get_site(self.comm.project.interpolation_site),
+            commands=self.get_interp_commands(event=event, gradient=gradient),
+            job_type="interpolation",
+            job_description=description,
+            job_info={},
+            wall_time_in_seconds=wall_time,
+            no_db=False,
+        )
+        return int_job
+
+    def get_interp_commands(self, event: str, gradient: bool) -> list:
+        """
+        Get the interpolation commands needed to do remote interpolations
+        """
+        iteration = self.comm.project.current_iteration
+        if "validation_" in iteration:
+            validation = True
+        else:
+            validation = False
         mesh_to_interpolate_to = self.comm.lasif.find_remote_mesh(
             event=event,
             gradient=gradient,
@@ -241,41 +270,24 @@ class MultiMeshComponent(Component):
             validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
-
-        description = "Interpolation of "
-        description += "gradient " if gradient else "model "
-        description += f"for event {event}"
-
-        wall_time = self.comm.project.model_interp_wall_time
-        if gradient:
-            wall_time = self.comm.project.grad_interp_wall_time
-
-        int_job = job.Job(
-            site=sapi.get_site(self.comm.project.interpolation_site),
-            commands=[
-                remote_io_site.site_utils.RemoteCommand(
-                    f"cp {mesh_to_interpolate_from} ./from_mesh.h5", False
-                ),
-                remote_io_site.site_utils.RemoteCommand(
-                    f"cp {mesh_to_interpolate_to} ./to_mesh.h5", False
-                ),
-                remote_io_site.site_utils.RemoteCommand(
-                    f"cp {interpolation_script} ./interpolate.py", False
-                ),
-                remote_io_site.site_utils.RemoteCommand("mkdir output", False),
-                remote_io_site.site_utils.RemoteCommand(
-                    "python interpolate.py", False
-                ),
-                remote_io_site.site_utils.RemoteCommand(
-                    "mv ./to_mesh.h5 ./output/mesh.h5"
-                ),
-            ],
-            job_type="interpolation",
-            job_description=description,
-            job_info={},
-            wall_time_in_seconds=wall_time,
-        )
-        return int_job
+        return [
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {mesh_to_interpolate_to} ./to_mesh.h5", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {interpolation_script} ./interpolate.py", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(command="mkdir output", execute_with_mpi=False),
+            remote_io_site.site_utils.RemoteCommand(
+                command="python interpolate.py", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command="mv ./to_mesh.h5 ./output/mesh.h5", execute_with_mpi=False
+            ),
+        ]
 
     def find_interpolation_script(self) -> str:
         """
@@ -314,15 +326,15 @@ class MultiMeshComponent(Component):
         print("New interpolation script will be generated")
         if not os.path.exists(local_script):
             interp_script = f"""import multi_mesh.api
-            fm = "from_mesh.h5"
-            tm = "to_mesh.h5"
-            multi_mesh.api.gll_2_gll_layered_multi(
-                fm,
-                tm,
-                nelem_to_search=20,
-                layers="nocore",
-                parameters={self.comm.project.inversion_params}
-                )
+fm = "from_mesh.h5"
+tm = "to_mesh.h5"
+multi_mesh.api.gll_2_gll_layered_multi(
+    fm,
+    tm,
+    nelem_to_search=20,
+    layers="nocore",
+    parameters={self.comm.project.inversion_params}
+)
             """
             with open(local_script, "w+") as fh:
                 fh.write(interp_script)
