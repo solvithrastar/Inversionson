@@ -54,9 +54,9 @@ A process which should get your project going:
 ```bash
 sh run_salvus_opt.sh
 ```
-8. Now go back to the Inversionson folder and run:
+8. Now go back to the folder of the Inversionson project and run:
 ```bash
-python <Path to inversionson folder>/inversionson/create_dummy_info_file.py
+python <Path to inversionson code>/inversionson/create_dummy_info_file.py
 ```
 9. Fill in the relevant fields in the `inversion_info.toml` file properly. The file contains comments to explain the fields but some of them will be further explained here.
     * __inversion_mode__: Can be either "mini-batch" (dynamic mini-batches) or "mono-batch" (full gradients)
