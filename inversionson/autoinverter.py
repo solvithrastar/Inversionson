@@ -307,7 +307,11 @@ class AutoInverter(object):
             smoothing_helper = helpers.SmoothingHelper(
                 self.comm, self.comm.project.events_in_iteration
             )
-            smoothing_helper.dispatch_smoothing_simulations()
+            smoothing_helper.dispatch_smoothing_simulations(verbose=True)
+            if self.comm.project.meshes == "multi-mesh":
+                if self.comm.project.interpolation_mode == "remote":
+                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(verbose=True)
+                    smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:
@@ -466,6 +470,10 @@ class AutoInverter(object):
                 self.comm, self.comm.project.events_in_iteration
             )
             smoothing_helper.dispatch_smoothing_simulations()
+            if self.comm.project.meshes == "multi-mesh":
+                if self.comm.project.interpolation_mode == "remote":
+                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(verbose=True)
+                    smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:

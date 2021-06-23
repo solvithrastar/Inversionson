@@ -72,10 +72,10 @@ class BatchComponent(Component):
         #       what is expected.
         with h5py.File(mesh, "r") as mesh:
             params = (
-                mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1].decode()
+                mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
             )
             params = (
-                params[2:-2].replace(" ", "").replace("grad", "").split("|")
+                params[1:-1].replace(" ", "").replace("grad", "").split("|")
             )
         # Not sure if I should replace the "grad" in this case
         msg = "Parameters in gradient are not the same as inversion perameters"
@@ -218,8 +218,7 @@ class BatchComponent(Component):
             grad = f["MODEL/data"][()]
             dim_labels = (
                 f["MODEL/data"]
-                .attrs.get("DIMENSION_LABELS")[1]
-                .decode()[1:-1]
+                .attrs.get("DIMENSION_LABELS")[1][1:-1]
                 .replace(" ", "")
                 .split("|")
             )

@@ -93,6 +93,7 @@ class LasifComponent(Component):
             iteration=iteration,
             validation=validation,
             interpolate_to=interpolate_to,
+            gradient=gradient,
         )
 
         return hpc_cluster.remote_exists(mesh), mesh
@@ -178,7 +179,7 @@ class LasifComponent(Component):
                 )
         return mesh
 
-    def has_mesh(self, event: str) -> bool:
+    def has_mesh(self, event: str, hpc_cluster=None) -> bool:
         """
         Check whether mesh has been constructed for respective event
 
@@ -189,7 +190,7 @@ class LasifComponent(Component):
         """
         # If interpolations are remote, we check for mesh remotely too
         if self.comm.project.interpolation_mode == "remote":
-            has, _ = self.has_remote_mesh(event, gradient=False)
+            has, _ = self.has_remote_mesh(event, gradient=False, hpc_cluster=hpc_cluster)
         else:
             has, _ = lapi.find_event_mesh(self.lasif_comm, event)
 
@@ -292,7 +293,7 @@ class LasifComponent(Component):
                 hpc_cluster.remote_mkdir(path_to_mesh.parent)
             hpc_cluster.remote_put(local_model, path_to_mesh)
 
-    def _move_gradient_to_cluster(
+    def move_gradient_to_cluster(
         self, hpc_cluster=None, overwrite: bool = False
     ):
         """

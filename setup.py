@@ -43,7 +43,6 @@ setup_config = dict(
     install_requires=[
         "pyasdf",
         "toml",
-        "mpi4py",
         "numpy",
         "pytest",
         "flask",

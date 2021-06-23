@@ -106,7 +106,7 @@ class SalvusSmoothComponent(Component):
                 iteration=iteration,
                 event=event_name,
                 smooth=True,
-                inversion_grid=False,
+                inversion_grid=True,
                 just_give_path=True,
             )
 
@@ -115,7 +115,7 @@ class SalvusSmoothComponent(Component):
 
         smooth_gradient = get_smooth_model(
             job=salvus_job,
-            model=self.comm.lasif.find_event_mesh(event=event_name),
+            model=self.comm.lasif.get_master_model(),
         )
         smooth_gradient.write_h5(smooth_grad)
         if "VPV" in list(smooth_gradient.element_nodal_fields.keys()):
@@ -208,7 +208,7 @@ class SalvusSmoothComponent(Component):
         import salvus.flow.simple_config as sc
         from salvus.flow.api import get_site
         from salvus.flow import api as sapi
-
+        print(f"Preparing smoothing for event: {event}")
         int_mode = self.comm.project.interpolation_mode
         if self.comm.project.meshes == "multi-mesh":
             mesh = self.comm.lasif.get_master_model()
@@ -221,7 +221,7 @@ class SalvusSmoothComponent(Component):
         if int_mode == "remote" and self.comm.project.meshes == "multi-mesh":
             # The gradient we want has been interpolated
             job = self.comm.salvus_flow.get_job(event, "gradient_interp")
-            remote_grad = job.stdout_path.parent / "output" / "mesh.h5"
+            remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")
         else:
             job = self.comm.salvus_flow.get_job(event, "adjoint")
             output_files = job.get_output_files()
@@ -317,6 +317,7 @@ class SalvusSmoothComponent(Component):
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
         if self.comm.project.inversion_mode == "mini-batch":
+            print(f"Submitted smoothing for event {event}")
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
             )

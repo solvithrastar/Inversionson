@@ -299,10 +299,11 @@ class SalvusFlowComponent(Component):
         iteration = self.comm.project.current_iteration
         src_info = self.comm.lasif.get_source(event_name)
         stf_file = self.comm.lasif.find_stf(iteration)
+        side_set = "r1"
         if isinstance(src_info, list):
             src_info = src_info[0]
         if self.comm.project.meshes == "multi-mesh":
-            src = source.seismology.MomentTensorPoint3D(
+            src = source.seismology.SideSetMomentTensorPoint3D(
                 latitude=src_info["latitude"],
                 longitude=src_info["longitude"],
                 depth_in_m=src_info["depth_in_m"],
@@ -315,8 +316,12 @@ class SalvusFlowComponent(Component):
                 source_time_function=stf.Custom(
                     filename=stf_file, dataset_name="/source"
                 ),
+                side_set_name=side_set
             )
+            print(f"Source info: {src_info}")
         else:
+            if self.comm.project.ocean_loading["use"]:
+                side_set = "r1_ol"
             src = source.seismology.SideSetMomentTensorPoint3D(
                 latitude=src_info["latitude"],
                 longitude=src_info["longitude"],
@@ -327,7 +332,7 @@ class SalvusFlowComponent(Component):
                 mtp=src_info["mtp"],
                 mrp=src_info["mrp"],
                 mrt=src_info["mrt"],
-                side_set_name="r1",
+                side_set_name=side_set,
                 source_time_function=stf.Custom(
                     filename=stf_file, dataset_name="/source"
                 ),
@@ -473,21 +478,10 @@ class SalvusFlowComponent(Component):
         :type event: str
         """
         from salvus.flow.simple_config import receiver
-
+        side_set = "r1"
+        
         recs = self.comm.lasif.get_receivers(event)
         if self.comm.project.meshes == "multi-mesh":
-            receivers = [
-                receiver.seismology.Point3D(
-                    latitude=rec["latitude"],
-                    longitude=rec["longitude"],
-                    network_code=rec["network-code"],
-                    station_code=rec["station-code"],
-                    depth_in_m=0.0,
-                    fields=["displacement"],
-                )
-                for rec in recs
-            ]
-        else:
             receivers = [
                 receiver.seismology.SideSetPoint3D(
                     latitude=rec["latitude"],
@@ -496,7 +490,22 @@ class SalvusFlowComponent(Component):
                     station_code=rec["station-code"],
                     depth_in_m=0.0,
                     fields=["displacement"],
-                    side_set_name="r1",
+                    side_set_name=side_set
+                )
+                for rec in recs
+            ]
+        else:
+            if self.comm.project.ocean_loading["use"]:
+                side_set = "r1_ol"
+            receivers = [
+                receiver.seismology.SideSetPoint3D(
+                    latitude=rec["latitude"],
+                    longitude=rec["longitude"],
+                    network_code=rec["network-code"],
+                    station_code=rec["station-code"],
+                    depth_in_m=0.0,
+                    fields=["displacement"],
+                    side_set_name=side_set,
                 )
                 for rec in recs
             ]
@@ -519,8 +528,9 @@ class SalvusFlowComponent(Component):
         import salvus.flow.simple_config as sc
 
         mesh = self.comm.lasif.get_simulation_mesh(event)
-        if self.comm.project.interpolation_mode == "remote":
-            mesh = f"REMOTE:{mesh}"
+        if self.comm.project.meshes == "multi-mesh":
+            if self.comm.project.interpolation_mode == "remote":
+                use_mesh = f"REMOTE:{mesh}"
 
         w = sc.simulation.Waveform(
             mesh=mesh, sources=sources, receivers=receivers
@@ -563,9 +573,13 @@ class SalvusFlowComponent(Component):
                 ],
             )
             boundaries.append(absorbing)
-        if self.comm.project.ocean_loading:
+        if self.comm.project.ocean_loading["use"]:
             bound = True
-            ocean_loading = sc.boundary.OceanLoading(side_sets=["r1_ol"])
+            if self.comm.project.meshes == "multi-mesh":
+                side_set = "r1"
+            else:
+                side_set = "r1_ol"
+            ocean_loading = sc.boundary.OceanLoading(side_sets=[side_set])
             boundaries.append(ocean_loading)
         if bound:
             w.physics.wave_equation.boundaries = boundaries
@@ -578,6 +592,8 @@ class SalvusFlowComponent(Component):
         w.output.volume_data.sampling_interval_in_time_steps = (
             "auto-for-checkpointing"
         )
+        if self.comm.project.meshes == "multi-mesh":
+            w.set_mesh(use_mesh)
 
         w.validate()
 
@@ -598,14 +614,20 @@ class SalvusFlowComponent(Component):
         """
         print("Constructing Adjoint Simulation now")
         from salvus.flow.simple_config import simulation
+        remote_interp = False
+        if self.comm.project.interpolation_mode == "remote" and self.comm.project.meshes == "multi-mesh":
+            remote_interp = True
 
-        # mesh = self.comm.lasif.get_simulation_mesh(event)
+        mesh = self.comm.lasif.find_event_mesh(event)
+        if remote_interp:
+            interp_job = self.get_job(event=event, sim_type="model_interp")
         forward_job_name = self.comm.project.forward_job[event]["name"]
-        forward_job = sapi.get_job(
-            site_name=self.comm.project.site_name, job_name=forward_job_name
-        )
+        forward_job = self.get_job(event=event, sim_type="forward")
         meta = forward_job.output_path / "meta.json"
-        remote_mesh = forward_job.input_path / "mesh.h5"
+        if remote_interp:
+            remote_mesh = interp_job.path / "output" / "mesh.h5"
+        else:
+            remote_mesh = forward_job.input_path / "mesh.h5"
 
         # gradient = os.path.join(
         #     self.comm.lasif.lasif_root,
@@ -618,7 +640,7 @@ class SalvusFlowComponent(Component):
         # if not os.path.exists(os.path.dirname(gradient)):
         #     os.makedirs(os.path.dirname(gradient))
 
-        w = simulation.Waveform()
+        w = simulation.Waveform(mesh=mesh)
         w.adjoint.forward_meta_json_filename = f"REMOTE:{meta}"
         if "VPV" in self.comm.project.inversion_params:
             parameterization = "tti"
@@ -772,9 +794,11 @@ class SalvusFlowComponent(Component):
         events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
 
         for _i, event in enumerate(events_in_iteration):
-
-            job = self.get_job(event=event, sim_type=sim_type)
-            job.delete()
+            try:
+                job = self.get_job(event=event, sim_type=sim_type)
+                job.delete()
+            except:
+                print(f"Could not delete job {sim_type} for event {event}")
 
     def submit_smoothing_job(self, event: str, simulation, par):
         """

@@ -124,6 +124,7 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need information on how you want to interpolate "
                 "between meshes, local or remote. "
+                "If you use mono-mesh, just put 'local'"
                 "Key: interpolation_mode "
             )
 
@@ -350,19 +351,70 @@ class ProjectComponent(Component):
                 "We need to know how many elements you want per azimuthal "
                 "quarter. Key: Meshing"
             )
+        if self.info["meshes"] == "multi-mesh":
+            if "elements_per_azimuthal_quarter" not in self.info["Meshing"].keys():
+                raise InversionsonError(
+                    "We need to know how many elements you need per azimuthal "
+                    "quarter. Key: Meshing.elements_per_azimuthal_quarter"
+                )
 
-        if "elements_per_azimuthal_quarter" not in self.info["Meshing"].keys():
+            if not isinstance(
+                self.info["Meshing"]["elements_per_azimuthal_quarter"], int
+            ):
+                raise InversionsonError(
+                    "Elements per azimuthal quarter need to be an integer."
+                )
+            
+            if "ellipticity" not in self.info["Meshing"].keys():
+                raise InversionsonError(
+                    "We need a boolean value regarding ellipticity "
+                    "of your meshes. \n"
+                    "Key: Meshing.ellipticity"
+                )
+            if "topography" not in self.info["Meshing"].keys():
+                raise InversionsonError(
+                    "We need information on whether you use topography "
+                    "in your mesh."
+                )
+            else:
+                if "use" not in self.info["Meshing"]["topography"].keys():
+                    raise InversionsonError(
+                        "We need a boolean value telling us if you use "
+                        "topography in your mesh. \n"
+                        "If True, we need file and variable name"
+                    )
+                if self.info["Meshing"]["topography"]["use"]:
+                    if len(self.info["Meshing"]["topography"]["file"]) == 0:
+                        raise InversionsonError(
+                            "Please specify path to your topography file.\n"
+                            "Key: Meshing.topography.file"
+                        )
+                    if len(self.info["Meshing"]["topography"]["variable"]) == 0:
+                        raise InversionsonError(
+                            "Please specify path to your topography variable "
+                            "name. You can find it by opening the file in "
+                            "ParaView \n"
+                            "Key: Meshing.topography.variable"
+                        )
+        if "use" not in self.info["Meshing"]["ocean_loading"].keys():
             raise InversionsonError(
-                "We need to know how many elements you need per azimuthal "
-                "quarter. Key: Meshing.elements_per_azimuthal_quarter"
+                "We need a boolean value telling us if you use "
+                "ocean_loading in your mesh. \n"
+                "If True, we need file and variable name"
             )
-
-        if not isinstance(
-            self.info["Meshing"]["elements_per_azimuthal_quarter"], int
-        ):
-            raise InversionsonError(
-                "Elements per azimuthal quarter need to be an integer."
-            )
+        if self.info["Meshing"]["ocean_loading"]["use"]:
+            if len(self.info["Meshing"]["ocean_loading"]["file"]) == 0:
+                raise InversionsonError(
+                    "Please specify path to your bathymetry file.\n"
+                    "Key: Meshing.ocean_loading.file"
+                )
+            if len(self.info["Meshing"]["ocean_loading"]["variable"]) == 0:
+                raise InversionsonError(
+                    "Please specify path to your bathymetry variable "
+                    "name. You can find it by opening the file in "
+                    "ParaView \n"
+                    "Key: Meshing.ocean_loading.variable"
+                )
 
         # Lasif
         if "lasif_root" not in self.info.keys():
@@ -498,7 +550,6 @@ class ProjectComponent(Component):
             "absorbing_boundaries_length"
         ]
         self.absorbing_boundaries = self.info["absorbing_boundaries"]
-        self.ocean_loading = self.simulation_dict["ocean_loading"]
         self.domain_file = self.simulation_dict["domain_file"]
 
         # Inversion attributes
@@ -511,6 +562,9 @@ class ProjectComponent(Component):
             self.elem_per_quarter = self.info["Meshing"][
                 "elements_per_azimuthal_quarter"
             ]
+            self.topography = self.info["Meshing"]["topography"]
+            self.ellipticity = self.info["Meshing"]["ellipticity"]
+        self.ocean_loading = self.info["Meshing"]["ocean_loading"]
         self.interpolation_mode = self.info["interpolation_mode"]
         self.cut_source_radius = self.info[
             "cut_source_region_from_gradient_in_km"

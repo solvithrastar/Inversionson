@@ -21,8 +21,7 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     gradient = h5py.File(mesh, "r+")
     data = gradient["MODEL/data"]
     dim_labels = (
-        data.attrs.get("DIMENSION_LABELS")[1]
-        .decode()[1:-1]
+        data.attrs.get("DIMENSION_LABELS")[1][1:-1]
         .replace(" ", "")
         .split("|")
     )

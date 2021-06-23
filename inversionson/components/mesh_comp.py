@@ -45,12 +45,21 @@ class SalvusMeshComponent(Component):
         sm = SmoothieSEM()
         sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = self.comm.project.min_period
-        sm.basic.elements_per_wavelength = 1.5
+        sm.basic.elements_per_wavelength = 1.7
         sm.basic.number_of_lateral_elements = (
             self.comm.project.elem_per_quarter
         )
         sm.advanced.tensor_order = 4
-        # sm.spherical.ellipticity = 0.0033528106647474805
+        if self.comm.project.ellipticity:
+            sm.spherical.ellipticity = 0.0033528106647474805
+        if self.comm.project.ocean_loading["use"]:
+            sm.ocean.bathymetry_file = self.comm.project.ocean_loading["file"]
+            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading["variable"]
+            sm.ocean.ocean_layer_style = "loading"
+            sm.ocean.ocean_layer_density = 1025.0
+        if self.comm.project.topography["use"]:
+            sm.topography.topography_file = self.comm.project.topography["file"]
+            sm.topography.topography_varname = self.comm.project.topography["variable"]
         sm.source.latitude = source_info["latitude"]
         sm.source.longitude = source_info["longitude"]
         sm.refinement.lateral_refinements.append(

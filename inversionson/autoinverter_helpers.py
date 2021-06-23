@@ -17,6 +17,7 @@ CUT_SOURCE_SCRIPT_PATH = os.path.join(
             os.path.abspath(inspect.getfile(inspect.currentframe()))
         )
     ),
+    "inversionson",
     "remote_scripts",
     "cut_and_clip.py",
 )
@@ -81,16 +82,10 @@ class RemoteJobListener(object):
                 raise InversionsonError("Too many reposts")
             self.to_repost.append(event)
             reposts += 1
-            if self.job_type == "smoothing" and event is None:
-                self.comm.project.change_attribute(
-                    attribute=f'{self.job_type}_job["reposts"]',
-                    new_value=reposts,
-                )
-            else:
-                self.comm.project.change_attribute(
-                    attribute=f'{self.job_type}_job["{event}"]["reposts"]',
-                    new_value=reposts,
-                )
+            self.comm.project.change_attribute(
+                attribute=f'{self.job_type}_job["{event}"]["reposts"]',
+                new_value=reposts,
+            )
         elif status == "cancelled":
             print("What to do here?")
         elif status == "finished":
@@ -102,6 +97,62 @@ class RemoteJobListener(object):
             )
         return status
 
+    def __check_status_of_job_array(self, event, reposts):
+        """
+        Query Salvus Flow for the status of the job array
+
+        :param event: Name of event
+        :type event: str
+        """
+        status = self.comm.salvus_flow.get_job_status(
+            event, self.job_type
+        )
+        params = []
+        i = 0
+        for _i, s in enumerate(status):
+            if s.name == "finished":
+                params.append(s)
+            else:
+                if s.name in ["pending", "running"]:
+                    print(
+                        f"Status = {s.name}, event: {event} "
+                        f"for smoothing job {_i}/{len(status)}"
+                    )
+                    continue
+                elif s.name in ("failed", "unknown"):
+                    print(f"Job {s.name}, will resubmit")
+                    if i == 0:
+                        self.to_repost.append(event)
+                        reposts += 1
+                        if reposts >= 3:
+                            print("No I've actually reposted this too often \n")
+                            print("There must be something wrong.")
+                            raise InversionsonError("Too many reposts")
+                        if event is None:
+                            self.comm.project.change_attribute(
+                                attribute=f'{self.job_type}_job["reposts"]',
+                                new_value=reposts,
+                            )
+                        else:
+                            self.comm.project.change_attribute(
+                                attribute=f'{self.job_type}_job["{event}"]["reposts"]',
+                                new_value=reposts,
+                            )
+                        i += 1
+
+                elif s.name == "cancelled":
+                    print(f"Job cancelled for event {event}")
+
+                else:
+                    warnings.warn(
+                        f"Inversionson does not recognise job status:  {status}",
+                        InversionsonWarning,
+                    )
+        if len(params) == len(status):
+            return "finished"
+                    
+
+
     def __monitor_jobs(self, job_dict, events=None):
         if events is None:
             events = self.events
@@ -112,6 +163,9 @@ class RemoteJobListener(object):
                 continue
             else:
                 reposts = job_dict[event]["reposts"]
+                if not job_dict[event]["submitted"]:
+                    status = "unsubmitted"
+                    continue
                 status = self.__check_status_of_job(event, reposts)
             if status == "finished":
                 self.events_retrieved_now.append(event)
@@ -125,7 +179,7 @@ class RemoteJobListener(object):
                 self.events_already_retrieved = events
             else:
                 reposts = job_dict["reposts"]
-                status = self.__check_status_of_job(None, reposts)
+                status = self.__check_status_of_job_array(None, reposts)
             if status == "finished":
                 self.events_already_retrieved = events
         else:
@@ -138,7 +192,7 @@ class RemoteJobListener(object):
                     continue
                 else:
                     reposts = job_dict[event]["reposts"]
-                    status = self.__check_status_of_job(event, reposts)
+                    status = self.__check_status_of_job_array(event, reposts)
                 if status == "finished":
                     self.events_retrieved_now.append(event)
             self.comm.project.update_iteration_toml()
@@ -541,7 +595,7 @@ class ForwardHelper(object):
         )
         self.comm.project.update_iteration_toml()
 
-    def __dispatch_adjoint_simulation(self, event: str):
+    def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
         Dispatch an adjoint simulation after finishing the forward
         processing
@@ -653,6 +707,7 @@ class ForwardHelper(object):
         int_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
         )
+        j = 0
         while len(int_job_listener.events_already_retrieved) != len(
             self.events
         ):
@@ -674,8 +729,11 @@ class ForwardHelper(object):
             
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
-            print("Waiting 15 seconds before trying again")
-            time.sleep(15)
+            if j != 0:
+                print("Waiting 30 seconds before trying again")
+                time.sleep(30)
+            else:
+                j += 1
 
     def __dispatch_forwards_normal(self, verbose):
         """
@@ -724,7 +782,7 @@ class ForwardHelper(object):
         vint_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
         )
-
+        j = 0
         while len(vint_job_listener.events_already_retrieved) != len(
             self.events
         ):
@@ -750,10 +808,13 @@ class ForwardHelper(object):
                 f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
                 "simulations"
             )
-            print("Waiting 15 seconds before trying again")
             vint_job_listener.to_repost = []
             vint_job_listener.events_retrieved_now = []
-            time.sleep(15)
+            if j != 0:
+                print("Waiting 30 seconds before trying again")
+                time.sleep(30)
+            else:
+                j += 1
 
     def __dispatch_validation_forwards_normal(self, verbose):
         for event in self.comm.project.validation_dataset:
@@ -787,15 +848,11 @@ class ForwardHelper(object):
         for_job_listener = RemoteJobListener(
             comm=self.comm, job_type="forward", events=events
         )
+        j = 0
         while len(for_job_listener.events_already_retrieved) != len(events):
             for_job_listener.monitor_jobs()
             for event in for_job_listener.events_retrieved_now:
                 self.__retrieve_seismograms(event=event, verbose=verbose)
-                self.comm.project.change_attribute(
-                    attribute=f'forward_job["{event}"]["retrieved"]',
-                    new_value=True,
-                )
-                self.comm.project.update_iteration_toml()
                 self.__work_with_retrieved_seismograms(
                     event,
                     windows,
@@ -803,6 +860,11 @@ class ForwardHelper(object):
                     validation,
                     verbose,
                 )
+                self.comm.project.change_attribute(
+                    attribute=f'forward_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                self.comm.project.update_iteration_toml()
                 if adjoint:
                     self.__dispatch_adjoint_simulation(event, verbose)
             for event in for_job_listener.to_repost:
@@ -816,10 +878,13 @@ class ForwardHelper(object):
                 f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                 "seismograms"
             )
-            print("Waiting 30 seconds before trying again")
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
-            time.sleep(30)
+            if j != 0:
+                print("Waiting 30 seconds before trying again")
+                time.sleep(30)
+            else:
+                j += 1
 
 
 # Might be a good idea to do Interpolations and then Smoothing
@@ -837,12 +902,12 @@ class AdjointHelper(object):
         self.comm = comm
         self.events = events
 
-    def dispatch_adjoint_simulations(self):
+    def dispatch_adjoint_simulations(self, verbose=False):
         """
         Dispatching all adjoint simulations
         """
         for event in self.events:
-            self.__dispatch_adjoint_simulation(event)
+            self.__dispatch_adjoint_simulation(event, verbose=verbose)
 
     def process_gradients(self, events=None, interpolate=False, verbose=False):
         """
@@ -908,6 +973,7 @@ class AdjointHelper(object):
                 comm=self.comm, job_type="gradient_interp", events=events
             )
             mode = self.comm.project.interpolation_mode
+        j = 0
         while len(adj_job_listener.events_already_retrieved) != len(events):
             adj_job_listener.monitor_jobs()
             for event in adj_job_listener.events_retrieved_now:
@@ -950,14 +1016,14 @@ class AdjointHelper(object):
             if interpolate:
                 interp_job_listener.monitor_jobs()
                 for event in interp_job_listener.events_retrieved_now:
+                    self.__dispatch_smoothing(
+                        event, interpolate, verbose=verbose
+                    )
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["retrieved"]',
                         new_value=True,
                     )
                     self.comm.project.update_iteration_toml()
-                    self.__dispatch_smoothing(
-                        event, interpolate, verbose=verbose
-                    )
                 for event in interp_job_listener.to_repost:
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["submitted"]',
@@ -967,11 +1033,13 @@ class AdjointHelper(object):
                     self.__dispatch_raw_gradient_interpolation(event)
                 interp_job_listener.events_retrieved_now = []
                 interp_job_listener.to_repost = []
-            print("Waiting 15 seconds before trying again")
             adj_job_listener.to_repost = []
             adj_job_listener.events_retrieved_now = []
-            time.sleep(15)
-
+            if j != 0:
+                print("Waiting 30 seconds before trying again")
+                time.sleep(30)
+            else:
+                j += 1
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
         """
         Take the gradient out of the adjoint simulations and
@@ -1056,7 +1124,7 @@ class AdjointHelper(object):
         else:
             self.comm.smoothing.run_remote_smoother(event)
 
-    def __cut_and_clip_gradient(self, event):
+    def __cut_and_clip_gradient(self, event, verbose=False):
         """
         Cut sources and receivers from gradient before smoothing.
         We also clip the gradient to some percentile
@@ -1125,6 +1193,7 @@ class SmoothingHelper(object):
                 and self.comm.project.meshes == "multi-mesh"
             ):
                 interpolate = True
+                self.__put_standard_gradient_to_cluster()
             else:
                 interpolate = False
             for event in self.events:
@@ -1143,6 +1212,7 @@ class SmoothingHelper(object):
             job_type="gradient_interp",
             events=events,
         )
+        j = 0
         while len(int_job_listener.events_already_retrieved) != len(events):
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
@@ -1168,10 +1238,13 @@ class SmoothingHelper(object):
                 f"Dispatched {len(int_job_listener.events_retrieved_now)} "
                 "Smoothing jobs"
             )
-            print("Waiting 15 seconds before trying again")
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
-            time.sleep(15)
+            if j != 0:
+                print("Waiting 30 seconds before trying again")
+                time.sleep(30)
+            else:
+                j += 1
 
     def sum_gradients(self):
         from inversionson.utils import sum_gradients
@@ -1260,10 +1333,11 @@ class SmoothingHelper(object):
         if events is None:
             events = self.events
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
-
+        j = 0
         while len(smooth_job_listener.events_already_retrieved) != len(events):
             smooth_job_listener.monitor_jobs()
             for event in smooth_job_listener.events_retrieved_now:
+                self.comm.smoother.retrieve_smooth_gradient(event_name=event)
                 if self.comm.project.inversion_mode == "mono-batch":
                     attribute = 'smoothing_job["retrieved"]'
                 else:
@@ -1273,8 +1347,6 @@ class SmoothingHelper(object):
                     new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
-                self.comm.smoother.retrieve_smooth_gradient(event_name=event)
-
             for event in smooth_job_listener.to_repost:
                 if self.comm.project.inversion_mode == "mono-batch":
                     attribute = 'smoothing_job["submitted"]'
@@ -1285,6 +1357,7 @@ class SmoothingHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
+                print("Dispatching smoothing simulation via repost")
                 self.__dispatch_smoothing_simulation(
                     event=event, verbose=verbose
                 )
@@ -1292,10 +1365,13 @@ class SmoothingHelper(object):
                 f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
                 "Smooth gradients"
             )
-            print("Waiting 15 seconds before trying again")
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []
-            time.sleep(15)
+            if j != 0:
+                print("Waiting 30 seconds before trying again")
+                time.sleep(30)
+            else:
+                j += 1
 
     def assert_all_simulations_dispatched(self):
         all = True
@@ -1326,3 +1402,7 @@ class SmoothingHelper(object):
                 all = False
                 break
         return all
+
+    def __put_standard_gradient_to_cluster(self):
+        self.comm.lasif.move_gradient_to_cluster()
+

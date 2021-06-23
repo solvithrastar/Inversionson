@@ -5,9 +5,21 @@ import salvus.flow.sites as sites
 import salvus.flow.api as sapi
 from .component import Component
 import os
+import inspect
 import shutil
 import multi_mesh.api as mapi
 import lasif.api as lapi
+from salvus.flow.api import get_site
+
+CUT_SOURCE_SCRIPT_PATH = os.path.join(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(inspect.getfile(inspect.currentframe()))
+        )
+    ),
+    "remote_scripts",
+    "move_fields.py",
+)
 
 
 class MultiMeshComponent(Component):
@@ -237,6 +249,7 @@ class MultiMeshComponent(Component):
         wall_time = self.comm.project.model_interp_wall_time
         if gradient:
             wall_time = self.comm.project.grad_interp_wall_time
+            
 
         int_job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
@@ -270,7 +283,16 @@ class MultiMeshComponent(Component):
             validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
-        return [
+        if gradient:
+            mesh_to_get_fields_from = str(
+                self.comm.lasif.find_remote_mesh(
+                    event=event,
+                    iteration=iteration,
+                    already_interpolated=True,
+                )
+            )
+            move_fields_script = self.get_remote_field_moving_script_path()
+        commands = [
             remote_io_site.site_utils.RemoteCommand(
                 command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5", execute_with_mpi=False
             ),
@@ -280,14 +302,42 @@ class MultiMeshComponent(Component):
             remote_io_site.site_utils.RemoteCommand(
                 command=f"cp {interpolation_script} ./interpolate.py", execute_with_mpi=False
             ),
-            remote_io_site.site_utils.RemoteCommand(command="mkdir output", execute_with_mpi=False),
+        ]
+        if gradient:
+            commands.append(
+                remote_io_site.site_utils.RemoteCommand(
+                    command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 layer elemental",
+                    execute_with_mpi=False,
+                )
+            )
+            commands.append(
+                remote_io_site.site_utils.RemoteCommand(
+                    command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 fluid elemental",
+                    execute_with_mpi=False
+                )
+            )
+            commands.append(
+                remote_io_site.site_utils.RemoteCommand(
+                    command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 z_node_1D nodal",
+                    execute_with_mpi=False
+                )
+            )
+        commands.append(
+            remote_io_site.site_utils.RemoteCommand(
+                command="mkdir output", execute_with_mpi=False
+            )
+        )
+        commands.append(
             remote_io_site.site_utils.RemoteCommand(
                 command="python interpolate.py", execute_with_mpi=False
-            ),
+            )
+        )
+        commands.append(
             remote_io_site.site_utils.RemoteCommand(
                 command="mv ./to_mesh.h5 ./output/mesh.h5", execute_with_mpi=False
             ),
-        ]
+        )
+        return commands
 
     def find_interpolation_script(self) -> str:
         """
@@ -304,6 +354,25 @@ class MultiMeshComponent(Component):
         if not hpc_cluster.remote_exists(remote_script_path):
             self._make_remote_interpolation_script(hpc_cluster)
         return remote_script_path
+
+    def get_remote_field_moving_script_path(self):
+        site = get_site(self.comm.project.interpolation_site)
+        username = site.config["ssh_settings"]["username"]
+
+        remote_inversionson_scripts = os.path.join(
+            "/users", username, "scripts"
+        )
+
+        if not site.remote_exists(remote_inversionson_scripts):
+            site.remote_mkdir(remote_inversionson_scripts)
+
+        # copy processing script to daint
+        remote_script = os.path.join(
+            remote_inversionson_scripts, "move_fields.py"
+        )
+        if not site.remote_exists(remote_script):
+            site.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script) 
+        return remote_script
 
     def _make_remote_interpolation_script(self, hpc_cluster):
         """
