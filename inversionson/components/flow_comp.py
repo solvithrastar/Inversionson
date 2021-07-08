@@ -200,23 +200,19 @@ class SalvusFlowComponent(Component):
         :param sim_type: Type of simulation
         :type sim_type: str
         """
-        gradient=False
+        gradient = False
         if sim_type == "model_interp":
             if self.comm.project.model_interp_job[event]["submitted"]:
-                job_name = self.comm.project.model_interp_job[event][
-                    "name"
-                ]
+                job_name = self.comm.project.model_interp_job[event]["name"]
             else:
                 raise InversionsonError(
                     f"Model interpolation job for event: {event} "
                     "has not been submitted"
                 )
         elif sim_type == "gradient_interp":
-            gradient=True
+            gradient = True
             if self.comm.project.gradient_interp_job[event]["submitted"]:
-                job_name = self.comm.project.gradient_interp_job[event][
-                    "name"
-                ]
+                job_name = self.comm.project.gradient_interp_job[event]["name"]
             else:
                 raise InversionsonError(
                     f"Gradient interpolation job for event: {event} "
@@ -236,13 +232,16 @@ class SalvusFlowComponent(Component):
             job_description=db_job.description,
             wall_time_in_seconds=db_job.wall_time_in_seconds,
             working_dir=pathlib.Path(db_job.working_directory),
-            tmpdir_root=pathlib.Path(db_job.temp_directory_root) if db_job.temp_directory_root else None,
-            rundir_root=pathlib.Path(db_job.run_directory_root) if db_job.run_directory_root else None,
+            tmpdir_root=pathlib.Path(db_job.temp_directory_root)
+            if db_job.temp_directory_root
+            else None,
+            rundir_root=pathlib.Path(db_job.run_directory_root)
+            if db_job.run_directory_root
+            else None,
             job_groups=[i.group_name for i in db_job.groups],
             initialize_on_site=False,
         )
         return job
-
 
     def retrieve_outputs(self, event_name: str, sim_type: str):
         """
@@ -316,9 +315,9 @@ class SalvusFlowComponent(Component):
                 source_time_function=stf.Custom(
                     filename=stf_file, dataset_name="/source"
                 ),
-                side_set_name=side_set
+                side_set_name=side_set,
             )
-            print(f"Source info: {src_info}")
+            # print(f"Source info: {src_info}")
         else:
             if self.comm.project.ocean_loading["use"]:
                 side_set = "r1_ol"
@@ -478,8 +477,9 @@ class SalvusFlowComponent(Component):
         :type event: str
         """
         from salvus.flow.simple_config import receiver
+
         side_set = "r1"
-        
+
         recs = self.comm.lasif.get_receivers(event)
         if self.comm.project.meshes == "multi-mesh":
             receivers = [
@@ -490,7 +490,7 @@ class SalvusFlowComponent(Component):
                     station_code=rec["station-code"],
                     depth_in_m=0.0,
                     fields=["displacement"],
-                    side_set_name=side_set
+                    side_set_name=side_set,
                 )
                 for rec in recs
             ]
@@ -527,11 +527,11 @@ class SalvusFlowComponent(Component):
         """
         import salvus.flow.simple_config as sc
 
-        mesh = self.comm.lasif.get_simulation_mesh(event)
         if self.comm.project.meshes == "multi-mesh":
+            mesh = self.comm.lasif.get_simulation_mesh(event)
             if self.comm.project.interpolation_mode == "remote":
                 use_mesh = f"REMOTE:{mesh}"
-
+        mesh = self.comm.lasif.find_event_mesh(event=event)
         w = sc.simulation.Waveform(
             mesh=mesh, sources=sources, receivers=receivers
         )
@@ -614,8 +614,12 @@ class SalvusFlowComponent(Component):
         """
         print("Constructing Adjoint Simulation now")
         from salvus.flow.simple_config import simulation
+
         remote_interp = False
-        if self.comm.project.interpolation_mode == "remote" and self.comm.project.meshes == "multi-mesh":
+        if (
+            self.comm.project.interpolation_mode == "remote"
+            and self.comm.project.meshes == "multi-mesh"
+        ):
             remote_interp = True
 
         mesh = self.comm.lasif.find_event_mesh(event)
@@ -696,10 +700,10 @@ class SalvusFlowComponent(Component):
         # Adjoint simulation takes longer and seems to be less predictable
         # we thus give it a longer wall time.
         start = time.time()
-        if sim_type == "adjoint":
-            wall_time = self.comm.project.wall_time * 2
-        else:
-            wall_time = self.comm.project.wall_time
+        # if sim_type == "adjoint":
+        #     wall_time = self.comm.project.wall_time * 2
+        # else:
+        wall_time = self.comm.project.wall_time
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
@@ -752,9 +756,7 @@ class SalvusFlowComponent(Component):
         """
 
         job = self.get_job(
-            event=event,
-            sim_type=sim_type,
-            iteration=iteration,
+            event=event, sim_type=sim_type, iteration=iteration,
         )
         return job.update_status(force_update=True)
 

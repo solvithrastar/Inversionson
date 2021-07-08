@@ -147,9 +147,7 @@ class LasifComponent(Component):
         else:
             if already_interpolated:
                 job = self.comm.salvus_flow.get_job(
-                    event=event,
-                    sim_type="model_interp",
-                    iteration=iteration,
+                    event=event, sim_type="model_interp", iteration=iteration,
                 )
                 mesh = job.stdout_path.parent / "output" / "mesh.h5"
             else:
@@ -190,7 +188,9 @@ class LasifComponent(Component):
         """
         # If interpolations are remote, we check for mesh remotely too
         if self.comm.project.interpolation_mode == "remote":
-            has, _ = self.has_remote_mesh(event, gradient=False, hpc_cluster=hpc_cluster)
+            has, _ = self.has_remote_mesh(
+                event, gradient=False, hpc_cluster=hpc_cluster
+            )
         else:
             has, _ = lapi.find_event_mesh(self.lasif_comm, event)
 
@@ -251,9 +251,11 @@ class LasifComponent(Component):
         )
         if not hpc_cluster.remote_exists(path_to_mesh.parent):
             hpc_cluster.remote_mkdir(path_to_mesh.parent)
-        print(f"Moving mesh for event {event} to cluster")
         if not hpc_cluster.remote_exists(path_to_mesh):
+            print(f"Moving mesh for event {event} to cluster")
             hpc_cluster.remote_put(event_mesh, path_to_mesh)
+        # else:
+        #     print(f"Mesh for event {event} already on cluster")
 
     def _move_model_to_cluster(
         self,
@@ -588,10 +590,7 @@ class LasifComponent(Component):
                     )
             else:
                 gradient = os.path.join(
-                    gradients,
-                    f"ITERATION_{iteration}",
-                    event,
-                    "gradient.h5",
+                    gradients, f"ITERATION_{iteration}", event, "gradient.h5",
                 )
 
         if not smooth and self.comm.project.inversion_mode == "mini-batch":
@@ -652,10 +651,7 @@ class LasifComponent(Component):
             iteration = self.comm.project.current_iteration
 
         lapi.plot_station_misfits(
-            self.lasif_comm,
-            event=event,
-            iteration=iteration,
-            save=True,
+            self.lasif_comm, event=event, iteration=iteration, save=True,
         )
         filename = os.path.join(
             self.lasif_root,
@@ -752,9 +748,7 @@ class LasifComponent(Component):
                 )
                 return path
             return lapi.get_simulation_mesh(
-                self.lasif_comm,
-                event_name,
-                iteration,
+                self.lasif_comm, event_name, iteration,
             )
         else:
             # return self.lasif_comm.project.lasif_config["domain_settings"][
@@ -827,26 +821,10 @@ class LasifComponent(Component):
                 "Will not be recalculated. If you want them "
                 f"calculated, delete file: {adjoint_path}"
             )
-        elif mpi:
-            from inversionson.utils import double_fork
-
-            double_fork()
-            os.chdir(self.comm.project.lasif_root)
-            command = f"/home/solvi/miniconda3/envs/lasif/bin/mpirun -n {n} lasif calculate_adjoint_sources "
-            command += f"{iteration} "
-            command += f"{window_set} {event} --weight_set {event}"
-            # process = subprocess.Popen(
-            #     command, shell=True, stdout=subprocess.PIPE, bufsize=1
-            # )
-            os.system(command)
-            # for line in process.stdout:
-            #     print(line, end="\n", flush=True)
-            # process.wait()
-            # print(process.returncode)
-
-            os.chdir(self.comm.project.inversion_root)
-            double_fork()
-
+        elif validation:
+            misfit = self.lasif_comm.adj_sources.calculate_validation_misfits(
+                event, iteration
+            )
         else:
             lapi.calculate_adjoint_sources_multiprocessing(
                 self.lasif_comm,
@@ -857,7 +835,21 @@ class LasifComponent(Component):
                 num_processes=12,
             )
 
+        misfit_toml_path = (
+            self.lasif_comm.project.paths["iterations"]
+            / f"ITERATION_{iteration}"
+            / "misfits.toml"
+        )
         if validation:  # We just return some random value as it is not used
+            if os.path.exists(misfit_toml_path):
+                misfits = toml.load(misfit_toml_path)
+            else:
+                misfits = {}
+            if event not in misfits.keys():
+                misfits[event] = {}
+            misfits[event]["event_misfit"] = misfit
+            with open(misfit_toml_path, mode="w") as fh:
+                toml.dump(misfits, fh)
             return 1.1
         # See if misfit has already been written into iteration toml
         if self.comm.project.misfits[event] == 0.0 and not validation:
@@ -976,10 +968,7 @@ class LasifComponent(Component):
         lapi.process_data(self.lasif_comm, events=[event])
 
     def select_windows(
-        self,
-        window_set_name: str,
-        event: str,
-        validation=False,
+        self, window_set_name: str, event: str, validation=False,
     ):
         """
         Select window for a certain event in an iteration.

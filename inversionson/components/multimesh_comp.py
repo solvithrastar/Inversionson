@@ -108,9 +108,7 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event,
-                gradient=False,
-                validation=validation,
+                event=event, gradient=False, validation=validation,
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',
@@ -160,9 +158,7 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event,
-                gradient=True,
-                validation=False,
+                event=event, gradient=True, validation=False,
             )
             self.comm.project.change_attribute(
                 attribute=f'gradient_interp_job["{event}"]["name"]',
@@ -249,7 +245,6 @@ class MultiMeshComponent(Component):
         wall_time = self.comm.project.model_interp_wall_time
         if gradient:
             wall_time = self.comm.project.grad_interp_wall_time
-            
 
         int_job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
@@ -271,10 +266,10 @@ class MultiMeshComponent(Component):
             validation = True
         else:
             validation = False
+        if iteration == "validation_it0000_model":
+            validation = False  # Here there can't be any mesh averaging
         mesh_to_interpolate_to = self.comm.lasif.find_remote_mesh(
-            event=event,
-            gradient=gradient,
-            interpolate_to=True,
+            event=event, gradient=gradient, interpolate_to=True,
         )
         mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
             event=event,
@@ -294,13 +289,16 @@ class MultiMeshComponent(Component):
             move_fields_script = self.get_remote_field_moving_script_path()
         commands = [
             remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5", execute_with_mpi=False
+                command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
+                execute_with_mpi=False,
             ),
             remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {mesh_to_interpolate_to} ./to_mesh.h5", execute_with_mpi=False
+                command=f"cp {mesh_to_interpolate_to} ./to_mesh.h5",
+                execute_with_mpi=False,
             ),
             remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {interpolation_script} ./interpolate.py", execute_with_mpi=False
+                command=f"cp {interpolation_script} ./interpolate.py",
+                execute_with_mpi=False,
             ),
         ]
         if gradient:
@@ -313,13 +311,13 @@ class MultiMeshComponent(Component):
             commands.append(
                 remote_io_site.site_utils.RemoteCommand(
                     command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 fluid elemental",
-                    execute_with_mpi=False
+                    execute_with_mpi=False,
                 )
             )
             commands.append(
                 remote_io_site.site_utils.RemoteCommand(
                     command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 z_node_1D nodal",
-                    execute_with_mpi=False
+                    execute_with_mpi=False,
                 )
             )
         commands.append(
@@ -334,7 +332,8 @@ class MultiMeshComponent(Component):
         )
         commands.append(
             remote_io_site.site_utils.RemoteCommand(
-                command="mv ./to_mesh.h5 ./output/mesh.h5", execute_with_mpi=False
+                command="mv ./to_mesh.h5 ./output/mesh.h5",
+                execute_with_mpi=False,
             ),
         )
         return commands
@@ -371,7 +370,7 @@ class MultiMeshComponent(Component):
             remote_inversionson_scripts, "move_fields.py"
         )
         if not site.remote_exists(remote_script):
-            site.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script) 
+            site.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
         return remote_script
 
     def _make_remote_interpolation_script(self, hpc_cluster):

@@ -352,7 +352,10 @@ class ProjectComponent(Component):
                 "quarter. Key: Meshing"
             )
         if self.info["meshes"] == "multi-mesh":
-            if "elements_per_azimuthal_quarter" not in self.info["Meshing"].keys():
+            if (
+                "elements_per_azimuthal_quarter"
+                not in self.info["Meshing"].keys()
+            ):
                 raise InversionsonError(
                     "We need to know how many elements you need per azimuthal "
                     "quarter. Key: Meshing.elements_per_azimuthal_quarter"
@@ -364,7 +367,7 @@ class ProjectComponent(Component):
                 raise InversionsonError(
                     "Elements per azimuthal quarter need to be an integer."
                 )
-            
+
             if "ellipticity" not in self.info["Meshing"].keys():
                 raise InversionsonError(
                     "We need a boolean value regarding ellipticity "
@@ -389,7 +392,10 @@ class ProjectComponent(Component):
                             "Please specify path to your topography file.\n"
                             "Key: Meshing.topography.file"
                         )
-                    if len(self.info["Meshing"]["topography"]["variable"]) == 0:
+                    if (
+                        len(self.info["Meshing"]["topography"]["variable"])
+                        == 0
+                    ):
                         raise InversionsonError(
                             "Please specify path to your topography variable "
                             "name. You can find it by opening the file in "
@@ -586,7 +592,9 @@ class ProjectComponent(Component):
             self.interpolation_site = self.info["HPC"]["interpolation"][
                 "site_name"
             ]
-            self.remote_mesh_dir = self.info["HPC"]["interpolation"]["remote_mesh_directory"]
+            self.remote_mesh_dir = self.info["HPC"]["interpolation"][
+                "remote_mesh_directory"
+            ]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]
@@ -895,7 +903,8 @@ class ProjectComponent(Component):
                 jobs["adjoint"] = self.adjoint_job[event]
             if remote_interp:
                 jobs["model_interp"] = self.model_interp_job[event]
-                jobs["gradient_interp"] = self.gradient_interp_job[event]
+                if not validation:
+                    jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
@@ -989,9 +998,10 @@ class ProjectComponent(Component):
                 self.model_interp_job[event] = it_dict["events"][str(_i)][
                     "job_info"
                 ]["model_interp"]
-                self.gradient_interp_job[event] = it_dict["events"][str(_i)][
-                    "job_info"
-                ]["gradient_interp"]
+                if not validation:
+                    self.gradient_interp_job[event] = it_dict["events"][
+                        str(_i)
+                    ]["job_info"]["gradient_interp"]
         if self.inversion_mode == "mono-batch" and not validation:
             self.smoothing_job = it_dict["smoothing"]
 

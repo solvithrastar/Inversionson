@@ -100,9 +100,7 @@ class AutoInverter(object):
                     )
                     for event in self.comm.project.events_in_iteration:
                         if not self.comm.lasif.has_mesh(event):
-                            self.comm.salvus_mesher.create_mesh(
-                                event=event,
-                            )
+                            self.comm.salvus_mesher.create_mesh(event=event,)
                             self.comm.salvus_mesher.add_region_of_interest(
                                 event=event
                             )
@@ -225,10 +223,9 @@ class AutoInverter(object):
             )
             if self.comm.project.interpolation_mode == "remote":
                 self.comm.lasif.move_mesh(
-                    event=None,
-                    iteration=None,
-                    validation=True,
+                    event=None, iteration=None, validation=True,
                 )
+
         val_forward_helper = helpers.ForwardHelper(
             self.comm, self.comm.project.validation_dataset
         )
@@ -236,18 +233,16 @@ class AutoInverter(object):
         val_forward_helper.dispatch_forward_simulations(verbose=True)
         assert val_forward_helper.assert_all_simulations_dispatched()
         val_forward_helper.retrieve_forward_simulations(
-            adjoint=False,
-            verbose=True,
-            validation=True,
+            adjoint=False, verbose=True, validation=True,
         )
         assert val_forward_helper.assert_all_simulations_retrieved()
+        val_forward_helper.report_total_validation_misfit()
 
         iteration = self.comm.project.current_iteration
         # leave the validation iteration.
         iteration = iteration[11:]
         self.comm.project.change_attribute(
-            attribute="current_iteration",
-            new_value=iteration,
+            attribute="current_iteration", new_value=iteration,
         )
         self.comm.project.get_iteration_attributes()
 
@@ -310,8 +305,12 @@ class AutoInverter(object):
             smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             if self.comm.project.meshes == "multi-mesh":
                 if self.comm.project.interpolation_mode == "remote":
-                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(verbose=True)
-                    smoothing_helper.dispatch_smoothing_simulations(verbose=True)
+                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(
+                        verbose=True
+                    )
+                    smoothing_helper.dispatch_smoothing_simulations(
+                        verbose=True
+                    )
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:
@@ -472,8 +471,12 @@ class AutoInverter(object):
             smoothing_helper.dispatch_smoothing_simulations()
             if self.comm.project.meshes == "multi-mesh":
                 if self.comm.project.interpolation_mode == "remote":
-                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(verbose=True)
-                    smoothing_helper.dispatch_smoothing_simulations(verbose=True)
+                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(
+                        verbose=True
+                    )
+                    smoothing_helper.dispatch_smoothing_simulations(
+                        verbose=True
+                    )
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:

@@ -84,13 +84,10 @@ class SalvusSmoothComponent(Component):
         if iteration is None:
             iteration = self.comm.project.current_iteration
         job_name = self.comm.salvus_flow.get_job_name(
-            event=event_name,
-            sim_type="smoothing",
-            iteration=iteration,
+            event=event_name, sim_type="smoothing", iteration=iteration,
         )
         salvus_job = salvus.flow.api.get_job_array(
-            site_name=self.comm.project.site_name,
-            job_array_name=job_name,
+            site_name=self.comm.project.site_name, job_array_name=job_name,
         )
 
         if self.comm.project.inversion_mode == "mono-batch":
@@ -114,15 +111,12 @@ class SalvusSmoothComponent(Component):
             os.mkdir(os.path.dirname(smooth_grad))
 
         smooth_gradient = get_smooth_model(
-            job=salvus_job,
-            model=self.comm.lasif.get_master_model(),
+            job=salvus_job, model=self.comm.lasif.get_master_model(),
         )
         smooth_gradient.write_h5(smooth_grad)
         if "VPV" in list(smooth_gradient.element_nodal_fields.keys()):
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
-                mesh=smooth_grad,
-                fieldname_1="VPV",
-                fieldname_2="VPH",
+                mesh=smooth_grad, fieldname_1="VPV", fieldname_2="VPH",
             )
 
     def run_smoother(
@@ -194,8 +188,7 @@ class SalvusSmoothComponent(Component):
             )
 
     def run_remote_smoother(
-        self,
-        event: str,
+        self, event: str,
     ):
         """
         Run the Smoother, the settings are specified in inversion toml. Make
@@ -208,7 +201,7 @@ class SalvusSmoothComponent(Component):
         import salvus.flow.simple_config as sc
         from salvus.flow.api import get_site
         from salvus.flow import api as sapi
-        print(f"Preparing smoothing for event: {event}")
+
         int_mode = self.comm.project.interpolation_mode
         if self.comm.project.meshes == "multi-mesh":
             mesh = self.comm.lasif.get_master_model()
@@ -331,3 +324,4 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["submitted"]', True
             )
+        self.comm.project.update_iteration_toml()

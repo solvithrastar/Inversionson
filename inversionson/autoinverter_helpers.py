@@ -2,12 +2,13 @@ import emoji
 from colorama import init
 from colorama import Fore, Style
 import time
-import os
+import os, sys
 import inspect
 import warnings
 import glob
 import shutil
 import toml
+from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 
@@ -60,7 +61,7 @@ class RemoteJobListener(object):
         else:
             raise InversionsonError(f"Job type {self.job_type} not recognised")
 
-    def __check_status_of_job(self, event: str, reposts: int):
+    def __check_status_of_job(self, event: str, reposts: int, verbose=False):
         """
         Query Salvus Flow for the status of the job
 
@@ -71,11 +72,13 @@ class RemoteJobListener(object):
             event, self.job_type
         ).name
         if status == "pending":
-            print(f"Status = {status}, event: {event}")
+            if verbose:
+                print(f"Status = {status}, event: {event}")
         elif status == "running":
-            print(f"Status = {status}, event: {event}")
+            if verbose:
+                print(f"Status = {status}, event: {event}")
         elif status in ["unknown", "failed"]:
-            print(f"Job {status}, will resubmit")
+            print(f"{self.job_type} job for {event}, {status}, will resubmit")
             if reposts >= 3:
                 print("No I've actually reposted this too often \n")
                 print("There must be something wrong.")
@@ -97,35 +100,45 @@ class RemoteJobListener(object):
             )
         return status
 
-    def __check_status_of_job_array(self, event, reposts):
+    def __check_status_of_job_array(self, event, reposts, verbose=False):
         """
         Query Salvus Flow for the status of the job array
 
         :param event: Name of event
         :type event: str
         """
-        status = self.comm.salvus_flow.get_job_status(
-            event, self.job_type
-        )
+        status = self.comm.salvus_flow.get_job_status(event, self.job_type)
         params = []
+        running = 0
+        finished = 0
+        pending = 0
+        unknown = 0
         i = 0
         for _i, s in enumerate(status):
             if s.name == "finished":
                 params.append(s)
+                finished += 1
             else:
                 if s.name in ["pending", "running"]:
-                    print(
-                        f"Status = {s.name}, event: {event} "
-                        f"for smoothing job {_i}/{len(status)}"
-                    )
+                    if verbose:
+                        print(
+                            f"Status = {s.name}, event: {event} "
+                            f"for smoothing job {_i}/{len(status)}"
+                        )
+                    if s.name == "pending":
+                        pending += 1
+                    elif s.name == "running":
+                        running += 1
                     continue
                 elif s.name in ("failed", "unknown"):
-                    print(f"Job {s.name}, will resubmit")
                     if i == 0:
+                        print(f"Job {s.name}, will resubmit event {event}")
                         self.to_repost.append(event)
                         reposts += 1
                         if reposts >= 3:
-                            print("No I've actually reposted this too often \n")
+                            print(
+                                "No I've actually reposted this too often \n"
+                            )
                             print("There must be something wrong.")
                             raise InversionsonError("Too many reposts")
                         if event is None:
@@ -148,54 +161,91 @@ class RemoteJobListener(object):
                         f"Inversionson does not recognise job status:  {status}",
                         InversionsonWarning,
                     )
+        if verbose:
+            if running > 0:
+                print(f"{running}/{len(status)} of jobs running: {event}")
+            if pending > 0:
+                print(f"{pending}/{len(status)} of jobs pending: {event}")
+            if finished > 0:
+                print(f"{finished}/{len(status)} of jobs finished: {event}")
         if len(params) == len(status):
             return "finished"
-                    
 
-
-    def __monitor_jobs(self, job_dict, events=None):
+    def __monitor_jobs(self, job_dict, events=None, verbose=False):
         if events is None:
             events = self.events
         events_left = list(set(events) - set(self.events_already_retrieved))
-        for event in events_left:
+        finished = len(self.events) - len(events_left)
+        running = 0
+        pending = 0
+        print(f"Checking Jobs for {self.job_type}:")
+        for event in tqdm(events_left):
             if job_dict[event]["retrieved"]:
                 self.events_already_retrieved.append(event)
+                finished += 1
                 continue
             else:
                 reposts = job_dict[event]["reposts"]
                 if not job_dict[event]["submitted"]:
                     status = "unsubmitted"
                     continue
-                status = self.__check_status_of_job(event, reposts)
+                status = self.__check_status_of_job(
+                    event, reposts, verbose=verbose
+                )
             if status == "finished":
                 self.events_retrieved_now.append(event)
+                finished += 1
+            elif status == "pending":
+                pending += 1
+            elif status == "running":
+                running += 1
+
+        if finished > 0:
+            print(f"{finished}/{len(events)}jobs finished")
+        if running > 0:
+            print(f"{running}/{len(events)} jobs running")
+        if pending > 0:
+            print(f"{pending}/{len(events)} jobs pending")
+
         self.comm.project.update_iteration_toml()
 
     def __monitor_job_array(self, job_dict, events=None):
+        finished = 0
+
         if events is None:
             events = self.events
         if self.comm.project.inversion_mode == "mono-batch":
             if job_dict["retrieved"]:
                 self.events_already_retrieved = events
+                finished += 1
             else:
                 reposts = job_dict["reposts"]
                 status = self.__check_status_of_job_array(None, reposts)
             if status == "finished":
                 self.events_already_retrieved = events
+                finished += 1
         else:
             events_left = list(
                 set(events) - set(self.events_already_retrieved)
             )
-            for event in events_left:
+            finished = len(self.events) - len(events_left)
+            print("Monitoring Smoothing jobs")
+            for event in tqdm(events_left):
                 if job_dict[event]["retrieved"]:
+                    finished += 1
                     self.events_already_retrieved.append(event)
                     continue
                 else:
                     reposts = job_dict[event]["reposts"]
-                    status = self.__check_status_of_job_array(event, reposts)
+                    status = self.__check_status_of_job_array(
+                        event, reposts, verbose=False
+                    )
                 if status == "finished":
                     self.events_retrieved_now.append(event)
+                    finished += 1
             self.comm.project.update_iteration_toml()
+            print("\n\n ============= Report ================= \n\n")
+            print(f"{finished}/{len(events)} jobs fully finished \n")
 
 
 class ForwardHelper(object):
@@ -240,6 +290,12 @@ class ForwardHelper(object):
             window_set=window_set,
             verbose=verbose,
             validation=validation,
+        )
+
+    def report_total_validation_misfit(self):
+        iteration = self.comm.project.current_iteration
+        self.comm.storyteller.report_validation_misfit(
+            iteration=iteration, event=None, total_sum=True,
         )
 
     def assert_all_simulations_dispatched(self):
@@ -300,9 +356,7 @@ class ForwardHelper(object):
                 )
                 return
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
-            event,
-            interp_folder=interp_folder,
-            validation=validation,
+            event, interp_folder=interp_folder, validation=validation,
         )
         if mode == "local":
             self.comm.project.change_attribute(
@@ -325,6 +379,8 @@ class ForwardHelper(object):
             job_info = self.comm.project.forward_job[event]
         elif sim_type == "adjoint":
             job_info = self.comm.project.adjoint_job[event]
+        elif sim_type == "model_interp":
+            job_info = self.comm.project.model_interp_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
     def __run_forward_simulation(self, event: str, verbose=False):
@@ -429,9 +485,7 @@ class ForwardHelper(object):
                 print(f"Windows already selected for event {event}")
                 return
             self.comm.lasif.select_windows(
-                window_set_name=window_set_name,
-                event=event,
-                validation=True,
+                window_set_name=window_set_name, event=event, validation=True,
             )
             self.comm.project.change_attribute(
                 attribute=f"forward_job['{event}']['windows_selected']",
@@ -500,9 +554,6 @@ class ForwardHelper(object):
 
     def __validation_misfit_quantification(self, event: str, window_set: str):
 
-        validation_iterations = (
-            self.comm.lasif.get_validation_iteration_numbers()
-        )
         iteration = self.comm.project.current_iteration
 
         if self.__need_misfit_quantification(
@@ -512,68 +563,17 @@ class ForwardHelper(object):
                 event, validation=True, window_set=window_set
             )
             self.comm.storyteller.report_validation_misfit(
-                iteration=iteration,
-                window_set=iteration,
-                event=event,
-                total_sum=False,
+                iteration=iteration, event=event, total_sum=False,
             )
-
-            if len(validation_iterations.keys()) > 1:
-                # We have at least two window sets to compute misfit on
-                last_number = (
-                    max(validation_iterations.keys())
-                    - self.comm.project.when_to_validate
-                )
-                last_iteration = validation_iterations[last_number]
-                # Figure out what the last validation iteration was.
-                if self.need_misfit_quantification(
-                    iteration=iteration,
-                    event=event,
-                    window_set=last_iteration,
-                ):
-                    self.misfit_quantification(
-                        event,
-                        validation=True,
-                        window_set=last_iteration,
-                    )
-                    self.comm.storyteller.report_validation_misfit(
-                        iteration=iteration,
-                        window_set=last_iteration,
-                        event=event,
-                        total_sum=False,
-                    )
-
-                if last_number != -1:
-                    # We have three window sets to compute misfits on
-                    if self.need_misfit_quantification(
-                        iteration=iteration,
-                        event=event,
-                        window_set=validation_iterations[-1],
-                    ):
-                        self.misfit_quantification(
-                            event,
-                            validation=True,
-                            window_set=validation_iterations[-1],
-                        )
-                        self.comm.storyteller.report_validation_misfit(
-                            iteration=self.comm.project.current_iteration,
-                            window_set=validation_iterations[-1],
-                            event=event,
-                            total_sum=False,
-                        )
 
             self.comm.storyteller.report_validation_misfit(
                 iteration=self.comm.project.current_iteration,
-                window_set=self.comm.project.current_iteration,
                 event=event,
                 total_sum=True,
             )
 
     def __misfit_quantification(
-        self,
-        event: str,
-        window_set=None,
-        validation=False,
+        self, event: str, window_set=None, validation=False,
     ):
         """
         Compute Misfits and Adjoint sources
@@ -606,7 +606,7 @@ class ForwardHelper(object):
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
         if submitted:
             return
-        
+
         if verbose:
             print(Fore.YELLOW + "\n ============================ \n")
             print(
@@ -659,8 +659,7 @@ class ForwardHelper(object):
             print(Fore.GREEN + "\n ===================== \n")
             print(
                 emoji.emojize(
-                    ":floppy_disk: | Process data if needed",
-                    use_aliases=True,
+                    ":floppy_disk: | Process data if needed", use_aliases=True,
                 )
             )
 
@@ -717,16 +716,21 @@ class ForwardHelper(object):
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',
-                    new_value=True
+                    new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
             for event in int_job_listener.to_repost:
-                self.__run_forward_simulation(event, verbose)
+                self.comm.project.change_attribute(
+                    attribute=f'model_interp_job["{event}"]["submitted"]',
+                    new_value=False,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__interpolate_model(event, mode="remote")
             print(
                 f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                 "simulations"
             )
-            
+
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
             if j != 0:
@@ -734,6 +738,67 @@ class ForwardHelper(object):
                 time.sleep(30)
             else:
                 j += 1
+        # In case of failure:
+        if not self.assert_all_simulations_dispatched():
+            self.__dispatch_remaining_forwards(verbose=verbose)
+        # Here I need to check if all forwards have been dispatched.
+        # It can for example fail if the code crashes in the middle.
+
+    def __dispatch_remaining_forwards(self, verbose):
+        # Check whether all forwards have been dispatched
+        events_left = []
+        for event in self.events:
+            submitted, _ = self.__submitted_retrieved(
+                event, sim_type="forward"
+            )
+            if not submitted:
+                m_submitted, m_retrieved = self.__submitted_retrieved(
+                    event, "model_interp"
+                )
+                if m_retrieved:
+                    self.__run_forward_simulation(event, verbose)
+                    self.__compute_station_weights(event, verbose)
+                elif not m_submitted:
+                    events_left.append()
+                    self.__interpolate_model(event, mode="remote")
+                    self.comm.project.change_attribute(
+                        attribute=f'model_interp_job["{event}"]["submitted"]',
+                        new_value=False,
+                    )
+                    self.comm.project.update_iteration_toml()
+        if len(events_left) == 0:
+            return
+        int_job_listener = RemoteJobListener(
+            comm=self.comm, job_type="model_interp", events=events_left
+        )
+        while len(int_job_listener.events_already_retrieved) != len(
+            events_left
+        ):
+            int_job_listener.monitor_jobs()
+            for event in int_job_listener.events_retrieved_now:
+                self.__run_forward_simulation(event, verbose)
+                self.__compute_station_weights(event, verbose)
+                self.comm.project.change_attribute(
+                    attribute=f'model_interp_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                self.comm.project.update_iteration_toml()
+            for event in int_job_listener.to_repost:
+                self.comm.project.change_attribute(
+                    attribute=f'model_interp_job["{event}"]["submitted"]',
+                    new_value=False,
+                )
+                self.comm.project.update_iteration_toml()
+                self.__interpolate_model(event, mode="remote")
+            print(
+                f"We dispatched {len(int_job_listener.events_retrieved_now)} "
+                "simulations"
+            )
+
+            int_job_listener.to_repost = []
+            int_job_listener.events_retrieved_now = []
+            print("Waiting 30 seconds before trying again")
+            time.sleep(30)
 
     def __dispatch_forwards_normal(self, verbose):
         """
@@ -792,7 +857,7 @@ class ForwardHelper(object):
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',
-                    new_value=True
+                    new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
             for event in vint_job_listener.to_repost:
@@ -837,13 +902,7 @@ class ForwardHelper(object):
             self.__compute_station_weights(event, verbose)
 
     def __retrieve_forward_simulations(
-        self,
-        events,
-        adjoint,
-        windows,
-        window_set,
-        verbose,
-        validation,
+        self, events, adjoint, windows, window_set, verbose, validation,
     ):
         for_job_listener = RemoteJobListener(
             comm=self.comm, job_type="forward", events=events
@@ -854,11 +913,7 @@ class ForwardHelper(object):
             for event in for_job_listener.events_retrieved_now:
                 self.__retrieve_seismograms(event=event, verbose=verbose)
                 self.__work_with_retrieved_seismograms(
-                    event,
-                    windows,
-                    window_set,
-                    validation,
-                    verbose,
+                    event, windows, window_set, validation, verbose,
                 )
                 self.comm.project.change_attribute(
                     attribute=f'forward_job["{event}"]["retrieved"]',
@@ -881,8 +936,8 @@ class ForwardHelper(object):
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 30 seconds before trying again")
-                time.sleep(30)
+                print("Waiting 300 seconds before trying again")
+                time.sleep(300)
             else:
                 j += 1
 
@@ -1036,19 +1091,25 @@ class AdjointHelper(object):
             adj_job_listener.to_repost = []
             adj_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 30 seconds before trying again")
-                time.sleep(30)
+                print("Waiting 300 seconds before trying again")
+                time.sleep(300)
             else:
                 j += 1
+
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
         """
         Take the gradient out of the adjoint simulations and
         interpolate them to the inversion grid prior to smoothing.
         """
-        submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
+        submitted, retrieved = self.__submitted_retrieved(
+            event, "gradient_interp"
+        )
         if submitted:
             if verbose:
-                print(f"Interpolation for gradient {event} has been submitted")
+                print(
+                    f"Interpolation for gradient {event} "
+                    "has already been submitted"
+                )
             return
 
         # Here I need to make sure that the correct layers are interpolated
@@ -1208,9 +1269,7 @@ class SmoothingHelper(object):
         # Simple as that.
         events = self.events
         int_job_listener = RemoteJobListener(
-            comm=self.comm,
-            job_type="gradient_interp",
-            events=events,
+            comm=self.comm, job_type="gradient_interp", events=events,
         )
         j = 0
         while len(int_job_listener.events_already_retrieved) != len(events):
@@ -1222,7 +1281,7 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__dispatch_smoothing_simulation(
-                    event=event, verbose=verbose
+                    event=event, verbose=verbose, interpolate=True,
                 )
 
             for event in int_job_listener.to_repost:
@@ -1314,6 +1373,9 @@ class SmoothingHelper(object):
                 )
             else:
                 if retrieved:
+                    print(
+                        f"I'm running the remote smoother now for event {event}"
+                    )
                     self.comm.smoother.run_remote_smoother(event)
                 else:
                     if verbose:
@@ -1334,6 +1396,9 @@ class SmoothingHelper(object):
             events = self.events
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
         j = 0
+        interpolate = False
+        if self.comm.project.meshes == "multi-mesh":
+            interpolate = True
         while len(smooth_job_listener.events_already_retrieved) != len(events):
             smooth_job_listener.monitor_jobs()
             for event in smooth_job_listener.events_retrieved_now:
@@ -1343,8 +1408,7 @@ class SmoothingHelper(object):
                 else:
                     attribute = f'smoothing_job["{event}"]["retrieved"]'
                 self.comm.project.change_attribute(
-                    attribute=attribute,
-                    new_value=True,
+                    attribute=attribute, new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
             for event in smooth_job_listener.to_repost:
@@ -1352,14 +1416,14 @@ class SmoothingHelper(object):
                     attribute = 'smoothing_job["submitted"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["submitted"]'
+
                 self.comm.project.change_attribute(
-                    attribute=attribute,
-                    new_value=False,
+                    attribute=attribute, new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
-                print("Dispatching smoothing simulation via repost")
+                print(f"Dispatching smoothing simulation via repost: {event}")
                 self.__dispatch_smoothing_simulation(
-                    event=event, verbose=verbose
+                    event=event, interpolate=interpolate, verbose=verbose
                 )
             print(
                 f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
@@ -1368,8 +1432,8 @@ class SmoothingHelper(object):
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 30 seconds before trying again")
-                time.sleep(30)
+                print("Waiting 180 seconds before trying again")
+                time.sleep(180)
             else:
                 j += 1
 
