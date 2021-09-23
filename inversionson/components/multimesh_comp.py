@@ -442,7 +442,8 @@ multi_mesh.api.gll_2_gll_layered_multi(
     tm,
     nelem_to_search=20,
     layers="nocore",
-    parameters={self.comm.project.inversion_params}
+    parameters={self.comm.project.inversion_params},
+    stored_array=".",
 )
             """
             with open(local_script, "w+") as fh:
