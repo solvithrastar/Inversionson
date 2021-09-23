@@ -98,7 +98,7 @@ class MultiMeshComponent(Component):
             )
 
     def interpolate_to_simulation_mesh(
-        self, event: str, interp_folder=None, validation=False
+        self, event: str, interp_folder=None,
     ):
         """
         Interpolate current master model to a simulation mesh.
@@ -110,10 +110,7 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event,
-                gradient=False,
-                validation=validation,
-                interp_folder=interp_folder,
+                event=event, gradient=False, interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',

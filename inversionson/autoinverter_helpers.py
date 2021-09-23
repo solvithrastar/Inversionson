@@ -367,7 +367,7 @@ class ForwardHelper(object):
                 daint.remote_mkdir(interp_folder)
 
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
-            event, interp_folder=interp_folder, validation=validation,
+            event, interp_folder=interp_folder,
         )
         if mode == "local":
             self.comm.project.change_attribute(
