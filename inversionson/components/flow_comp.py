@@ -201,6 +201,11 @@ class SalvusFlowComponent(Component):
         :type sim_type: str
         """
         gradient = False
+        hpc_cluster = sapi.get_site(self.comm.project.intepolation_site)
+        username = hpc_cluster.config["ssh_settings"]["username"]
+        interp_folder = os.path.join(
+            "/scratch/snx3000", username, "INTERPOLATION_WEIGHTS",
+        )
         if sim_type == "model_interp":
             if self.comm.project.model_interp_job[event]["submitted"]:
                 job_name = self.comm.project.model_interp_job[event]["name"]
@@ -218,6 +223,9 @@ class SalvusFlowComponent(Component):
                     f"Gradient interpolation job for event: {event} "
                     "has not been submitted"
                 )
+        interp_folder = os.path.join(
+            interp_folder, "GRADIENTS" if gradient else "MODELS", event
+        )
         site_name = self.comm.project.interpolation_site
         db_job = sapi._get_config()["db"].get_jobs(
             limit=1, site_name=site_name, job_name=job_name,
@@ -225,7 +233,9 @@ class SalvusFlowComponent(Component):
 
         job = s_job.Job(
             site=sapi.get_site(site_name=db_job.site.site_name),
-            commands=self.comm.multi_mesh.get_interp_commands(event, gradient),
+            commands=self.comm.multi_mesh.get_interp_commands(
+                event, gradient, interp_folder=interp_folder
+            ),
             job_type=db_job.job_type,
             job_info=db_job.info,
             jobname=db_job.job_name,

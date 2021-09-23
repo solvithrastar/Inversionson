@@ -354,8 +354,8 @@ class ForwardHelper(object):
                     "submitted. Will not do interpolation."
                 )
                 return
-            daint = get_site(self.comm.project.site_name)
-            username = daint.config["ssh_settings"]["username"]
+            hpc_cluster = get_site(self.comm.project.interpolation_site_name)
+            username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
                 "/scratch/snx3000",
                 username,
@@ -363,8 +363,8 @@ class ForwardHelper(object):
                 "MODELS",
                 event,
             )
-            if not daint.remote_exists(interp_folder):
-                daint.remote_mkdir(interp_folder)
+            if not hpc_cluster.remote_exists(interp_folder):
+                hpc_cluster.remote_mkdir(interp_folder)
 
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
             event, interp_folder=interp_folder,
@@ -1122,8 +1122,8 @@ class AdjointHelper(object):
                     "has already been submitted"
                 )
             return
-        daint = get_site(self.comm.project.site_name)
-        username = daint.config["ssh_settings"]["username"]
+        hpc_cluster = get_site(self.comm.project.interpolation_site_name)
+        username = hpc_cluster.config["ssh_settings"]["username"]
         interp_folder = os.path.join(
             "/scratch/snx3000",
             username,
@@ -1131,8 +1131,8 @@ class AdjointHelper(object):
             "GRADIENTS",
             event,
         )
-        if not daint.remote_exists(interp_folder):
-            daint.remote_mkdir(interp_folder)
+        if not hpc_cluster.remote_exists(interp_folder):
+            hpc_cluster.remote_mkdir(interp_folder)
         # Here I need to make sure that the correct layers are interpolated
         # I can just do this by specifying the layers, rather than saying
         # nocore. That's less nice though of course. Could be specified
@@ -1221,22 +1221,22 @@ class AdjointHelper(object):
             ("adjoint", "gradient", "output_filename")
         ]
         # Connect to daint
-        daint = get_site(self.comm.project.site_name)
-        username = daint.config["ssh_settings"]["username"]
+        hpc_cluster = get_site(self.comm.project.site_name)
+        username = hpc_cluster.config["ssh_settings"]["username"]
 
         remote_inversionson_dir = os.path.join(
             "/scratch/snx3000", username, "smoothing_info"
         )
 
-        if not daint.remote_exists(remote_inversionson_dir):
-            daint.remote_mkdir(remote_inversionson_dir)
+        if not hpc_cluster.remote_exists(remote_inversionson_dir):
+            hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
         # copy processing script to daint
         remote_script = os.path.join(
             remote_inversionson_dir, "cut_and_clip.py"
         )
-        if not daint.remote_exists(remote_script):
-            daint.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
+        if not hpc_cluster.remote_exists(remote_script):
+            hpc_cluster.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
 
         if self.comm.project.cut_receiver_radius > 0.0:
             raise InversionsonError(
@@ -1257,11 +1257,15 @@ class AdjointHelper(object):
 
         # put toml on daint and remove local toml
         remote_toml = os.path.join(remote_inversionson_dir, toml_filename)
-        daint.remote_put(toml_filename, remote_toml)
+        hpc_cluster.remote_put(toml_filename, remote_toml)
         os.remove(toml_filename)
 
         # Call script
-        print(daint.run_ssh_command(f"python {remote_script} {remote_toml}"))
+        print(
+            hpc_cluster.run_ssh_command(
+                f"python {remote_script} {remote_toml}"
+            )
+        )
 
 
 class SmoothingHelper(object):
