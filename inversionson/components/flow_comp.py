@@ -201,7 +201,7 @@ class SalvusFlowComponent(Component):
         :type sim_type: str
         """
         gradient = False
-        hpc_cluster = sapi.get_site(self.comm.project.intepolation_site)
+        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         username = hpc_cluster.config["ssh_settings"]["username"]
         interp_folder = os.path.join(
             "/scratch/snx3000", username, "INTERPOLATION_WEIGHTS",
