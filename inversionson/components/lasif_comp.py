@@ -425,13 +425,14 @@ class LasifComponent(Component):
         :rtype: list
         """
         # If this is the first time ever that a batch is selected
-        if first:
-            blocked_events = list(
-                set(
-                    self.comm.project.validation_dataset
-                    + self.comm.project.test_dataset
-                )
+        valid_data = list(
+            set(
+                self.comm.project.validation_dataset
+                + self.comm.project.test_dataset
             )
+        )
+        if first:
+            blocked_events = valid_data
             use_these = None
             count = self.comm.project.initial_batch_size
             events = self.list_events()
@@ -467,13 +468,14 @@ class LasifComponent(Component):
             avail_events = list(set(avail_events) - set(existing))
         else:
             batch = existing
-            if len(blocked_events) == 0:
+            if len(blocked_events) == len(valid_data) + len(existing):
                 n_random_events = int(
                     np.floor(self.comm.project.random_event_fraction * count)
                 )
                 rand_batch = self.comm.minibatch.get_random_event(
-                    n=self.comm.project.n_random_events_picked,
+                    n=n_random_events,
                     existing=existing,
+                    avail_events=list(set(events) - set(blocked_events)),
                 )
                 count -= len(rand_batch)
                 batch = list(batch + rand_batch)
@@ -485,7 +487,9 @@ class LasifComponent(Component):
         # TODO: existing events should only be the control group.
         # events should exclude the blocked events because that's what
         # are the options to choose from. The existing go into the poisson disc
-        print(f"count: {count}")
+        print(f"We need {count} new events")
+        print(f"We do not want {len(blocked_events)} events")
+        print(f"We have {len(avail_events)} events to choose from")
         add_batch = lapi.get_subset(
             self.lasif_comm,
             count=count,

@@ -327,6 +327,11 @@ class MultiMeshComponent(Component):
         )
         commands.append(
             remote_io_site.site_utils.RemoteCommand(
+                command="which python", execute_with_mpi=False
+            )
+        )
+        commands.append(
+            remote_io_site.site_utils.RemoteCommand(
                 command="python interpolate.py", execute_with_mpi=False
             )
         )

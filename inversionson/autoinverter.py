@@ -37,14 +37,15 @@ class AutoInverter(object):
     automatic Full-Waveform Inversion
     """
 
-    def __init__(self, info_dict: dict):
+    def __init__(self, info_dict: dict, manual_mode=False):
         self.info = info_dict
         print(Fore.RED + "Will make communicator now")
         self.comm = _find_project_comm(self.info)
         print(Fore.GREEN + "Now I want to start running the inversion")
         print(Style.RESET_ALL)
         self.task = None
-        self.run_inversion()
+        if not manual_mode:
+            self.run_inversion()
 
     def _send_whatsapp_announcement(self):
         """
@@ -80,6 +81,7 @@ class AutoInverter(object):
         it_name = self.comm.salvus_opt.get_newest_iteration_name()
         if validation:
             it_name = f"validation_{it_name}"
+        move_meshes = "it0000" in it_name if validation else True
         first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
         self.comm.project.change_attribute("current_iteration", it_name)
         it_toml = os.path.join(
@@ -93,7 +95,7 @@ class AutoInverter(object):
             # not the iteration, we finish making the iteration
             # Should never happen though
             if len(self.comm.project.events_in_iteration) != 0:
-                if self.comm.project.meshes == "multi-mesh":
+                if self.comm.project.meshes == "multi-mesh" and move_meshes:
                     self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
                     self.comm.lasif.move_mesh(
                         event=None, iteration=it_name, hpc_cluster=None,
@@ -107,7 +109,7 @@ class AutoInverter(object):
                             self.comm.lasif.move_mesh(event, it_name)
                         else:
                             self.comm.lasif.move_mesh(event, it_name)
-                else:
+                elif self.comm.project.meshes == "mono-mesh" and move_meshes:
                     self.comm.lasif.move_mesh(event=None, iteration=it_name)
                 return
         if first_try and not validation:
@@ -125,7 +127,9 @@ class AutoInverter(object):
             events = self.comm.lasif.list_events(iteration=prev_try)
         self.comm.project.change_attribute("current_iteration", it_name)
         self.comm.lasif.set_up_iteration(it_name, events)
-        if self.comm.project.meshes == "multi-mesh":
+        self.comm.project.create_iteration_toml(it_name)
+        self.comm.project.get_iteration_attributes(validation)
+        if self.comm.project.meshes == "multi-mesh" and move_meshes:
             if self.comm.project.interpolation_mode == "remote":
                 interp_site = get_site(self.comm.project.interpolation_site)
             else:
@@ -146,13 +150,13 @@ class AutoInverter(object):
                     self.comm.lasif.move_mesh(
                         event, it_name, hpc_cluster=interp_site
                     )
-        else:
+        elif self.comm.project.meshes == "mono-mesh":
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
         if not validation and self.comm.project.inversion_mode == "mini-batch":
             self.comm.project.update_control_group_toml(first=first)
-        self.comm.project.create_iteration_toml(it_name)
-        self.comm.project.get_iteration_attributes(validation)
+        # self.comm.project.create_iteration_toml(it_name)
+        # self.comm.project.get_iteration_attributes(validation)
 
     def time_for_validation(self) -> bool:
         """
@@ -185,6 +189,7 @@ class AutoInverter(object):
         if self.comm.project.when_to_validate == 0:
             return
         if not self.time_for_validation():
+            print("Not time for a validation")
             return
         iteration_number = (
             self.comm.salvus_opt.get_number_of_newest_iteration()
@@ -221,6 +226,7 @@ class AutoInverter(object):
             self.comm.salvus_mesher.get_average_model(
                 iteration_range=(from_it, to_it)
             )
+            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
             if self.comm.project.interpolation_mode == "remote":
                 self.comm.lasif.move_mesh(
                     event=None, iteration=None, validation=True,
@@ -451,8 +457,6 @@ class AutoInverter(object):
         print(f"Current Iteration: {self.comm.project.current_iteration}")
         print(f"Current Task: {task}")
 
-        self.compute_misfit_on_validation_data()
-
         adjoint_helper = helpers.AdjointHelper(
             self.comm, self.comm.project.events_in_iteration
         )
@@ -494,7 +498,7 @@ class AutoInverter(object):
                 use_aliases=True,
             )
         )
-
+        sys.exit("Run salvus opt in shell")
         self.comm.salvus_opt.write_gradient_to_task_toml()
         self.comm.storyteller.document_task(task)
         # bypassing an opt bug

@@ -54,12 +54,18 @@ class SalvusMeshComponent(Component):
             sm.spherical.ellipticity = 0.0033528106647474805
         if self.comm.project.ocean_loading["use"]:
             sm.ocean.bathymetry_file = self.comm.project.ocean_loading["file"]
-            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading["variable"]
+            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading[
+                "variable"
+            ]
             sm.ocean.ocean_layer_style = "loading"
             sm.ocean.ocean_layer_density = 1025.0
         if self.comm.project.topography["use"]:
-            sm.topography.topography_file = self.comm.project.topography["file"]
-            sm.topography.topography_varname = self.comm.project.topography["variable"]
+            sm.topography.topography_file = self.comm.project.topography[
+                "file"
+            ]
+            sm.topography.topography_varname = self.comm.project.topography[
+                "variable"
+            ]
         sm.source.latitude = source_info["latitude"]
         sm.source.longitude = source_info["longitude"]
         sm.refinement.lateral_refinements.append(
@@ -99,10 +105,9 @@ class SalvusMeshComponent(Component):
                     return False
             if elemental:
                 if "element_data" in mesh["MODEL"].keys():
-                    elemental_fields = (
-                        mesh["MODEL/element_data"]
-                        .attrs.get("DIMENSION_LABELS")[1]
-                    )
+                    elemental_fields = mesh["MODEL/element_data"].attrs.get(
+                        "DIMENSION_LABELS"
+                    )[1]
                     elemental_fields = (
                         elemental_fields[2:-2].replace(" ", "").split("|")
                     )
@@ -114,10 +119,9 @@ class SalvusMeshComponent(Component):
                     return False
             else:
                 # Here we assume it's an element_nodal_field
-                nodal_fields = (
-                    mesh["MODEL/data"]
-                    .attrs.get("DIMENSION_LABELS")[1]
-                )
+                nodal_fields = mesh["MODEL/data"].attrs.get(
+                    "DIMENSION_LABELS"
+                )[1]
                 nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
                 if field_name in nodal_fields:
                     return True
@@ -266,8 +270,8 @@ class SalvusMeshComponent(Component):
 
         folder_name = f"it_{iteration_range[0]}_to_{iteration_range[1]}"
         full_path = self.average_meshes / folder_name / "mesh.h5"
-        if not os.path.exists(os.path.dirname(full_path)):
-            os.makedirs(os.path.dirname(full_path))
+        if not os.path.exists(full_path.parent):
+            os.makedirs(full_path.parent)
 
         # We copy the newest mesh from SALVUS_OPT to LASIF and write the
         # average fields onto those.
@@ -365,14 +369,12 @@ class SalvusMeshComponent(Component):
             )
 
         with h5py.File(simulation_mesh, mode="r+") as f_new:
-            with h5py.File(
-                    opt_model,
-                    mode="r") as f:
+            with h5py.File(opt_model, mode="r") as f:
                 dim_labels = (
                     f["MODEL/data"]
-                        .attrs.get("DIMENSION_LABELS")[1][1:-1]
-                        .replace(" ", "")
-                        .split("|")
+                    .attrs.get("DIMENSION_LABELS")[1][1:-1]
+                    .replace(" ", "")
+                    .split("|")
                 )
                 # This assumes the indices are the same in both files,
                 # which seems to be the case as far as DP could tell.

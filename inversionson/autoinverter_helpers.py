@@ -670,7 +670,6 @@ class ForwardHelper(object):
                 print(
                     emoji.emojize(":foggy: | Select windows", use_aliases=True)
                 )
-
             self.__select_windows(event)
 
         if verbose:
@@ -912,6 +911,7 @@ class ForwardHelper(object):
             for_job_listener.monitor_jobs()
             for event in for_job_listener.events_retrieved_now:
                 self.__retrieve_seismograms(event=event, verbose=verbose)
+
                 self.__work_with_retrieved_seismograms(
                     event, windows, window_set, validation, verbose,
                 )
@@ -1071,14 +1071,14 @@ class AdjointHelper(object):
             if interpolate:
                 interp_job_listener.monitor_jobs()
                 for event in interp_job_listener.events_retrieved_now:
-                    self.__dispatch_smoothing(
-                        event, interpolate, verbose=verbose
-                    )
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["retrieved"]',
                         new_value=True,
                     )
                     self.comm.project.update_iteration_toml()
+                    self.__dispatch_smoothing(
+                        event, interpolate, verbose=verbose
+                    )
                 for event in interp_job_listener.to_repost:
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["submitted"]',
@@ -1128,6 +1128,8 @@ class AdjointHelper(object):
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
         if submitted:
             return
+        if verbose:
+            print(f"Event: {event}")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
             event, adj_src
@@ -1147,9 +1149,6 @@ class AdjointHelper(object):
             wall_time=self.comm.project.wall_time,
             ranks=self.comm.project.ranks,
         )
-
-        # Can't really recall how we do with retrieving gradients now.
-        # I'll have to work on that a bit.
 
     def __dispatch_smoothing(
         self, event: str, interpolate: bool, verbose: bool = False
@@ -1183,7 +1182,7 @@ class AdjointHelper(object):
             )
             print(f"Gradient for event {event} has been retrieved.")
         else:
-            self.comm.smoothing.run_remote_smoother(event)
+            self.comm.smoother.run_remote_smoother(event)
 
     def __cut_and_clip_gradient(self, event, verbose=False):
         """

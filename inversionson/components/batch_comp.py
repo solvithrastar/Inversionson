@@ -71,9 +71,7 @@ class BatchComponent(Component):
         #       remember to raise a warning when it doesn't fit with
         #       what is expected.
         with h5py.File(mesh, "r") as mesh:
-            params = (
-                mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
-            )
+            params = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
             params = (
                 params[1:-1].replace(" ", "").replace("grad", "").split("|")
             )
@@ -317,18 +315,21 @@ class BatchComponent(Component):
             )
             event_angles[event] = angle
             print(f"Angle computed for event: {event}: {angle}")
-        redundant_gradient = min(event_angles, key=event_angles.get)
-        print(f"Most redundant: {redundant_gradient}")
-
-        reduced_gradient = self._remove_individual_grad_from_full_grad(
-            cntrl_gradient,
-            redundant_gradient,
-            unique_indices=unique_indices,
+        redundant_gradients = sorted(
+            event_angles.items(), key=lambda x: x[1], reverse=False
         )
+        # redundant_gradient = min(event_angles, key=event_angles.get)
+        # print(f"Most redundant: {redundant_gradient}")
 
-        return redundant_gradient, reduced_gradient
+        # reduced_gradient = self._remove_individual_grad_from_full_grad(
+        #     cntrl_gradient, redundant_gradient, unique_indices=unique_indices,
+        # )
 
-    def get_random_event(self, n: int, existing: list) -> list:
+        return redundant_gradients  # , reduced_gradient
+
+    def get_random_event(
+        self, n: int, existing: list, avail_events: list
+    ) -> list:
         """
         Get an n number of events based on the probabilities defined
         in the event_quality toml file
@@ -337,12 +338,29 @@ class BatchComponent(Component):
         :type n: int
         :param existing: Events blocked from selection
         :type existing: list
+        :param avail_events: Events available in lasif (important if some)
+            were removed at any point but remain in events_quality
+        :type avail_events: list
         :return: List of events randomly picked
         :rtype: list
         """
         events_quality = toml.load(self.comm.storyteller.events_quality_toml)
+        not_usable = list(set(events_quality.keys()) - set(avail_events))
         for k in existing:
             del events_quality[k]
+        for k in self.comm.project.validation_dataset:
+            if k in events_quality.keys():
+                print("Validation data in quality")
+                print(events_quality[k])
+                del events_quality[k]
+        for k in self.comm.project.test_dataset:
+            if k in events_quality.keys():
+                print("test data in events_quality")
+                print(events_quality[k])
+                del events_quality[k]
+        if len(not_usable) > 0:
+            for k in not_usable:
+                del events_quality[k]
         list_of_events = list(events_quality.keys())
         list_of_probabilities = list(events_quality.values())
         list_of_probabilities /= np.sum(list_of_probabilities)
@@ -429,25 +447,34 @@ class BatchComponent(Component):
 
         while len(ctrl_group) > min_ctrl:
             removal_order += 1
-            event_name, test_batch_grad = self._find_most_useless_event(
+            event_names = self._find_most_useless_event(
                 full_gradient=full_grad,
                 cntrl_gradient=batch_grad,
                 events=ctrl_group,
                 unique_indices=unique_indices,
             )
-
-            angle = self._angle_between(full_grad, test_batch_grad,)
-            print(f"Angle between test_batch and full gradient: {angle}")
+            i = 0
+            # Testing to drop five gradients at a time
+            while i < 5 and len(ctrl_group) > min_ctrl:
+                event_name = event_names[i][0]
+                test_batch_grad = self._remove_individual_grad_from_full_grad(
+                    batch_grad, event_name, unique_indices=unique_indices,
+                )
+                angle = self._angle_between(full_grad, test_batch_grad,)
+                print(f"Angle between test_batch and full gradient: {angle}")
+                if angle >= self.comm.project.maximum_grad_divergence_angle:
+                    break
+                else:
+                    batch_grad = np.copy(test_batch_grad)
+                    # del angular_changes[redundant_gradient]
+                    event_quality[event_name] = removal_order / len(events)
+                    # event_quality[event_name] = 1 / len(ctrl_group)
+                    ctrl_group.remove(event_name)
+                    print(f"{event_name} does not continue to next iteration")
+                    print(f"Current size of control group: {len(ctrl_group)}")
+                    i += 1
             if angle >= self.comm.project.maximum_grad_divergence_angle:
                 break
-            else:
-                batch_grad = np.copy(test_batch_grad)
-                # del angular_changes[redundant_gradient]
-                event_quality[event_name] = removal_order / len(events)
-                # event_quality[event_name] = 1 / len(ctrl_group)
-                ctrl_group.remove(event_name)
-                print(f"{event_name} does not continue to next iteration")
-                print(f"Current size of control group: {len(ctrl_group)}")
 
         for key, val in event_quality.items():
             self.comm.project.event_quality[key] = val

@@ -438,26 +438,39 @@ class SalvusOptComponent(Component):
         available than needed. Otherwise the second output is None
         :rtype: list, list
         """
-        blocked_events = list(
+        validation_events = list(
             set(
                 self.comm.project.validation_dataset
                 + self.comm.project.test_dataset
             )
         )
+        blocked_events = []
         events_used = self.comm.storyteller.events_used  # Usage of all events
         needed_events = int(round(self.get_batch_size() / 2))
         for key, val in events_used.items():
             if val != 0:
                 blocked_events.append(key)
-        if abs(len(blocked_events) - len(events_used.keys())) >= needed_events:
+        if abs(
+            len(blocked_events) - len(events_used.keys())
+        ) >= needed_events + len(validation_events):
             # We still have plenty of events to choose from.
+            print("We think there are enough events")
             use_these = None
+            blocked_events = list(set(blocked_events) + set(validation_events))
             return blocked_events, use_these
 
-        if len(blocked_events) == len(events_used.keys()):
+        if len(blocked_events) == len(events_used.keys()) - len(
+            validation_events
+        ):
+            print("We have used all events")
             use_these = None
         else:
-            use_these = list(set(events_used.keys()) - set(blocked_events))
+            print("There are a limited events left unused")
+            use_these = list(
+                set(events_used.keys())
+                - set(blocked_events)
+                - set(validation_events)
+            )
 
         # Now the only constraint on event selection is that we don't want
         # to select a non-control group event we used in the previous
