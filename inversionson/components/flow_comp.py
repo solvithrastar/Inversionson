@@ -652,6 +652,7 @@ class SalvusFlowComponent(Component):
             parameterization = "rho-vp-vs"
         w.adjoint.gradient.parameterization = parameterization
         w.adjoint.gradient.output_filename = gradient
+        w.adjoint.gradient.format = "hdf5-full"
         w.adjoint.point_source = adj_src
 
         # Now set a remote mesh

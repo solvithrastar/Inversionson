@@ -223,6 +223,7 @@ class SalvusSmoothComponent(Component):
             )
 
         # make site stuff (hardcoded for now)
+        # This needs to be modified by anyone not using daint
         daint = get_site(self.comm.project.site_name)
         username = daint.config["ssh_settings"]["username"]
         remote_diff_dir = os.path.join(

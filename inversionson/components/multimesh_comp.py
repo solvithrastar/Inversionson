@@ -10,6 +10,8 @@ import shutil
 import multi_mesh.api as mapi
 import lasif.api as lapi
 from salvus.flow.api import get_site
+import pathlib
+from typing import Union
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -108,7 +110,10 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event, gradient=False, validation=validation,
+                event=event,
+                gradient=False,
+                validation=validation,
+                interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',
@@ -158,7 +163,10 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event, gradient=True, validation=False,
+                event=event,
+                gradient=True,
+                validation=False,
+                interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
                 attribute=f'gradient_interp_job["{event}"]["name"]',
@@ -226,7 +234,7 @@ class MultiMeshComponent(Component):
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
 
     def construct_remote_interpolation_job(
-        self, event: str, gradient=False, validation=False
+        self, event: str, gradient=False, interp_folder=None
     ):
         """
         Construct a custom Salvus job which can be submitted to an HPC cluster
@@ -236,6 +244,10 @@ class MultiMeshComponent(Component):
         :type event: str
         :param gradient: Are we interpolating the gradient?, defaults to False
         :type gradient: bool, optional
+        :param interp_folder: A folder to save interpolation weights,
+            if interpolation has been done before, these weights can be stored,
+            defaults to None
+        :type interp_folder: str, optional
         """
 
         description = "Interpolation of "
@@ -248,7 +260,9 @@ class MultiMeshComponent(Component):
 
         int_job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
-            commands=self.get_interp_commands(event=event, gradient=gradient),
+            commands=self.get_interp_commands(
+                event=event, gradient=gradient, interp_folder=interp_folder
+            ),
             job_type="interpolation",
             job_description=description,
             job_info={},
@@ -257,7 +271,12 @@ class MultiMeshComponent(Component):
         )
         return int_job
 
-    def get_interp_commands(self, event: str, gradient: bool) -> list:
+    def get_interp_commands(
+        self,
+        event: str,
+        gradient: bool,
+        interp_folder: Union[str, pathlib.Path],
+    ) -> list:
         """
         Get the interpolation commands needed to do remote interpolations
         """
@@ -268,6 +287,11 @@ class MultiMeshComponent(Component):
             validation = False
         if iteration == "validation_it0000_model":
             validation = False  # Here there can't be any mesh averaging
+
+        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
+        interp_info_file = pathlib.Path(interp_folder) / "interp_info.h5"
+        weights_exists = hpc_cluster.remote_exists(interp_info_file)
+
         mesh_to_interpolate_to = self.comm.lasif.find_remote_mesh(
             event=event, gradient=gradient, interpolate_to=True,
         )
@@ -278,15 +302,15 @@ class MultiMeshComponent(Component):
             validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
-        if gradient:
-            mesh_to_get_fields_from = str(
-                self.comm.lasif.find_remote_mesh(
-                    event=event,
-                    iteration=iteration,
-                    already_interpolated=True,
-                )
-            )
-            move_fields_script = self.get_remote_field_moving_script_path()
+        # if gradient:
+        #     mesh_to_get_fields_from = str(
+        #         self.comm.lasif.find_remote_mesh(
+        #             event=event,
+        #             iteration=iteration,
+        #             already_interpolated=True,
+        #         )
+        #     )
+        #     move_fields_script = self.get_remote_field_moving_script_path()
         commands = [
             remote_io_site.site_utils.RemoteCommand(
                 command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
@@ -301,25 +325,31 @@ class MultiMeshComponent(Component):
                 execute_with_mpi=False,
             ),
         ]
-        if gradient:
+        if weights_exists:
             commands.append(
                 remote_io_site.site_utils.RemoteCommand(
-                    command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 layer elemental",
-                    execute_with_mpi=False,
+                    command=f"cp {interp_info_file} ./interp_info.h5"
                 )
             )
-            commands.append(
-                remote_io_site.site_utils.RemoteCommand(
-                    command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 fluid elemental",
-                    execute_with_mpi=False,
-                )
-            )
-            commands.append(
-                remote_io_site.site_utils.RemoteCommand(
-                    command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 z_node_1D nodal",
-                    execute_with_mpi=False,
-                )
-            )
+        # if gradient:
+        #     commands.append(
+        #         remote_io_site.site_utils.RemoteCommand(
+        #             command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 layer elemental",
+        #             execute_with_mpi=False,
+        #         )
+        #     )
+        #     commands.append(
+        #         remote_io_site.site_utils.RemoteCommand(
+        #             command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 fluid elemental",
+        #             execute_with_mpi=False,
+        #         )
+        #     )
+        #     commands.append(
+        #         remote_io_site.site_utils.RemoteCommand(
+        #             command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 z_node_1D nodal",
+        #             execute_with_mpi=False,
+        #         )
+        #     )
         commands.append(
             remote_io_site.site_utils.RemoteCommand(
                 command="mkdir output", execute_with_mpi=False
@@ -341,6 +371,12 @@ class MultiMeshComponent(Component):
                 execute_with_mpi=False,
             ),
         )
+        if not weights_exists:
+            commands.append(
+                remote_io_site.site_utils.RemoteCommand(
+                    command=f"mv ./interp_info.h5 {interp_info_file}"
+                )
+            )
         return commands
 
     def find_interpolation_script(self) -> str:

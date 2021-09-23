@@ -346,8 +346,7 @@ class ForwardHelper(object):
             )
             if not os.path.exists(interp_folder):
                 os.makedirs(interp_folder)
-        else:
-            interp_folder = None
+
         if mode == "remote":
             if self.comm.project.model_interp_job[event]["submitted"]:
                 print(
@@ -355,6 +354,18 @@ class ForwardHelper(object):
                     "submitted. Will not do interpolation."
                 )
                 return
+            daint = get_site(self.comm.project.site_name)
+            username = daint.config["ssh_settings"]["username"]
+            interp_folder = os.path.join(
+                "/scratch/snx3000",
+                username,
+                "INTERPOLATION_WEIGHTS",
+                "MODELS",
+                event,
+            )
+            if not daint.remote_exists(interp_folder):
+                daint.remote_mkdir(interp_folder)
+
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
             event, interp_folder=interp_folder, validation=validation,
         )
@@ -1111,12 +1122,24 @@ class AdjointHelper(object):
                     "has already been submitted"
                 )
             return
-
+        daint = get_site(self.comm.project.site_name)
+        username = daint.config["ssh_settings"]["username"]
+        interp_folder = os.path.join(
+            "/scratch/snx3000",
+            username,
+            "INTERPOLATION_WEIGHTS",
+            "GRADIENTS",
+            event,
+        )
+        if not daint.remote_exists(interp_folder):
+            daint.remote_mkdir(interp_folder)
         # Here I need to make sure that the correct layers are interpolated
         # I can just do this by specifying the layers, rather than saying
         # nocore. That's less nice though of course. Could be specified
         # in the config file. Then it should work fine.
-        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False)
+        self.comm.multi_mesh.interpolate_gradient_to_model(
+            event, smooth=False, interp_folder=interp_folder
+        )
 
     def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
