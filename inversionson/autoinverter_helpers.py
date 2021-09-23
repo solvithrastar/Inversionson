@@ -354,7 +354,7 @@ class ForwardHelper(object):
                     "submitted. Will not do interpolation."
                 )
                 return
-            hpc_cluster = get_site(self.comm.project.interpolation_site_name)
+            hpc_cluster = get_site(self.comm.project.interpolation_site)
             username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
                 "/scratch/snx3000",
@@ -1122,7 +1122,7 @@ class AdjointHelper(object):
                     "has already been submitted"
                 )
             return
-        hpc_cluster = get_site(self.comm.project.interpolation_site_name)
+        hpc_cluster = get_site(self.comm.project.interpolation_site)
         username = hpc_cluster.config["ssh_settings"]["username"]
         interp_folder = os.path.join(
             "/scratch/snx3000",
