@@ -325,7 +325,8 @@ class MultiMeshComponent(Component):
         if weights_exists:
             commands.append(
                 remote_io_site.site_utils.RemoteCommand(
-                    command=f"cp {interp_info_file} ./interp_info.h5"
+                    command=f"cp {interp_info_file} ./interp_info.h5",
+                    execute_with_mpi=False,
                 )
             )
         # if gradient:
@@ -371,7 +372,8 @@ class MultiMeshComponent(Component):
         if not weights_exists:
             commands.append(
                 remote_io_site.site_utils.RemoteCommand(
-                    command=f"mv ./interp_info.h5 {interp_info_file}"
+                    command=f"mv ./interp_info.h5 {interp_info_file}",
+                    execute_with_mpi=False,
                 )
             )
         return commands
