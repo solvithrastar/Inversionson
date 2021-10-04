@@ -540,7 +540,9 @@ class SalvusFlowComponent(Component):
             mesh = self.comm.lasif.get_simulation_mesh(event)
             if self.comm.project.interpolation_mode == "remote":
                 use_mesh = f"REMOTE:{mesh}"
-        mesh = self.comm.lasif.find_event_mesh(event=event)
+            mesh = self.comm.lasif.find_event_mesh(event=event)
+        else:
+            self.comm.lasif.get_simulation_mesh(event)
         w = sc.simulation.Waveform(
             mesh=mesh, sources=sources, receivers=receivers
         )
@@ -719,7 +721,6 @@ class SalvusFlowComponent(Component):
             input_file=simulation,
             ranks=ranks,
             wall_time_in_seconds=wall_time,
-            # output_folder=output_folder
         )
 
         if (
@@ -727,7 +728,7 @@ class SalvusFlowComponent(Component):
             and self.comm.project.meshes == "mono-mesh"
         ):
             self.comm.project.change_attribute(
-                "remote_mesh", "REMOTE:" + str(job.input_path / "mesh.h5")
+                "remote_mesh", "REMOTE:" + str(job.input_path / pathlib.Path(self.comm.lasif.find_simulation_mesh(event=event)).name)
             )
 
         if sim_type == "forward":

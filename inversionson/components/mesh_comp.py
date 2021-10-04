@@ -83,6 +83,7 @@ class SalvusMeshComponent(Component):
         field_name: str,
         elemental: bool,
         global_string: bool,
+        side_sets: bool,
     ) -> bool:
         """
         Use h5py to quickly check whether field exists on mesh
@@ -95,6 +96,8 @@ class SalvusMeshComponent(Component):
         :type elemental: bool
         :param global_string: Is it a global string
         :type global_string: bool
+        :param side_sets: Are we checking for side sets? Provide the name,
+        :type side_sets: str
         """
         with h5py.File(check_mesh, mode="r") as mesh:
             if global_string:
@@ -117,6 +120,11 @@ class SalvusMeshComponent(Component):
                         return False
                 else:
                     return False
+            if side_sets:
+                if "SIDE_SETS" in mesh.keys():
+                    return True
+                else:
+                    return False
             else:
                 # Here we assume it's an element_nodal_field
                 nodal_fields = mesh["MODEL/data"].attrs.get(
@@ -135,6 +143,7 @@ class SalvusMeshComponent(Component):
         field_name: str,
         elemental: bool = False,
         global_string: bool = False,
+        side_sets: bool = False,
         overwrite: bool = True,
     ):
         """
@@ -171,10 +180,12 @@ class SalvusMeshComponent(Component):
             field_name=field_name,
             elemental=elemental,
             global_string=global_string,
+            side_sets=side_sets,
         )
         if has_field and not overwrite:
             print(f"Field: {field_name} already exists on mesh")
             return
+        attach_field = True
         if not os.path.exists(to_mesh):
             print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
@@ -199,15 +210,27 @@ class SalvusMeshComponent(Component):
             #         print(f"Field {field_name} already exists on mesh")
             #         return
             field = fm.elemental_fields[field_name]
+        elif side_sets:
+            for side_set in fm.side_sets.keys():
+                tm.define_side_set(
+                    name=side_set,
+                    element_ids=fm.side_sets[side_set][0],
+                    side_ids=fm.side_sets[side_set][1]
+                    )
+                print(f"Attached side set {side_set} to mesh {to_mesh}")
+            attach_field = False
+
         else:
             # if field_name in tm.element_nodal_fields.keys():
             #     if not overwrite:
             #         print(f"Field {field_name} already exists on mesh")
             #         return
             field = fm.element_nodal_fields[field_name]
-        tm.attach_field(field_name, field)
+        if attach_field:
+            tm.attach_field(field_name, field)
+            print(f"Attached field {field_name} to mesh {to_mesh}")
         tm.write_h5(to_mesh)
-        print(f"Attached field {field_name} to mesh {to_mesh}")
+        
 
     def write_xdmf(self, filename: str):
         """

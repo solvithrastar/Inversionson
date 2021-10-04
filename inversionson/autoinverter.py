@@ -109,7 +109,7 @@ class AutoInverter(object):
                             self.comm.lasif.move_mesh(event, it_name)
                         else:
                             self.comm.lasif.move_mesh(event, it_name)
-                elif self.comm.project.meshes == "mono-mesh" and move_meshes:
+                elif self.comm.project.meshes == "mono-mesh":
                     self.comm.lasif.move_mesh(event=None, iteration=it_name)
                 return
         if first_try and not validation:

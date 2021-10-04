@@ -403,6 +403,7 @@ class ForwardHelper(object):
         """
         # Check status of simulation
         submitted, retrieved = self.__submitted_retrieved(event)
+        iteration = self.comm.project.current_iteration
         if submitted:
             return
         if verbose:
@@ -424,6 +425,15 @@ class ForwardHelper(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w.set_mesh(self.comm.project.remote_mesh)
+        # if self.comm.project.meshes == "mono-mesh":
+        #     w.set_mesh("REMOTE:" +
+        #         str(self.comm.lasif.find_remote_mesh(
+        #             event=None,
+        #             interpolate_to=False,
+        #             iteration=iteration,
+        #             validation="validation" in iteration,
+        #         ))
+        #     )
 
         self.comm.salvus_flow.submit_job(
             event=event,
@@ -615,6 +625,7 @@ class ForwardHelper(object):
         :type event: str
         """
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
+        iteration = self.comm.project.current_iteration
         if submitted:
             return
 
@@ -636,6 +647,17 @@ class ForwardHelper(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w_adjoint.set_mesh(self.comm.project.remote_mesh)
+        # if self.comm.project.meshes == "mono-mesh":
+        #     w_adjoint.set_mesh("REMOTE:" +
+        #         str(self.comm.lasif.find_remote_mesh(
+        #             event=None,
+        #             gradient=False,
+        #             inverpolate_to=False,
+        #             check_if_exists=True,
+        #             iteration=iteration,
+        #             validatio="validation" in iteration,
+        #         ))
+        #     )
 
         self.comm.salvus_flow.submit_job(
             event=event,
@@ -1149,6 +1171,7 @@ class AdjointHelper(object):
         :type event: str
         """
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
+        iteration = self.comm.project.current_iteration
         if submitted:
             return
         if verbose:
@@ -1163,6 +1186,18 @@ class AdjointHelper(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w_adjoint.set_mesh(self.comm.project.remote_mesh)
+        # if self.comm.project.meshes == "mono-mesh":
+        #     w_adjoint.set_mesh(
+        #         "REMOTE:" +
+        #         str(self.comm.lasif.find_remote_mesh(
+        #             event=None,
+        #             gradient=False,
+        #             inverpolate_to=False,
+        #             check_if_exists=True,
+        #             iteration=iteration,
+        #             validatio="validation" in iteration,
+        #         ))
+        #     )
 
         self.comm.salvus_flow.submit_job(
             event=event,
