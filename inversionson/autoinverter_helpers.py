@@ -1394,8 +1394,19 @@ class SmoothingHelper(object):
                 event, sim_type="gradient_interp"
             )
             if not submitted:
+                hpc_cluster = get_site(self.comm.project.interpolation_site)
+                username = hpc_cluster.config["ssh_settings"]["username"]
+                interp_folder = os.path.join(
+                    "/scratch/snx3000",
+                    username,
+                    "INTERPOLATION_WEIGHTS",
+                    "GRADIENTS",
+                    event,
+                )
+                if not hpc_cluster.remote_exists(interp_folder):
+                    hpc_cluster.remote_mkdir(interp_folder)
                 self.comm.multi_mesh.interpolate_gradient_to_model(
-                    event, smooth=False
+                    event, smooth=False, interp_folder=interp_folder,
                 )
             else:
                 if retrieved:
@@ -1415,7 +1426,18 @@ class SmoothingHelper(object):
         Take the gradient out of the adjoint simulations and
         interpolate them to the inversion grid prior to smoothing.
         """
-        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False)
+        hpc_cluster = get_site(self.comm.project.interpolation_site)
+        username = hpc_cluster.config["ssh_settings"]["username"]
+        interp_folder = os.path.join(
+            "/scratch/snx3000",
+            username,
+            "INTERPOLATION_WEIGHTS",
+            "GRADIENTS",
+            event,
+        )
+        if not hpc_cluster.remote_exists(interp_folder):
+            hpc_cluster.remote_mkdir(interp_folder)
+        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False, interp_folder=interp_folder)
 
     def retrieve_smooth_gradients(self, events=None, verbose=False):
         if events is None:

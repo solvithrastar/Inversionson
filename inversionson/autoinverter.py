@@ -498,7 +498,6 @@ class AutoInverter(object):
                 use_aliases=True,
             )
         )
-        sys.exit("Run salvus opt in shell")
         self.comm.salvus_opt.write_gradient_to_task_toml()
         self.comm.storyteller.document_task(task)
         # bypassing an opt bug

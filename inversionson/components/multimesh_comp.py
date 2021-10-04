@@ -162,7 +162,6 @@ class MultiMeshComponent(Component):
             job = self.construct_remote_interpolation_job(
                 event=event,
                 gradient=True,
-                validation=False,
                 interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
@@ -322,13 +321,13 @@ class MultiMeshComponent(Component):
                 execute_with_mpi=False,
             ),
         ]
-        if weights_exists:
-            commands.append(
-                remote_io_site.site_utils.RemoteCommand(
-                    command=f"cp {interp_info_file} ./interp_info.h5",
-                    execute_with_mpi=False,
-                )
-            )
+        # if weights_exists:
+        #     commands.append(
+        #         remote_io_site.site_utils.RemoteCommand(
+        #             command=f"cp {interp_info_file} ./interp_info.h5",
+        #             execute_with_mpi=False,
+        #         )
+        #     )
         # if gradient:
         #     commands.append(
         #         remote_io_site.site_utils.RemoteCommand(
@@ -369,13 +368,13 @@ class MultiMeshComponent(Component):
                 execute_with_mpi=False,
             ),
         )
-        if not weights_exists:
-            commands.append(
-                remote_io_site.site_utils.RemoteCommand(
-                    command=f"mv ./interp_info.h5 {interp_info_file}",
-                    execute_with_mpi=False,
-                )
-            )
+        # if not weights_exists:
+        #     commands.append(
+        #         remote_io_site.site_utils.RemoteCommand(
+        #             command=f"mv ./interp_info.h5 {interp_info_file}",
+        #             execute_with_mpi=False,
+        #         )
+        #     )
         return commands
 
     def find_interpolation_script(self) -> str:

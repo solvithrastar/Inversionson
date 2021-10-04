@@ -519,7 +519,6 @@ class SalvusFlowComponent(Component):
                 )
                 for rec in recs
             ]
-
         return receivers
 
     def construct_simulation(
@@ -711,10 +710,10 @@ class SalvusFlowComponent(Component):
         # Adjoint simulation takes longer and seems to be less predictable
         # we thus give it a longer wall time.
         start = time.time()
-        # if sim_type == "adjoint":
-        #     wall_time = self.comm.project.wall_time * 2
-        # else:
-        wall_time = self.comm.project.wall_time
+        if sim_type == "adjoint":
+            wall_time = self.comm.project.wall_time * 1.5
+        else:
+            wall_time = self.comm.project.wall_time
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
