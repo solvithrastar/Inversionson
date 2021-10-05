@@ -7,7 +7,9 @@ There exists an [open-access paper about Inversionson](https://eartharxiv.org/re
   title={Inversionson: Fully Automated Seismic Waveform Inversions},
   author={Thrastarson, Solvi and van Herwaarden, Dirk-Philip and Fichtner, Andreas},
   year={2021},
-  publisher={EarthArXiv}
+  publisher={EarthArXiv},
+  doi = {10.31223/X5F31V},
+  url = {https://doi.org/10.31223/X5F31V}
 }
 ```
 
