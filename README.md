@@ -3,7 +3,7 @@
 There exists an [open-access paper about Inversionson](https://eartharxiv.org/repository/view/2132/). If you use Inversionson, please consider citing it:
 
 ```bibtex
-@article{thrastarson2021inversionson,
+@misc{thrastarson2021inversionson,
   title={Inversionson: Fully Automated Seismic Waveform Inversions},
   author={Thrastarson, Solvi and van Herwaarden, Dirk-Philip and Fichtner, Andreas},
   year={2021},
