@@ -19,9 +19,9 @@ class SalvusSmoothComponent(Component):
         )
         # self.smoother_path = self.comm.project.paths["salvus_smoother"]
 
-    def generate_smoothing_config(self, event: str) -> dict:
+    def generate_smoothing_config(self, event: str = None) -> dict:
         """
-        Generate a dictionary which contains smoothing objects for each 
+        Generate a dictionary which contains smoothing objects for each
         parameter to be smoothed.
 
         :param event: Name of event
@@ -72,7 +72,7 @@ class SalvusSmoothComponent(Component):
     def retrieve_smooth_gradient(self, event_name: str, iteration=None):
         """
         Retrieve the smoothed gradient from a specific event and iteration.
-        
+
         :param event_name: Name of event, can be None if mono-batch
         :type event_name: str
         :param iteration: Name of iteration, defaults to None (current)
@@ -98,6 +98,14 @@ class SalvusSmoothComponent(Component):
                 summed=True,
                 just_give_path=True,
             )
+        elif self.comm.project.meshes == "multi-mesh":
+            smooth_grad = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event_name,
+                smooth=True,
+                inversion_grid=True,
+                just_give_path=True,
+            )
         else:
             smooth_grad = self.comm.lasif.find_gradient(
                 iteration=iteration,
@@ -111,8 +119,7 @@ class SalvusSmoothComponent(Component):
             os.mkdir(os.path.dirname(smooth_grad))
 
         smooth_gradient = get_smooth_model(
-            job=salvus_job,
-            model=self.comm.lasif.find_event_mesh(event=event_name),
+            job=salvus_job, model=self.comm.lasif.get_master_model(),
         )
         smooth_gradient.write_h5(smooth_grad)
         if "VPV" in list(smooth_gradient.element_nodal_fields.keys()):
@@ -126,12 +133,12 @@ class SalvusSmoothComponent(Component):
         """
         Run the Smoother, the settings are specified in inversion toml. Make
         sure that the smoothing config has already been generated
-        
+
         :param smoothing_config: Dictionary with objects for each parameter
         :type smoothing_config: dict
         :param event: Name of event
         :type event: str
-        :param iteration: Name of iteration, if None it will give the 
+        :param iteration: Name of iteration, if None it will give the
             current iteration, defaults to None
         :type iteration: str, optional
         """
@@ -140,7 +147,7 @@ class SalvusSmoothComponent(Component):
         if iteration is None:
             iteration = self.comm.project.current_iteration
 
-        if self.comm.project.remote_gradient_processing:
+        if self.comm.project.remote_gradient_processing and event is not None:
             job = self.comm.salvus_flow.get_job(event, "adjoint")
             output_files = job.get_output_files()
             grad = output_files[0][("adjoint", "gradient", "output_filename")]
@@ -187,6 +194,7 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["submitted"]', True
             )
+        self.comm.project.update_iteration_toml()
 
     def run_remote_smoother(
         self, event: str,
@@ -203,21 +211,28 @@ class SalvusSmoothComponent(Component):
         from salvus.flow.api import get_site
         from salvus.flow import api as sapi
 
+        int_mode = self.comm.project.interpolation_mode
         if self.comm.project.meshes == "multi-mesh":
-            mesh = self.comm.lasif.find_event_mesh(event)
+            mesh = self.comm.lasif.get_master_model()
         else:
             mesh = self.comm.lasif.get_simulation_mesh(event)
         freq = 1.0 / self.comm.project.min_period
         smoothing_lengths = self.comm.project.smoothing_lengths
 
         # get remote gradient filename
-        job = self.comm.salvus_flow.get_job(event, "adjoint")
-        output_files = job.get_output_files()
-        remote_grad = str(
-            output_files[0][("adjoint", "gradient", "output_filename")]
-        )
+        if int_mode == "remote" and self.comm.project.meshes == "multi-mesh":
+            # The gradient we want has been interpolated
+            job = self.comm.salvus_flow.get_job(event, "gradient_interp")
+            remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")
+        else:
+            job = self.comm.salvus_flow.get_job(event, "adjoint")
+            output_files = job.get_output_files()
+            remote_grad = str(
+                output_files[0][("adjoint", "gradient", "output_filename")]
+            )
 
         # make site stuff (hardcoded for now)
+        # This needs to be modified by anyone not using daint
         daint = get_site(self.comm.project.site_name)
         username = daint.config["ssh_settings"]["username"]
         remote_diff_dir = os.path.join(
@@ -248,8 +263,8 @@ class SalvusSmoothComponent(Component):
             )
 
             diff_model_file = unique_id + f"diff_model_{param}.h5"
-            if self.comm.project.meshes == "multi-mesh":
-                diff_model_file = event + "_" + diff_model_file
+            # if self.comm.project.meshes == "multi-mesh":
+            #     diff_model_file = event + "_" + diff_model_file
 
             remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
 
@@ -272,10 +287,7 @@ class SalvusSmoothComponent(Component):
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
-            if self.comm.project.meshes == "multi-mesh":
-                tensor_order = 4
-            else:
-                tensor_order = 2
+            tensor_order = 2  # Hard coded now but should be fixed
 
             sim.domain.polynomial_order = tensor_order
             sim.physics.diffusion_equation.time_step_in_seconds = (
@@ -308,6 +320,7 @@ class SalvusSmoothComponent(Component):
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
         if self.comm.project.inversion_mode == "mini-batch":
+            print(f"Submitted smoothing for event {event}")
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
             )
@@ -321,3 +334,4 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["submitted"]', True
             )
+        self.comm.project.update_iteration_toml()

@@ -99,7 +99,7 @@ class ProjectComponent(Component):
         """
         import pathlib
 
-        allowed_interp_modes = ["gll_2_gll"]
+        allowed_interp_modes = ["local", "remote"]
         if "inversion_id" not in self.info.keys():
             raise ValueError("The inversion needs a name, Key: inversion_id")
 
@@ -108,18 +108,9 @@ class ProjectComponent(Component):
                 "We need a given path for the inversion root directory."
                 " Key: inversion_path"
             )
-
-        if "model_interpolation_mode" not in self.info.keys():
+        if self.info["dropout_probability"] >= 1.0:
             raise InversionsonError(
-                "We need information on how you want to interpolate "
-                "the model to simulation meshes. "
-                "Key: model_interpolation_mode "
-            )
-
-        if self.info["model_interpolation_mode"] not in allowed_interp_modes:
-            raise InversionsonError(
-                f"The allowable model_interpolation_modes are: "
-                f" {allowed_interp_modes}"
+                "The dropout probability should be between 0.0 and 0.99."
             )
 
         if "meshes" not in self.info.keys():
@@ -129,17 +120,15 @@ class ProjectComponent(Component):
                 "Key: meshes"
             )
 
-        if "gradient_interpolation_mode" not in self.info.keys():
+        if "interpolation_mode" not in self.info.keys():
             raise InversionsonError(
                 "We need information on how you want to interpolate "
-                "the model to simulation meshes. "
-                "Key: gradient_interpolation_mode "
+                "between meshes, local or remote. "
+                "If you use mono-mesh, just put 'local'"
+                "Key: interpolation_mode "
             )
 
-        if (
-            self.info["gradient_interpolation_mode"]
-            not in allowed_interp_modes
-        ):
+        if self.info["interpolation_mode"] not in allowed_interp_modes:
             raise InversionsonError(
                 f"The allowable model_interpolation_modes are: "
                 f" {allowed_interp_modes}"
@@ -159,6 +148,37 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need specific computational info on diffusion_equation"
             )
+        if self.info["interpolation_mode"] == "remote":
+            if "interpolation" not in self.info["HPC"].keys():
+                raise InversionsonError(
+                    "We need to know some info on your remote interpolations"
+                )
+
+            if (
+                "model_wall_time"
+                not in self.info["HPC"]["interpolation"].keys()
+            ):
+                raise InversionsonError(
+                    "We need to know the wall time of your model "
+                    " interpolations. Key: HPC.interpolation.model_wall_time"
+                )
+
+            if (
+                "gradient_wall_time"
+                not in self.info["HPC"]["interpolation"].keys()
+            ):
+                raise InversionsonError(
+                    "We need to know the wall time of your model "
+                    " interpolations. Key: HPC.interpolation.gradient_wall_time"
+                )
+            if (
+                "remote_mesh_directory"
+                not in self.info["HPC"]["interpolation"].keys()
+            ):
+                raise InversionsonError(
+                    "We need to know the location where the meshes are stored"
+                    ". Key: HPC.interpolation.remote_mesh_directory"
+                )
 
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
@@ -331,19 +351,76 @@ class ProjectComponent(Component):
                 "We need to know how many elements you want per azimuthal "
                 "quarter. Key: Meshing"
             )
+        if self.info["meshes"] == "multi-mesh":
+            if (
+                "elements_per_azimuthal_quarter"
+                not in self.info["Meshing"].keys()
+            ):
+                raise InversionsonError(
+                    "We need to know how many elements you need per azimuthal "
+                    "quarter. Key: Meshing.elements_per_azimuthal_quarter"
+                )
 
-        if "elements_per_azimuthal_quarter" not in self.info["Meshing"].keys():
-            raise InversionsonError(
-                "We need to know how many elements you need per azimuthal "
-                "quarter. Key: Meshing.elements_per_azimuthal_quarter"
-            )
+            if not isinstance(
+                self.info["Meshing"]["elements_per_azimuthal_quarter"], int
+            ):
+                raise InversionsonError(
+                    "Elements per azimuthal quarter need to be an integer."
+                )
 
-        if not isinstance(
-            self.info["Meshing"]["elements_per_azimuthal_quarter"], int
-        ):
+            if "ellipticity" not in self.info["Meshing"].keys():
+                raise InversionsonError(
+                    "We need a boolean value regarding ellipticity "
+                    "of your meshes. \n"
+                    "Key: Meshing.ellipticity"
+                )
+            if "topography" not in self.info["Meshing"].keys():
+                raise InversionsonError(
+                    "We need information on whether you use topography "
+                    "in your mesh."
+                )
+            else:
+                if "use" not in self.info["Meshing"]["topography"].keys():
+                    raise InversionsonError(
+                        "We need a boolean value telling us if you use "
+                        "topography in your mesh. \n"
+                        "If True, we need file and variable name"
+                    )
+                if self.info["Meshing"]["topography"]["use"]:
+                    if len(self.info["Meshing"]["topography"]["file"]) == 0:
+                        raise InversionsonError(
+                            "Please specify path to your topography file.\n"
+                            "Key: Meshing.topography.file"
+                        )
+                    if (
+                        len(self.info["Meshing"]["topography"]["variable"])
+                        == 0
+                    ):
+                        raise InversionsonError(
+                            "Please specify path to your topography variable "
+                            "name. You can find it by opening the file in "
+                            "ParaView \n"
+                            "Key: Meshing.topography.variable"
+                        )
+        if "use" not in self.info["Meshing"]["ocean_loading"].keys():
             raise InversionsonError(
-                "Elements per azimuthal quarter need to be an integer."
+                "We need a boolean value telling us if you use "
+                "ocean_loading in your mesh. \n"
+                "If True, we need file and variable name"
             )
+        if self.info["Meshing"]["ocean_loading"]["use"]:
+            if len(self.info["Meshing"]["ocean_loading"]["file"]) == 0:
+                raise InversionsonError(
+                    "Please specify path to your bathymetry file.\n"
+                    "Key: Meshing.ocean_loading.file"
+                )
+            if len(self.info["Meshing"]["ocean_loading"]["variable"]) == 0:
+                raise InversionsonError(
+                    "Please specify path to your bathymetry variable "
+                    "name. You can find it by opening the file in "
+                    "ParaView \n"
+                    "Key: Meshing.ocean_loading.variable"
+                )
 
         # Lasif
         if "lasif_root" not in self.info.keys():
@@ -376,22 +453,20 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "Information regarding inversion monitoring is missing"
             )
+        if (
+            self.info["inversion_monitoring"][
+                "iterations_between_validation_checks"
+            ]
+            != 0
+        ):
             if (
-                self.info["inversion_monitoring"][
-                    "iterations_between_validation_checks"
-                ]
-                != 0
+                len(self.info["inversion_monitoring"]["validation_dataset"])
+                == 0
             ):
-                if (
-                    len(
-                        self.info["inversion_monitoring"]["validation_dataset"]
-                    )
-                    == 0
-                ):
-                    raise InversionsonError(
-                        "You need to specify a validation dataset if you want"
-                        " to check it regularly."
-                    )
+                raise InversionsonError(
+                    "You need to specify a validation dataset if you want"
+                    " to check it regularly."
+                )
 
     def __setup_components(self):
         """
@@ -422,7 +497,7 @@ class ProjectComponent(Component):
         problem when working with hdf5 files.
         This method can only handle a few cases. If it doesn't
         recognize the case it will return an unmodified list.
-        
+
         :param parameters: parameters to be arranged
         :type parameters: list
         """
@@ -466,7 +541,7 @@ class ProjectComponent(Component):
     def get_inversion_attributes(self, first=False):
         """
         Read crucial components into memory to keep them easily accessible.
-        
+
         :param first: Befor components are set up, defaults to False
         :type first: bool, optional
         """
@@ -481,7 +556,6 @@ class ProjectComponent(Component):
             "absorbing_boundaries_length"
         ]
         self.absorbing_boundaries = self.info["absorbing_boundaries"]
-        self.ocean_loading = self.simulation_dict["ocean_loading"]
         self.domain_file = self.simulation_dict["domain_file"]
 
         # Inversion attributes
@@ -494,10 +568,10 @@ class ProjectComponent(Component):
             self.elem_per_quarter = self.info["Meshing"][
                 "elements_per_azimuthal_quarter"
             ]
-        self.model_interpolation_mode = self.info["model_interpolation_mode"]
-        self.gradient_interpolation_mode = self.info[
-            "gradient_interpolation_mode"
-        ]
+            self.topography = self.info["Meshing"]["topography"]
+            self.ellipticity = self.info["Meshing"]["ellipticity"]
+        self.ocean_loading = self.info["Meshing"]["ocean_loading"]
+        self.interpolation_mode = self.info["interpolation_mode"]
         self.cut_source_radius = self.info[
             "cut_source_region_from_gradient_in_km"
         ]
@@ -508,6 +582,19 @@ class ProjectComponent(Component):
         self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
         self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
+        if self.interpolation_mode == "remote":
+            self.model_interp_wall_time = self.info["HPC"]["interpolation"][
+                "model_wall_time"
+            ]
+            self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
+                "gradient_wall_time"
+            ]
+            self.interpolation_site = self.info["HPC"]["interpolation"][
+                "site_name"
+            ]
+            self.remote_mesh_dir = self.info["HPC"]["interpolation"][
+                "remote_mesh_directory"
+            ]
         self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
             "site_name"
         ]
@@ -590,6 +677,11 @@ class ProjectComponent(Component):
         validation = False
         if "validation" in iteration:
             validation = True
+
+        remote_interp = False
+        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
+            remote_interp = True
+
         if os.path.exists(iteration_toml):
             warnings.warn(
                 f"Iteration toml for iteration: {iteration} already exists. backed it up",
@@ -628,6 +720,13 @@ class ProjectComponent(Component):
             "retrieved": False,
             "reposts": 0,
         }
+        if remote_interp:
+            i_job_dict = {
+                "name": "",
+                "submitted": False,
+                "retrieved": False,
+                "reposts": 0,
+            }
         if validation:
             f_job_dict["windows_selected"] = False
         if not validation:
@@ -653,6 +752,8 @@ class ProjectComponent(Component):
         ):
             if validation:
                 jobs = {"forward": f_job_dict}
+                if remote_interp:
+                    jobs["model_interp"] = i_job_dict
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs = {
@@ -660,6 +761,9 @@ class ProjectComponent(Component):
                         "adjoint": a_job_dict,
                         "smoothing": s_job_dict,
                     }
+                    if remote_interp:
+                        jobs["model_interp"] = i_job_dict
+                        jobs["gradient_interp"] = i_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
@@ -673,6 +777,9 @@ class ProjectComponent(Component):
                         "forward": f_job_dict,
                         "adjoint": a_job_dict,
                     }
+                    if remote_interp:
+                        jobs["model_interp"] = i_job_dict
+                        jobs["gradient_interp"] = i_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
@@ -764,6 +871,9 @@ class ProjectComponent(Component):
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
+        remote_interp = False
+        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
+            remote_interp = True
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
                 f"Iteration toml for iteration: {iteration} does not exists"
@@ -791,6 +901,10 @@ class ProjectComponent(Component):
             jobs = {"forward": self.forward_job[event]}
             if not validation:
                 jobs["adjoint"] = self.adjoint_job[event]
+            if remote_interp:
+                jobs["model_interp"] = self.model_interp_job[event]
+                if not validation:
+                    jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.inversion_mode == "mini-batch":
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
@@ -823,6 +937,9 @@ class ProjectComponent(Component):
         iteration = self.comm.salvus_opt.get_newest_iteration_name()
         if validation:
             iteration = f"validation_{iteration}"
+        remote_interp = False
+        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
+            remote_interp = True
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
@@ -847,6 +964,9 @@ class ProjectComponent(Component):
             self.misfits = {}
             self.updated = {}
         self.forward_job = {}
+        if remote_interp:
+            self.model_interp_job = {}
+            self.gradient_interp_job = {}
 
         if self.meshes == "mono-mesh":
             if "remote_simulation_mesh" not in it_dict.keys():
@@ -874,6 +994,14 @@ class ProjectComponent(Component):
             self.forward_job[event] = it_dict["events"][str(_i)]["job_info"][
                 "forward"
             ]
+            if remote_interp:
+                self.model_interp_job[event] = it_dict["events"][str(_i)][
+                    "job_info"
+                ]["model_interp"]
+                if not validation:
+                    self.gradient_interp_job[event] = it_dict["events"][
+                        str(_i)
+                    ]["job_info"]["gradient_interp"]
         if self.inversion_mode == "mono-batch" and not validation:
             self.smoothing_job = it_dict["smoothing"]
 

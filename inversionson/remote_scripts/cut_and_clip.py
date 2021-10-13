@@ -3,6 +3,7 @@ import sys
 import toml
 import numpy as np
 
+# Here I can add a scripts which adds the relevant fields to the mesh.
 def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
     Clip the gradient to remove abnormally high/low values from it.
@@ -19,7 +20,11 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
     gradient = h5py.File(mesh, "r+")
     data = gradient["MODEL/data"]
-    dim_labels = data.attrs.get("DIMENSION_LABELS")[1].decode()[1:-1].replace(" ", "").split("|")
+    dim_labels = (
+        data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+        .replace(" ", "")
+        .split("|")
+    )
     indices = []
     for param in parameters:
         indices.append(dim_labels.index(param))
@@ -36,7 +41,7 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
 
 
 def latlondepth_to_cartesian(
-        lat: float, lon: float, depth_in_km=0.0
+    lat: float, lon: float, depth_in_km=0.0
 ) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates
@@ -61,7 +66,7 @@ def latlondepth_to_cartesian(
 
 
 def cut_source_region_from_gradient(
-        mesh: str, source_location: dict, radius_to_cut: float
+    mesh: str, source_location: dict, radius_to_cut: float
 ):
     """
     Sources often show unreasonable sensitivities. This function
@@ -119,8 +124,9 @@ if __name__ == "__main__":
     gradient_filename = info["filename"]
     radius_to_cut_in_km = info["cutout_radius_in_km"]
     source_location = info["source_location"]
-    cut_source_region_from_gradient(gradient_filename, source_location,
-                                    radius_to_cut=radius_to_cut_in_km)
+    cut_source_region_from_gradient(
+        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km
+    )
 
     print("Remote source cut completed successfully")
 
@@ -131,7 +137,6 @@ if __name__ == "__main__":
     if clipping_percentile < 1.0:
         clip_gradient(gradient_filename, clipping_percentile, parameters)
 
-    
     # Set referece frame to spherical
     print("Set reference frame")
     with h5py.File(gradient_filename, "r+") as f:

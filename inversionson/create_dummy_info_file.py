@@ -22,9 +22,17 @@ def create_info(root=None):
     info["meshes"] = "multi-mesh"
     info["Meshing"] = {}
     info["Meshing"]["elements_per_azimuthal_quarter"] = 4
+    info["Meshing"]["ellipticity"] = True
+    info["Meshing"]["ocean_loading"] = {}
+    info["Meshing"]["ocean_loading"]["use"] = False
+    info["Meshing"]["ocean_loading"]["file"] = ""
+    info["Meshing"]["ocean_loading"]["variable"] = ""
+    info["Meshing"]["topography"] = {}
+    info["Meshing"]["topography"]["use"] = False
+    info["Meshing"]["topography"]["file"] = ""
+    info["Meshing"]["topography"]["variable"] = ""
     meshes_comment = "Pick between 'multi-mesh' or 'mono-mesh'"
-    info["model_interpolation_mode"] = "gll_2_gll"
-    info["gradient_interpolation_mode"] = "gll_2_gll"
+    info["interpolation_mode"] = "remote"
     info["HPC"] = {}
     info["HPC"]["wave_propagation"] = {
         "site_name": "daint",
@@ -35,6 +43,12 @@ def create_info(root=None):
         "site_name": "daint",
         "wall_time": 1000,
         "ranks": 24,
+    }
+    info["HPC"]["interpolation"] = {
+        "site_name": "daint",
+        "model_wall_time": 60 * 5,
+        "gradient_wall_time": 60 * 15,
+        "remote_mesh_directory": "/path_to_directory_containing_meshes",
     }
     info["inversion_parameters"] = [
         "VPV",
@@ -80,6 +94,7 @@ def create_info(root=None):
     clip_grad_comment += "quantile where the gradient will be clipped. "
     clip_grad_comment += "If 1.0 nothing will be cut"
     info["comments"] = {}
+    info["comments"]["interpolation_mode"] = "Either local or remote"
     info["comments"]["clip_gradient"] = clip_grad_comment
     info["comments"]["cut_gradient"] = cut_stuff_gradient
     info["comments"]["absorbing_boundaries"] = absorbing_boundaries

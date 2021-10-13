@@ -18,7 +18,7 @@ def preprocess_remote_gradient(comm, gradient_path: str, event: str):
     We also clip the gradient to some percentile
     This can all be configured in information toml.
 
-    :param comm inversionson communicator
+    :param comm: inversionson communicator
     :param gradient_path: gradient path on remote
     :type gradient_path: str
     :param event: name of the event
