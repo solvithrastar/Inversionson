@@ -1,3 +1,4 @@
+from typing import Dict, List
 import emoji
 from colorama import init
 from colorama import Fore, Style
@@ -27,6 +28,16 @@ init()
 
 
 class RemoteJobListener(object):
+    """
+    Class designed to monitor the status of remote jobs.
+
+    It can handle various types of jobs:
+    Forward,
+    Adjoint,
+    Smoothing,
+    Model/Gradient Interpolations.
+    """
+
     def __init__(self, comm, job_type, events=None):
         self.comm = comm
         self.job_type = job_type
@@ -34,11 +45,23 @@ class RemoteJobListener(object):
         self.events_retrieved_now = []
         self.to_repost = []
         if events is None:
-            self.events = self.comm.project.events_in_iteration
+            if (
+                job_type == "smoothing"
+                and self.comm.project.inversion_mode == "mono-batch"
+            ):
+                self.events = [None]
+            else:
+                self.events = self.comm.project.events_in_iteration
         else:
             self.events = events
 
     def monitor_jobs(self):
+        """
+        Takes the job type of the object and monitors the status of
+        all the events in the object.
+
+        :raises InversionsonError: Error if job type not recognized
+        """
         if self.job_type == "forward":
             job_dict = self.comm.project.forward_job
         elif self.job_type == "adjoint":
@@ -61,12 +84,16 @@ class RemoteJobListener(object):
         else:
             raise InversionsonError(f"Job type {self.job_type} not recognised")
 
-    def __check_status_of_job(self, event: str, reposts: int, verbose=False):
+    def __check_status_of_job(
+        self, event: str, reposts: int, verbose: bool = False
+    ):
         """
         Query Salvus Flow for the status of the job
 
         :param event: Name of event
         :type event: str
+        :param reposts: Number of reposts of the event for the job
+        :type reposts: int
         """
         status = self.comm.salvus_flow.get_job_status(
             event, self.job_type
@@ -100,12 +127,16 @@ class RemoteJobListener(object):
             )
         return status
 
-    def __check_status_of_job_array(self, event, reposts, verbose=False):
+    def __check_status_of_job_array(
+        self, event: str, reposts: int, verbose: bool = False
+    ):
         """
         Query Salvus Flow for the status of the job array
 
         :param event: Name of event
         :type event: str
+        :param reposts: Number of reposts of the event for the job
+        :type reposts: int
         """
         status = self.comm.salvus_flow.get_job_status(event, self.job_type)
         params = []
@@ -171,7 +202,21 @@ class RemoteJobListener(object):
         if len(params) == len(status):
             return "finished"
 
-    def __monitor_jobs(self, job_dict, events=None, verbose=False):
+    def __monitor_jobs(
+        self, job_dict: Dict, events: List[str] = None, verbose=False
+    ):
+        """
+        Takes the job type of the object and monitors the status of
+        all the events in the object.
+
+        :param job_dict: Information on jobs
+        :type job_dict: Dict
+        :param events: List of events, None results in object events,
+            defaults to None
+        :type events: List[str], optional
+        :param verbose: Print information, defaults to False
+        :type verbose: bool, optional
+        """
         if events is None:
             events = self.events
         events_left = list(set(events) - set(self.events_already_retrieved))
@@ -210,6 +255,16 @@ class RemoteJobListener(object):
         self.comm.project.update_iteration_toml()
 
     def __monitor_job_array(self, job_dict, events=None):
+        """
+        Takes the job type of the object and monitors the status of
+        all the events in the object.
+
+        :param job_dict: Information on jobs
+        :type job_dict: Dict
+        :param events: List of events, None results in object events,
+            defaults to None
+        :type events: List[str], optional
+        """
         finished = 0
 
         if events is None:
@@ -221,9 +276,9 @@ class RemoteJobListener(object):
             else:
                 reposts = job_dict["reposts"]
                 status = self.__check_status_of_job_array(None, reposts)
-            if status == "finished":
-                self.events_already_retrieved = events
-                finished += 1
+                if status == "finished":
+                    self.events_retrieved_now = events
+                    finished += 1
         else:
             events_left = list(
                 set(events) - set(self.events_already_retrieved)
@@ -249,11 +304,23 @@ class RemoteJobListener(object):
 
 
 class ForwardHelper(object):
+    """
+    Class which assist with everything related to the forward job
+
+    """
+
     def __init__(self, comm, events):
         self.comm = comm
         self.events = events
 
     def dispatch_forward_simulations(self, verbose=False):
+        """
+        Dispatch all forward simulations to the remote machine.
+        If interpolations are needed, this takes care of that too.
+
+        :param verbose: Print information, defaults to False
+        :type verbose: bool, optional
+        """
         iteration = self.comm.project.current_iteration
         if (
             self.comm.project.meshes == "multi-mesh"
@@ -279,7 +346,8 @@ class ForwardHelper(object):
         validation=False,
     ):
         """
-        Get the data from the forward simulations
+        Get the data from the forward simulations and perform whatever
+        operations on them which are requested.
         """
         if events is None:
             events = self.events
@@ -293,12 +361,22 @@ class ForwardHelper(object):
         )
 
     def report_total_validation_misfit(self):
+        """
+        Write the computed validation misfit for the iteration into the
+        right place
+        """
         iteration = self.comm.project.current_iteration
         self.comm.storyteller.report_validation_misfit(
             iteration=iteration, event=None, total_sum=True,
         )
 
-    def assert_all_simulations_dispatched(self):
+    def assert_all_simulations_dispatched(self) -> bool:
+        """
+        Check whether all simulations have been dispatched
+
+        :return: The answer to your question
+        :rtype: bool
+        """
         all = True
         for event in self.events:
             submitted, _ = self.__submitted_retrieved(event)
@@ -308,6 +386,12 @@ class ForwardHelper(object):
         return all
 
     def assert_all_simulations_retrieved(self):
+        """
+        Check whether all simulations have been retrieved
+
+        :return: The answer to your question
+        :rtype: bool
+        """
         all = True
         for event in self.events:
             _, retrieved = self.__submitted_retrieved(event)
@@ -762,7 +846,10 @@ class ForwardHelper(object):
                 f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                 "simulations"
             )
-
+            if len(int_job_listener.events_already_retrieved) + len(
+                int_job_listener.events_retrieved_now
+            ) == len(self.events):
+                j = 0
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
             if j != 0:
@@ -905,6 +992,10 @@ class ForwardHelper(object):
                 f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
                 "simulations"
             )
+            if len(vint_job_listener.events_already_retrieved) + len(
+                vint_job_listener.events_retrieved_now
+            ) == len(self.events):
+                j = 0
             vint_job_listener.to_repost = []
             vint_job_listener.events_retrieved_now = []
             if j != 0:
@@ -966,6 +1057,10 @@ class ForwardHelper(object):
                 f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                 "seismograms"
             )
+            if len(for_job_listener.events_retrieved_now) + len(
+                for_job_listener.events_already_retrieved
+            ) == len(events):
+                j = 0
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
             if j != 0:
@@ -975,17 +1070,12 @@ class ForwardHelper(object):
                 j += 1
 
 
-# Might be a good idea to do Interpolations and then Smoothing
-# Will be way less transfer of data
-# I will have to do some h5py magic on daint inside the second
-# interpolation job though.
-# That should be doable though.
-# Question is... what do I need?
-# I have a mesh which I interpolate to. This mesh can be ready
-# The output gradient may need a few things, not sure.
-# Maybe I have a problem with stuff being added to the core via smoothing
-# But that doesn't have to be a problem.
 class AdjointHelper(object):
+    """
+    A class assisting with everything related to the adjoint simulations
+
+    """
+
     def __init__(self, comm, events):
         self.comm = comm
         self.events = events
@@ -1121,6 +1211,11 @@ class AdjointHelper(object):
                     self.__dispatch_raw_gradient_interpolation(event)
                 interp_job_listener.events_retrieved_now = []
                 interp_job_listener.to_repost = []
+            # Making sure we don't wait if everything is retrieved already
+            if len(adj_job_listener.events_already_retrieved) + len(
+                adj_job_listener.events_retrieved_now
+            ) == len(events):
+                j = 0
             adj_job_listener.to_repost = []
             adj_job_listener.events_retrieved_now = []
             if j != 0:
@@ -1186,18 +1281,6 @@ class AdjointHelper(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w_adjoint.set_mesh(self.comm.project.remote_mesh)
-        # if self.comm.project.meshes == "mono-mesh":
-        #     w_adjoint.set_mesh(
-        #         "REMOTE:" +
-        #         str(self.comm.lasif.find_remote_mesh(
-        #             event=None,
-        #             gradient=False,
-        #             inverpolate_to=False,
-        #             check_if_exists=True,
-        #             iteration=iteration,
-        #             validatio="validation" in iteration,
-        #         ))
-        #     )
 
         self.comm.salvus_flow.submit_job(
             event=event,
@@ -1304,11 +1387,22 @@ class AdjointHelper(object):
 
 
 class SmoothingHelper(object):
+    """
+    A class related to everything regarding the smoothing simulations
+    """
+
     def __init__(self, comm, events):
         self.comm = comm
         self.events = events
 
     def dispatch_smoothing_simulations(self, verbose=False):
+        """
+        Dispatch smoothing simulations. If interpolations needed, they
+        are done first.
+
+        :param verbose: Print information, defaults to False
+        :type verbose: bool, optional
+        """
         if self.comm.project.inversion_mode == "mini-batch":
             if (
                 self.comm.project.interpolation_mode == "remote"
@@ -1326,8 +1420,11 @@ class SmoothingHelper(object):
             self.__dispatch_smoothing_simulation(event=None, verbose=verbose)
 
     def monitor_interpolations_send_out_smoothjobs(self, verbose=False):
-        # take newly retrieved interpolations, send out smooth jobs.
-        # Simple as that.
+        """
+        Monitor the status of the interpolations, as soon as one is done,
+        the smoothing simulation is dispatched
+        """
+
         events = self.events
         int_job_listener = RemoteJobListener(
             comm=self.comm, job_type="gradient_interp", events=events,
@@ -1358,6 +1455,10 @@ class SmoothingHelper(object):
                 f"Dispatched {len(int_job_listener.events_retrieved_now)} "
                 "Smoothing jobs"
             )
+            if len(int_job_listener.events_retrieved_now) + len(
+                int_job_listener.events_already_retrieved
+            ) == len(events):
+                j = 0
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
             if j != 0:
@@ -1369,6 +1470,10 @@ class SmoothingHelper(object):
     def sum_gradients(self):
         from inversionson.utils import sum_gradients
 
+        if self.events is None:
+            events = self.comm.project.events_in_iteration
+        else:
+            events = self.events
         grad_mesh = self.comm.lasif.find_gradient(
             iteration=self.comm.project.current_iteration,
             event=None,
@@ -1378,8 +1483,9 @@ class SmoothingHelper(object):
         )
         if os.path.exists(grad_mesh):
             print("Gradient has already been summed. Moving on")
+            return
         gradients = []
-        for event in self.events:
+        for event in events:
             gradients.append(
                 self.comm.lasif.find_gradient(
                     iteration=self.comm.project.current_iteration,
@@ -1420,7 +1526,9 @@ class SmoothingHelper(object):
         if event is None:
             config = self.comm.smoother.generate_smoothing_config()
             self.comm.smoother.run_smoother(
-                config, event=None, iteration=self.comm.project.iteration
+                config,
+                event=None,
+                iteration=self.comm.project.current_iteration,
             )
             return
 
@@ -1472,11 +1580,15 @@ class SmoothingHelper(object):
         )
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
-        self.comm.multi_mesh.interpolate_gradient_to_model(event, smooth=False, interp_folder=interp_folder)
+        self.comm.multi_mesh.interpolate_gradient_to_model(
+            event, smooth=False, interp_folder=interp_folder
+        )
 
     def retrieve_smooth_gradients(self, events=None, verbose=False):
         if events is None:
             events = self.events
+        if self.comm.project.inversion_mode == "mono-batch":
+            events = [events]
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
         j = 0
         interpolate = False
@@ -1512,6 +1624,10 @@ class SmoothingHelper(object):
                 f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
                 "Smooth gradients"
             )
+            if len(smooth_job_listener.events_already_retrieved) + len(
+                smooth_job_listener.events_retrieved_now
+            ) == len(events):
+                j = 0
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []
             if j != 0:

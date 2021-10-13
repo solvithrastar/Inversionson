@@ -320,11 +320,11 @@ class AutoInverter(object):
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:
-            smoothing_helper = helpers.SmoothingHelper(self.comm, None)
+            smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
             smoothing_helper.sum_gradients()
-            smoothing_helper.dispatch_smoothing_simulations(events=None)
+            smoothing_helper.dispatch_smoothing_simulations()
             assert smoothing_helper.assert_all_simulations_dispatched()
-            smoothing_helper.retrieve_smooth_gradients(events=None)
+            smoothing_helper.retrieve_smooth_gradients()
         assert smoothing_helper.assert_all_simulations_retrieved()
 
         print(Fore.RED + "\n =================== \n")
@@ -486,9 +486,9 @@ class AutoInverter(object):
         else:
             smoothing_helper = helpers.SmoothingHelper(self.comm, None)
             smoothing_helper.sum_gradients()
-            smoothing_helper.dispatch_smoothing_simulations(events=None)
+            smoothing_helper.dispatch_smoothing_simulations()
             assert smoothing_helper.assert_all_simulations_dispatched()
-            smoothing_helper.retrieve_smooth_gradients(events=None)
+            smoothing_helper.retrieve_smooth_gradients()
         assert smoothing_helper.assert_all_simulations_retrieved()
 
         print(Fore.RED + "\n =================== \n")

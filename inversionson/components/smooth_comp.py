@@ -19,7 +19,7 @@ class SalvusSmoothComponent(Component):
         )
         # self.smoother_path = self.comm.project.paths["salvus_smoother"]
 
-    def generate_smoothing_config(self, event: str) -> dict:
+    def generate_smoothing_config(self, event: str = None) -> dict:
         """
         Generate a dictionary which contains smoothing objects for each
         parameter to be smoothed.
@@ -98,12 +98,20 @@ class SalvusSmoothComponent(Component):
                 summed=True,
                 just_give_path=True,
             )
-        else:
+        elif self.comm.project.meshes == "multi-mesh":
             smooth_grad = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=event_name,
                 smooth=True,
                 inversion_grid=True,
+                just_give_path=True,
+            )
+        else:
+            smooth_grad = self.comm.lasif.find_gradient(
+                iteration=iteration,
+                event=event_name,
+                smooth=True,
+                inversion_grid=False,
                 just_give_path=True,
             )
 
@@ -139,7 +147,7 @@ class SalvusSmoothComponent(Component):
         if iteration is None:
             iteration = self.comm.project.current_iteration
 
-        if self.comm.project.remote_gradient_processing:
+        if self.comm.project.remote_gradient_processing and event is not None:
             job = self.comm.salvus_flow.get_job(event, "adjoint")
             output_files = job.get_output_files()
             grad = output_files[0][("adjoint", "gradient", "output_filename")]
@@ -186,6 +194,7 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["submitted"]', True
             )
+        self.comm.project.update_iteration_toml()
 
     def run_remote_smoother(
         self, event: str,

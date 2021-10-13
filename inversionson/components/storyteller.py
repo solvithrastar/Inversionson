@@ -519,8 +519,9 @@ class StoryTellerComponent(Component):
                 # self._add_image_of_data_coverage()
                 # self._add_image_of_event_misfits()
             self._add_table_of_events_and_misfits(task=task)
-            self._report_control_group()
-            self._update_event_quality()
+            if self.comm.project.inversion_mode == "mini-batch":
+                self._report_control_group()
+                self._update_event_quality()
         if task == "compute_misfit":
             first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
             if "additional" in verbose:

@@ -456,7 +456,9 @@ class SalvusOptComponent(Component):
             # We still have plenty of events to choose from.
             print("We think there are enough events")
             use_these = None
-            blocked_events = list(set(blocked_events) + set(validation_events))
+            blocked_events = list(
+                set.union(set(blocked_events), set(validation_events))
+            )
             return blocked_events, use_these
 
         if len(blocked_events) == len(events_used.keys()) - len(

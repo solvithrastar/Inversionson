@@ -350,9 +350,7 @@ class LasifComponent(Component):
         if self.comm.project.meshes == "mono-mesh":
             self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
             self._move_model_to_cluster(
-                hpc_cluster=hpc_cluster,
-                overwrite=True,
-                validation=validation
+                hpc_cluster=hpc_cluster, overwrite=False, validation=validation
             )
             return
         if self.comm.project.interpolation_mode == "remote":
@@ -764,12 +762,16 @@ class LasifComponent(Component):
             #     "domain_file"
             # ]
             if "validation" in iteration and "it0000" not in iteration:
-                new_it_num = self.comm.salvus_flow.get_number_of_newest_iteration()
-                old_it_num = new_it_num - self.comm.project.when_to_validate + 1
+                new_it_num = (
+                    self.comm.salvus_flow.get_number_of_newest_iteration()
+                )
+                old_it_num = (
+                    new_it_num - self.comm.project.when_to_validate + 1
+                )
                 return os.path.join(
                     self.comm.salvus_mesher.average_meshes,
                     f"ITERATION_{old_it_num}_to_{new_it_num}",
-                    "mesh.h5"
+                    "mesh.h5",
                 )
             elif "validation" in iteration and "it0000" in iteration:
                 iteration = iteration[11:]
