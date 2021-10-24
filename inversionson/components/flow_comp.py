@@ -204,7 +204,9 @@ class SalvusFlowComponent(Component):
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         username = hpc_cluster.config["ssh_settings"]["username"]
         interp_folder = os.path.join(
-            "/scratch/snx3000", username, "INTERPOLATION_WEIGHTS",
+            "/scratch/snx3000",
+            username,
+            "INTERPOLATION_WEIGHTS",
         )
         if sim_type == "model_interp":
             if self.comm.project.model_interp_job[event]["submitted"]:
@@ -228,7 +230,9 @@ class SalvusFlowComponent(Component):
         )
         site_name = self.comm.project.interpolation_site
         db_job = sapi._get_config()["db"].get_jobs(
-            limit=1, site_name=site_name, job_name=job_name,
+            limit=1,
+            site_name=site_name,
+            job_name=job_name,
         )[0]
 
         job = s_job.Job(
@@ -774,7 +778,9 @@ class SalvusFlowComponent(Component):
         """
 
         job = self.get_job(
-            event=event, sim_type=sim_type, iteration=iteration,
+            event=event,
+            sim_type=sim_type,
+            iteration=iteration,
         )
         return job.update_status(force_update=True)
 
@@ -792,7 +798,7 @@ class SalvusFlowComponent(Component):
         elif sim_type == "adjoint":
             job_name = self.comm.project.adjoint_job[event]["name"]
         else:
-            raise InversionsonError(f"Don't recognise sim_type {sim_type}")
+            raise InversionsonError(f"Don't recognize sim_type {sim_type}")
 
         job = sapi.get_job(
             job_name=job_name, site_name=self.comm.project.site_name

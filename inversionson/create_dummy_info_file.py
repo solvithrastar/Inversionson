@@ -40,9 +40,10 @@ def create_info(root=None):
         "ranks": 48,
     }
     info["HPC"]["diffusion_equation"] = {
-        "site_name": "daint",
+        # "site_name": "daint",
         "wall_time": 1000,
         "ranks": 24,
+        "diff_model_directory": "/scratch/snx3000/username/diff_models",
     }
     info["HPC"]["interpolation"] = {
         "site_name": "daint",
@@ -154,6 +155,15 @@ def create_info(root=None):
     info["comments"]["inversion_monitoring"][
         "test_dataset"
     ] = test_dataset_comment
+    diff_model_comment = (
+        "This directory can not be your home directory, because it needs "
+        "multiple files and home directories often have file count limits. "
+        "It is good to have this on a scratch system or similar. For "
+        "Piz Daint for example, /scratch/snx3000/username/diff_models "
+        "could be a nice option."
+    )
+    info["comments"]["HPC"] = {}
+    info["comments"]["HPC"]["diff_model_directory"] = diff_model_comment
 
     return info
 

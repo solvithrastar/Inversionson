@@ -198,11 +198,12 @@ class ProjectComponent(Component):
                 "run your simulations. Key: HPC.wave_propagation.ranks"
             )
 
-        if "site_name" not in self.info["HPC"]["diffusion_equation"].keys():
-            raise InversionsonError(
-                "We need information on the site where jobs are submitted. "
-                "Key: HPC.diffusion_equation.site_name"
-            )
+        # Removed because it's not fully supported
+        # if "site_name" not in self.info["HPC"]["diffusion_equation"].keys():
+        #     raise InversionsonError(
+        #         "We need information on the site where jobs are submitted. "
+        #         "Key: HPC.diffusion_equation.site_name"
+        #     )
 
         if "wall_time" not in self.info["HPC"]["diffusion_equation"].keys():
             raise InversionsonError(
@@ -214,6 +215,16 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need information on the amount of ranks you want to "
                 "run your simulations. Key: HPC.diffusion_equation.ranks"
+            )
+
+        if (
+            "diff_model_directory"
+            not in self.info["HPC"]["diffusion_equation"].keys()
+        ):
+            raise InversionsonError(
+                "We need information on where diffusion models will be stored"
+                " in order to be reused. "
+                "Key: HPC.diffusion_equation.diff_model_directory"
             )
 
         if "inversion_parameters" not in self.info.keys():
@@ -595,9 +606,11 @@ class ProjectComponent(Component):
             self.remote_mesh_dir = self.info["HPC"]["interpolation"][
                 "remote_mesh_directory"
             ]
-        self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
-            "site_name"
-        ]
+        # self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
+        #     "site_name"
+        # ]
+        # We currently assume smoothing site to be simulation site.
+        self.smoothing_site_name = self.site_name
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"][
             "wall_time"
@@ -605,6 +618,9 @@ class ProjectComponent(Component):
         self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
         self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
+        self.remote_diff_model_dir = self.info["HPC"]["diffusion_equation"][
+            "diff_model_directory"
+        ]
 
         self.initial_batch_size = self.info["initial_batch_size"]
         self.random_event_fraction = self.info["random_event_fraction"]

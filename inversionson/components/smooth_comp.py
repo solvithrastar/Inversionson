@@ -84,10 +84,13 @@ class SalvusSmoothComponent(Component):
         if iteration is None:
             iteration = self.comm.project.current_iteration
         job_name = self.comm.salvus_flow.get_job_name(
-            event=event_name, sim_type="smoothing", iteration=iteration,
+            event=event_name,
+            sim_type="smoothing",
+            iteration=iteration,
         )
         salvus_job = salvus.flow.api.get_job_array(
-            site_name=self.comm.project.site_name, job_array_name=job_name,
+            site_name=self.comm.project.site_name,
+            job_array_name=job_name,
         )
 
         if self.comm.project.inversion_mode == "mono-batch":
@@ -119,12 +122,15 @@ class SalvusSmoothComponent(Component):
             os.mkdir(os.path.dirname(smooth_grad))
 
         smooth_gradient = get_smooth_model(
-            job=salvus_job, model=self.comm.lasif.get_master_model(),
+            job=salvus_job,
+            model=self.comm.lasif.get_master_model(),
         )
         smooth_gradient.write_h5(smooth_grad)
         if "VPV" in list(smooth_gradient.element_nodal_fields.keys()):
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
-                mesh=smooth_grad, fieldname_1="VPV", fieldname_2="VPH",
+                mesh=smooth_grad,
+                fieldname_1="VPV",
+                fieldname_2="VPH",
             )
 
     def run_smoother(
@@ -197,7 +203,8 @@ class SalvusSmoothComponent(Component):
         self.comm.project.update_iteration_toml()
 
     def run_remote_smoother(
-        self, event: str,
+        self,
+        event: str,
     ):
         """
         Run the Smoother, the settings are specified in inversion toml. Make
@@ -233,18 +240,19 @@ class SalvusSmoothComponent(Component):
 
         # make site stuff (hardcoded for now)
         # This needs to be modified by anyone not using daint
-        daint = get_site(self.comm.project.site_name)
-        username = daint.config["ssh_settings"]["username"]
-        remote_diff_dir = os.path.join(
-            "/scratch/snx3000", username, "diff_models"
-        )
+        hpc_cluster = get_site(self.comm.project.site_name)
+        remote_diff_dir = self.comm.project.remote_diff_model_dir
+        # username = daint.config["ssh_settings"]["username"]
+        # remote_diff_dir = os.path.join(
+        #     "/scratch/snx3000", username, "diff_models"
+        # )
         local_diff_model_dir = "DIFF_MODELS"
 
         if not os.path.exists(local_diff_model_dir):
             os.mkdir(local_diff_model_dir)
 
-        if not daint.remote_exists(remote_diff_dir):
-            daint.remote_mkdir(remote_diff_dir)
+        if not hpc_cluster.remote_exists(remote_diff_dir):
+            hpc_cluster.remote_mkdir(remote_diff_dir)
 
         sims = []
         for param in self.comm.project.inversion_params:
@@ -282,8 +290,8 @@ class SalvusSmoothComponent(Component):
                 diff_model = smooth.get_diffusion_model(mesh)
                 diff_model.write_h5(diff_model_file)
 
-            if not daint.remote_exists(remote_diff_model):
-                daint.remote_put(diff_model_file, remote_diff_model)
+            if not hpc_cluster.remote_exists(remote_diff_model):
+                hpc_cluster.remote_put(diff_model_file, remote_diff_model)
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
