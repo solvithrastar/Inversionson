@@ -63,10 +63,11 @@ python <Path to inversionson code>/inversionson/create_dummy_info_file.py
 9. Fill in the relevant fields in the `inversion_info.toml` file properly. The file contains comments to explain the fields but some of them will be further explained here.
     * __inversion_mode__: Can be either "mini-batch" (dynamic mini-batches) or "mono-batch" (full gradients)
     * __meshes__: Can be either "multi-mesh" (wavefield adapted meshes) or "mono-mesh" (same mesh for every simulation, defined by lasif domain file)
-    * __model_interpolation_mode__: Actually only supports "gll_2_gll" right now so don't worry about that as long as you use `hdf5` meshes.
+    * __interpolation_mode__: If you use "multi-mesh" this makes your interpolations happen either "local" or "remote". "remote" is the faster option.
     * __inversion_parameters__: Parameters to invert for. Make sure these are the same ones as in the `inversion.toml` file in the `SALVUS_OPT` directory.
     * __modelling_parameters__: The parameters on the meshes you use for simulations.
-    * __event_random_fraction__: Only relevant for "mini-batch" mode. Describes how many of the events selected in each batch are random, vs how many are selected based on spatial coverage.
+    * __random_event_fraction__: Only relevant for "mini-batch" mode. Describes how many of the events selected in each batch are random, vs how many are selected based on spatial coverage.
+    * __Meshing.ocean_loading.use__: Make True if you have ocean loading on your mesh. If you are using multi-mesh, you also need to supply a file and a parameter name to use.
     * __min_ctrl_group_size__: The minimum number of events used in control group, again only relevant for "mini-batch" mode.
     * __max_angular_change__: Used to decide how many events make it to the control group for the coming iteration in "mini-batch" mode.
     * __dropout_probability__: A form of regularization. Events in control group can be randomly dropped out with this probability so they don't get stuck there.
@@ -83,6 +84,7 @@ python <Path to inversionson code>/inversionson/create_dummy_info_file.py
     * __test_dataset__: Same principle as with the validation_dataset
     * __HPC.wave_propagation__: Settings regarding wavefield simulations. Inversionson asks for double that walltime in adjoint runs as they are more expensive
     * __HPC.diffusion_equation__: Settings regarding the smoothing computations.
+    * __HPC.interpolation__: Settings regarding remote interpolations
 
 10. As the file is configured you should be able to start running Inversionson.
     * I would recommend running Inversionson with [tmux](https://tmuxcheatsheet.com/) as it keeps your shell running although you loose a connection with your computer or accidentally close your terminal window.
