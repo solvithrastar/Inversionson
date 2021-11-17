@@ -367,7 +367,9 @@ class ForwardHelper(object):
         """
         iteration = self.comm.project.current_iteration
         self.comm.storyteller.report_validation_misfit(
-            iteration=iteration, event=None, total_sum=True,
+            iteration=iteration,
+            event=None,
+            total_sum=True,
         )
 
     def assert_all_simulations_dispatched(self) -> bool:
@@ -451,7 +453,8 @@ class ForwardHelper(object):
                 hpc_cluster.remote_mkdir(interp_folder)
 
         self.comm.multi_mesh.interpolate_to_simulation_mesh(
-            event, interp_folder=interp_folder,
+            event,
+            interp_folder=interp_folder,
         )
         if mode == "local":
             self.comm.project.change_attribute(
@@ -590,7 +593,9 @@ class ForwardHelper(object):
                 print(f"Windows already selected for event {event}")
                 return
             self.comm.lasif.select_windows(
-                window_set_name=window_set_name, event=event, validation=True,
+                window_set_name=window_set_name,
+                event=event,
+                validation=True,
             )
             self.comm.project.change_attribute(
                 attribute=f"forward_job['{event}']['windows_selected']",
@@ -668,7 +673,9 @@ class ForwardHelper(object):
                 event, validation=True, window_set=window_set
             )
             self.comm.storyteller.report_validation_misfit(
-                iteration=iteration, event=event, total_sum=False,
+                iteration=iteration,
+                event=event,
+                total_sum=False,
             )
 
             self.comm.storyteller.report_validation_misfit(
@@ -678,7 +685,10 @@ class ForwardHelper(object):
             )
 
     def __misfit_quantification(
-        self, event: str, window_set=None, validation=False,
+        self,
+        event: str,
+        window_set=None,
+        validation=False,
     ):
         """
         Compute Misfits and Adjoint sources
@@ -776,7 +786,8 @@ class ForwardHelper(object):
             print(Fore.GREEN + "\n ===================== \n")
             print(
                 emoji.emojize(
-                    ":floppy_disk: | Process data if needed", use_aliases=True,
+                    ":floppy_disk: | Process data if needed",
+                    use_aliases=True,
                 )
             )
 
@@ -1025,7 +1036,13 @@ class ForwardHelper(object):
             self.__compute_station_weights(event, verbose)
 
     def __retrieve_forward_simulations(
-        self, events, adjoint, windows, window_set, verbose, validation,
+        self,
+        events,
+        adjoint,
+        windows,
+        window_set,
+        verbose,
+        validation,
     ):
         for_job_listener = RemoteJobListener(
             comm=self.comm, job_type="forward", events=events
@@ -1037,7 +1054,11 @@ class ForwardHelper(object):
                 self.__retrieve_seismograms(event=event, verbose=verbose)
 
                 self.__work_with_retrieved_seismograms(
-                    event, windows, window_set, validation, verbose,
+                    event,
+                    windows,
+                    window_set,
+                    validation,
+                    verbose,
                 )
                 self.comm.project.change_attribute(
                     attribute=f'forward_job["{event}"]["retrieved"]',
@@ -1427,7 +1448,9 @@ class SmoothingHelper(object):
 
         events = self.events
         int_job_listener = RemoteJobListener(
-            comm=self.comm, job_type="gradient_interp", events=events,
+            comm=self.comm,
+            job_type="gradient_interp",
+            events=events,
         )
         j = 0
         while len(int_job_listener.events_already_retrieved) != len(events):
@@ -1439,7 +1462,9 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__dispatch_smoothing_simulation(
-                    event=event, verbose=verbose, interpolate=True,
+                    event=event,
+                    verbose=verbose,
+                    interpolate=True,
                 )
 
             for event in int_job_listener.to_repost:
@@ -1531,6 +1556,10 @@ class SmoothingHelper(object):
                 iteration=self.comm.project.current_iteration,
             )
             return
+        if not interpolate:
+            if verbose:
+                print(f"Submitting smoothing for {event}")
+            self.comm.smoother.run_remote_smoother(event)
 
         if interpolate:
             submitted, retrieved = self.__submitted_retrieved(
@@ -1549,7 +1578,9 @@ class SmoothingHelper(object):
                 if not hpc_cluster.remote_exists(interp_folder):
                     hpc_cluster.remote_mkdir(interp_folder)
                 self.comm.multi_mesh.interpolate_gradient_to_model(
-                    event, smooth=False, interp_folder=interp_folder,
+                    event,
+                    smooth=False,
+                    interp_folder=interp_folder,
                 )
             else:
                 if retrieved:
@@ -1603,7 +1634,8 @@ class SmoothingHelper(object):
                 else:
                     attribute = f'smoothing_job["{event}"]["retrieved"]'
                 self.comm.project.change_attribute(
-                    attribute=attribute, new_value=True,
+                    attribute=attribute,
+                    new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
             for event in smooth_job_listener.to_repost:
@@ -1613,7 +1645,8 @@ class SmoothingHelper(object):
                     attribute = f'smoothing_job["{event}"]["submitted"]'
 
                 self.comm.project.change_attribute(
-                    attribute=attribute, new_value=False,
+                    attribute=attribute,
+                    new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
                 print(f"Dispatching smoothing simulation via repost: {event}")
@@ -1668,4 +1701,3 @@ class SmoothingHelper(object):
 
     def __put_standard_gradient_to_cluster(self):
         self.comm.lasif.move_gradient_to_cluster()
-

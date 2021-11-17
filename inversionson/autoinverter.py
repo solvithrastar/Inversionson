@@ -98,18 +98,22 @@ class AutoInverter(object):
                 if self.comm.project.meshes == "multi-mesh" and move_meshes:
                     self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
                     self.comm.lasif.move_mesh(
-                        event=None, iteration=it_name, hpc_cluster=None,
+                        event=None,
+                        iteration=it_name,
+                        hpc_cluster=None,
                     )
                     for event in self.comm.project.events_in_iteration:
                         if not self.comm.lasif.has_mesh(event):
-                            self.comm.salvus_mesher.create_mesh(event=event,)
+                            self.comm.salvus_mesher.create_mesh(
+                                event=event,
+                            )
                             self.comm.salvus_mesher.add_region_of_interest(
                                 event=event
                             )
                             self.comm.lasif.move_mesh(event, it_name)
                         else:
                             self.comm.lasif.move_mesh(event, it_name)
-                elif self.comm.project.meshes == "mono-mesh":
+                elif self.comm.project.meshes == "mono-mesh" and move_meshes:
                     self.comm.lasif.move_mesh(event=None, iteration=it_name)
                 return
         if first_try and not validation:
@@ -229,7 +233,9 @@ class AutoInverter(object):
             self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
             if self.comm.project.interpolation_mode == "remote":
                 self.comm.lasif.move_mesh(
-                    event=None, iteration=None, validation=True,
+                    event=None,
+                    iteration=None,
+                    validation=True,
                 )
 
         val_forward_helper = helpers.ForwardHelper(
@@ -239,7 +245,9 @@ class AutoInverter(object):
         val_forward_helper.dispatch_forward_simulations(verbose=True)
         assert val_forward_helper.assert_all_simulations_dispatched()
         val_forward_helper.retrieve_forward_simulations(
-            adjoint=False, verbose=True, validation=True,
+            adjoint=False,
+            verbose=True,
+            validation=True,
         )
         assert val_forward_helper.assert_all_simulations_retrieved()
         val_forward_helper.report_total_validation_misfit()
@@ -248,7 +256,8 @@ class AutoInverter(object):
         # leave the validation iteration.
         iteration = iteration[11:]
         self.comm.project.change_attribute(
-            attribute="current_iteration", new_value=iteration,
+            attribute="current_iteration",
+            new_value=iteration,
         )
         self.comm.project.get_iteration_attributes()
 

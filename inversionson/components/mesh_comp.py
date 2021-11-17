@@ -32,7 +32,7 @@ class SalvusMeshComponent(Component):
         """
         Create a smoothiesem mesh for an event. I'll keep refinements fixed
         for now.
-        
+
         :param event: Name of event
         :type event: str
         """
@@ -149,14 +149,14 @@ class SalvusMeshComponent(Component):
         """
         Add one field from a specific mesh to another mesh. The two meshes
         need to have identical discretisations
-        
+
         :param from_mesh: Path of mesh to copy field from
         :type from_mesh: str
         :param to_mesh: Path of mesh to copy field to
         :type to_mesh: str
         :param field_name: Name of the field to copy between them.
         :type field_name: str
-        :param elemental: If the field is elemental make true, defaults to 
+        :param elemental: If the field is elemental make true, defaults to
             False
         :type elemental: bool, optional
         :param global_string: If the field is a global variable, defaults
@@ -215,8 +215,8 @@ class SalvusMeshComponent(Component):
                 tm.define_side_set(
                     name=side_set,
                     element_ids=fm.side_sets[side_set][0],
-                    side_ids=fm.side_sets[side_set][1]
-                    )
+                    side_ids=fm.side_sets[side_set][1],
+                )
                 print(f"Attached side set {side_set} to mesh {to_mesh}")
             attach_field = False
 
@@ -230,7 +230,6 @@ class SalvusMeshComponent(Component):
             tm.attach_field(field_name, field)
             print(f"Attached field {field_name} to mesh {to_mesh}")
         tm.write_h5(to_mesh)
-        
 
     def write_xdmf(self, filename: str):
         """
@@ -285,7 +284,7 @@ class SalvusMeshComponent(Component):
         Get an average model between a list of iteration numbers.
         Can be used to get a smoother misfit curve for validation
         data set.
-        
+
         :param iteration_range: From iteration to iteration tuple
         :type iterations: tuple
         """
@@ -334,7 +333,7 @@ class SalvusMeshComponent(Component):
         and outside the region, it is not computed.
         Currently we add the region of interest as an elemental field
         which is the oposite of the fluid field.
-        
+
         :param event: Name of event
         :type event: str
         """
@@ -370,11 +369,13 @@ class SalvusMeshComponent(Component):
         iteration = self.comm.project.current_iteration
         if "validation" in iteration:
             iteration = iteration[11:]  # We don't need a special mesh
+            if "it0000" not in iteration:
+                return  # No need to write opt fields
         opt_model = os.path.join(
             self.comm.salvus_opt.models, f"{iteration}.h5"
         )
         simulation_mesh = self.comm.lasif.get_simulation_mesh(
-            event_name=None, iteration="current"
+            event_name=None, iteration=iteration
         )
 
         sim_mesh_dir = os.path.dirname(simulation_mesh)
@@ -427,7 +428,7 @@ class SalvusMeshComponent(Component):
         and if delete_old_fields is true they will be deleted of course.
 
         :param mesh: Path to mesh to be used
-        :type mesh: str or Path 
+        :type mesh: str or Path
         :param fieldname_1: Name of field to be summed
         :type fieldname_1: str
         :param fieldname_2: Name of other field to be summed

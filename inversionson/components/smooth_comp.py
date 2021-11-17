@@ -259,10 +259,10 @@ class SalvusSmoothComponent(Component):
             if param.startswith("V"):
                 reference_velocity = param
             elif param == "RHO":
-                if "VP" in self.comm.project.inversion_params:
-                    reference_velocity = "VP"
-                elif "VPV" in self.comm.project.inversion_params:
+                if "VPV" in self.comm.project.inversion_params:
                     reference_velocity = "VPV"
+                elif "VP" in self.comm.project.inversion_params:
+                    reference_velocity = "VP"
 
             unique_id = (
                 "_".join([str(i).replace(".", "") for i in smoothing_lengths])

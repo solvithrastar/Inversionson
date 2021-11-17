@@ -136,6 +136,8 @@ class LasifComponent(Component):
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
+        if "validation" in iteration and "it0000" not in iteration:
+            validation = True
         if gradient:
             if interpolate_to:
                 mesh = remote_mesh_dir / "standard_gradient" / "mesh.h5"
@@ -763,14 +765,14 @@ class LasifComponent(Component):
             # ]
             if "validation" in iteration and "it0000" not in iteration:
                 new_it_num = (
-                    self.comm.salvus_flow.get_number_of_newest_iteration()
+                    self.comm.salvus_opt.get_number_of_newest_iteration()
                 )
                 old_it_num = (
                     new_it_num - self.comm.project.when_to_validate + 1
                 )
                 return os.path.join(
                     self.comm.salvus_mesher.average_meshes,
-                    f"ITERATION_{old_it_num}_to_{new_it_num}",
+                    f"it_{old_it_num}_to_{new_it_num}",
                     "mesh.h5",
                 )
             elif "validation" in iteration and "it0000" in iteration:
