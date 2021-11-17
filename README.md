@@ -51,6 +51,7 @@ A process which should get your project going:
 6. Salvus opt should now have created some files.
     * One of them is `inversion.toml` and you need to fill in some fields there, like initial model, parameters to invert for and whether you want to use batches of data or full gradients.
     * It's hard to assist with this file as it really depends on what you want to do but feel free to contact me if you are having troubles
+    * An important aspect in the `inversion.toml` file is that there are commented fields which you need to uncomment when using the mini-batch method. You need to give information on control group ratio and initial batch size and then you need to give the name of one of the events in your project at the bottom of the file.
 
 7. Once you have filled in the `inversion.toml` file you should run
 ```bash
