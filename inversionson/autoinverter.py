@@ -183,7 +183,7 @@ class AutoInverter(object):
     def compute_misfit_on_validation_data(self):
         """
         We define a validation dataset and compute misfits on it for an average
-        model of the past few iterations. *Currently we do not average*
+        model of the past few iterations.
         We will both compute the misfit on the initial window set and two
         newer sets.
 

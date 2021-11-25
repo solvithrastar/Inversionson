@@ -297,8 +297,11 @@ class SalvusMeshComponent(Component):
 
         # We copy the newest mesh from SALVUS_OPT to LASIF and write the
         # average fields onto those.
+        # No, that may be an error, we copy the master model from LASIF
+        # and put average field onto that one.
 
-        model = self.comm.salvus_opt.get_model_path()
+        # model = self.comm.salvus_opt.get_model_path()
+        model = self.comm.lasif.get_master_model()
         shutil.copy(model, full_path)
 
         m = UnstructuredMesh.from_h5(full_path)
