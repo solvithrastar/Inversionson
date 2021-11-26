@@ -421,17 +421,19 @@ class ProjectComponent(Component):
             )
         if self.info["Meshing"]["ocean_loading"]["use"]:
             if len(self.info["Meshing"]["ocean_loading"]["file"]) == 0:
-                raise InversionsonError(
-                    "Please specify path to your bathymetry file.\n"
-                    "Key: Meshing.ocean_loading.file"
-                )
+                if self.info["meshes"] == "multi-mesh":
+                    raise InversionsonError(
+                        "Please specify path to your bathymetry file.\n"
+                        "Key: Meshing.ocean_loading.file"
+                    )
             if len(self.info["Meshing"]["ocean_loading"]["variable"]) == 0:
-                raise InversionsonError(
-                    "Please specify path to your bathymetry variable "
-                    "name. You can find it by opening the file in "
-                    "ParaView \n"
-                    "Key: Meshing.ocean_loading.variable"
-                )
+                if self.info["meshes"] == "multi-mesh":
+                    raise InversionsonError(
+                        "Please specify path to your bathymetry variable "
+                        "name. You can find it by opening the file in "
+                        "ParaView \n"
+                        "Key: Meshing.ocean_loading.variable"
+                    )
 
         # Lasif
         if "lasif_root" not in self.info.keys():
