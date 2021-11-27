@@ -1361,16 +1361,15 @@ class AdjointHelper(object):
         ]
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
-        username = hpc_cluster.config["ssh_settings"]["username"]
 
         remote_inversionson_dir = os.path.join(
-            "/scratch/snx3000", username, "smoothing_info"
+            self.comm.project.remote_diff_model_dir, "..", "smoothing_info"
         )
 
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
-        # copy processing script to daint
+        # copy processing script to hpc
         remote_script = os.path.join(
             remote_inversionson_dir, "cut_and_clip.py"
         )
