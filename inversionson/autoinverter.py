@@ -154,7 +154,7 @@ class AutoInverter(object):
                     self.comm.lasif.move_mesh(
                         event, it_name, hpc_cluster=interp_site
                     )
-        elif self.comm.project.meshes == "mono-mesh":
+        elif self.comm.project.meshes == "mono-mesh" and move_meshes:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
         if not validation and self.comm.project.inversion_mode == "mini-batch":

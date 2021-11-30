@@ -238,8 +238,6 @@ class SalvusSmoothComponent(Component):
                 output_files[0][("adjoint", "gradient", "output_filename")]
             )
 
-        # make site stuff (hardcoded for now)
-        # This needs to be modified by anyone not using daint
         hpc_cluster = get_site(self.comm.project.site_name)
         remote_diff_dir = self.comm.project.remote_diff_model_dir
         # username = daint.config["ssh_settings"]["username"]
