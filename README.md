@@ -55,7 +55,7 @@ A process which should get your project going:
     where `<Path to your Salvus binary>` is the path to the Salvus core binary (typically `~/Salvus/bin/salvus`),
     _not_ the `salvus` command available in `PATH` which is typically SalvusFlow. If you do
     ```bash
-    ~/Salvus/bin/salvus --help
+    <Path to your Salvus binary> --help
     ```
     you should get
     ```
