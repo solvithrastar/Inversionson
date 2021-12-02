@@ -149,7 +149,9 @@ class LasifComponent(Component):
         else:
             if already_interpolated:
                 job = self.comm.salvus_flow.get_job(
-                    event=event, sim_type="model_interp", iteration=iteration,
+                    event=event,
+                    sim_type="model_interp",
+                    iteration=iteration,
                 )
                 mesh = job.stdout_path.parent / "output" / "mesh.h5"
             else:
@@ -436,11 +438,11 @@ class LasifComponent(Component):
                 + self.comm.project.test_dataset
             )
         )
+        events = self.list_events()
         if first:
             blocked_events = valid_data
             use_these = None
             count = self.comm.project.initial_batch_size
-            events = self.list_events()
             avail_events = list(set(events) - set(blocked_events))
             batch = lapi.get_subset(
                 self.lasif_comm,
@@ -453,9 +455,8 @@ class LasifComponent(Component):
             (
                 blocked_events,
                 use_these,
-            ) = self.comm.salvus_opt.find_blocked_events()
+            ) = self.comm.salvus_opt.find_blocked_events(events=events)
             count = self.comm.salvus_opt.get_batch_size()
-        events = self.list_events()
         prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
         prev_iter_info = self.comm.project.get_old_iteration_info(prev_iter)
         existing = prev_iter_info["new_control_group"]
@@ -599,7 +600,10 @@ class LasifComponent(Component):
                     )
             else:
                 gradient = os.path.join(
-                    gradients, f"ITERATION_{iteration}", event, "gradient.h5",
+                    gradients,
+                    f"ITERATION_{iteration}",
+                    event,
+                    "gradient.h5",
                 )
 
         if not smooth and self.comm.project.inversion_mode == "mini-batch":
@@ -660,7 +664,10 @@ class LasifComponent(Component):
             iteration = self.comm.project.current_iteration
 
         lapi.plot_station_misfits(
-            self.lasif_comm, event=event, iteration=iteration, save=True,
+            self.lasif_comm,
+            event=event,
+            iteration=iteration,
+            save=True,
         )
         filename = os.path.join(
             self.lasif_root,
@@ -757,7 +764,9 @@ class LasifComponent(Component):
                 )
                 return path
             return lapi.get_simulation_mesh(
-                self.lasif_comm, event_name, iteration,
+                self.lasif_comm,
+                event_name,
+                iteration,
             )
         else:
             # return self.lasif_comm.project.lasif_config["domain_settings"][
@@ -989,7 +998,10 @@ class LasifComponent(Component):
         lapi.process_data(self.lasif_comm, events=[event])
 
     def select_windows(
-        self, window_set_name: str, event: str, validation=False,
+        self,
+        window_set_name: str,
+        event: str,
+        validation=False,
     ):
         """
         Select window for a certain event in an iteration.

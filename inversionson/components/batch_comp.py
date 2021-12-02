@@ -9,6 +9,7 @@ from .component import Component
 import numpy as np
 import h5py
 import random
+import math
 from colorama import Fore, Back, Style
 import time
 import toml
@@ -84,7 +85,7 @@ class BatchComponent(Component):
         Take an array of coordinates and find the unique coordinates. Returns
         the unique coordinates and an array of indices that can be used to
         reconstruct the previous array.
-        
+
         :param points: Coordinates, or a file
         :type points: numpy.ndarray
         """
@@ -161,7 +162,7 @@ class BatchComponent(Component):
         """
         Take the gradient, find inverted parameters and sum them together.
         Reduces a 3D array to a 2D array.
-        
+
         :param grad: Numpy array with gradient values
         :type grad: numpy.ndarray
         :param parameters: A list of indices where relevant gradient is kept
@@ -202,7 +203,7 @@ class BatchComponent(Component):
         """
         Take a full gradient, find it's unique values and relevant parameters,
         manipulate all of these into a vector of summed parameter values.
-        
+
         :param gradient: Array of gradient values
         :type gradient: numpy.ndarray
         :param parameters: A list of dimension labels in gradient
@@ -230,7 +231,10 @@ class BatchComponent(Component):
         )
 
     def _remove_individual_grad_from_full_grad(
-        self, full_grad: np.ndarray, event: str, unique_indices=np.ndarray,
+        self,
+        full_grad: np.ndarray,
+        event: str,
+        unique_indices=np.ndarray,
     ) -> np.ndarray:
         """
         Remove one gradient from the full gradient
@@ -390,6 +394,10 @@ class BatchComponent(Component):
         # We just use the bulk norm of the gradients it seems
 
         events = self.comm.project.events_in_iteration
+        n_events_in_project = len(self.comm.lasif.list_events())
+        n_events_in_project -= len(self.comm.project.validation_dataset)
+        n_events_in_project -= len(self.comm.project.test_dataset)
+        max_ctrl_group = math.floor(n_events_in_project / 2.0)
         print(f"Control batch events: {events}")
         ctrl_group = events.copy()
         min_ctrl = self.comm.project.min_ctrl_group_size
@@ -440,12 +448,14 @@ class BatchComponent(Component):
             for event in dropped_events:
                 event_quality[event] = 0.75
                 batch_grad = self._remove_individual_grad_from_full_grad(
-                    batch_grad, event, unique_indices=unique_indices,
+                    batch_grad,
+                    event,
+                    unique_indices=unique_indices,
                 )
                 ctrl_group.remove(event)
                 print(f"Event: {event} randomly dropped from ctrl group")
 
-        while len(ctrl_group) > min_ctrl:
+        while len(ctrl_group) > min_ctrl and len(ctrl_group) <= max_ctrl_group:
             removal_order += 1
             event_names = self._find_most_useless_event(
                 full_gradient=full_grad,
@@ -454,13 +464,21 @@ class BatchComponent(Component):
                 unique_indices=unique_indices,
             )
             i = 0
-            # Testing to drop five gradients at a time
-            while i < 5 and len(ctrl_group) > min_ctrl:
+            while (
+                i < 5
+                and len(ctrl_group) > min_ctrl
+                and len(ctrl_group) <= max_ctrl_group
+            ):
                 event_name = event_names[i][0]
                 test_batch_grad = self._remove_individual_grad_from_full_grad(
-                    batch_grad, event_name, unique_indices=unique_indices,
+                    batch_grad,
+                    event_name,
+                    unique_indices=unique_indices,
                 )
-                angle = self._angle_between(full_grad, test_batch_grad,)
+                angle = self._angle_between(
+                    full_grad,
+                    test_batch_grad,
+                )
                 print(f"Angle between test_batch and full gradient: {angle}")
                 if angle >= self.comm.project.maximum_grad_divergence_angle:
                     break

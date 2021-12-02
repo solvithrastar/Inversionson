@@ -67,7 +67,7 @@ class SalvusOptComponent(Component):
     def read_salvus_opt_task(self) -> str:
         """
         Read the task from salvus opt. See what to do next
-        
+
         :return: task name
         :rtype: str
         """
@@ -293,7 +293,10 @@ class SalvusOptComponent(Component):
             total_misfit += float(misfits[event]["event_misfit"])
 
         gradient = self.comm.lasif.find_gradient(
-            iteration=iteration, event=None, smooth=True, summed=True,
+            iteration=iteration,
+            event=None,
+            smooth=True,
+            summed=True,
         )
         task = self.read_salvus_opt()
         task["task"][0]["output"]["gradient"] = gradient
@@ -305,7 +308,7 @@ class SalvusOptComponent(Component):
         """
         Report the optimally selected control group to salvus opt
         by writing it into the task toml
-        
+
         :param control_group: List of events selected for control group
         :type control_group: list
         """
@@ -385,7 +388,7 @@ class SalvusOptComponent(Component):
         should be 5 and the full iteration number will be given. If there
         are many iterations with that number, the smallest trust region
         will be given.
-        
+
         :param number: Number of iteration
         :type number: int
         """
@@ -418,7 +421,7 @@ class SalvusOptComponent(Component):
         """
         Get the size of the batch to be used in an iteration.
         Batch size is double the control group
-        
+
         :return: Number of sources to use.
         :rtype: int
         """
@@ -426,7 +429,7 @@ class SalvusOptComponent(Component):
         events = task["task"][0]["output"]["event"]
         return len(events) * 2
 
-    def find_blocked_events(self):
+    def find_blocked_events(self, events=None):
         """
         Initially, in order to use all events. Each event which has been used
         once or more often is blocked until all events have been used.
@@ -438,12 +441,15 @@ class SalvusOptComponent(Component):
         available than needed. Otherwise the second output is None
         :rtype: list, list
         """
+        if events is None:
+            events = self.comm.lasif.list_events()
         validation_events = list(
             set(
                 self.comm.project.validation_dataset
                 + self.comm.project.test_dataset
             )
         )
+        block_prev_it_events = True
         blocked_events = []
         events_used = self.comm.storyteller.events_used  # Usage of all events
         needed_events = int(round(self.get_batch_size() / 2))
@@ -491,13 +497,16 @@ class SalvusOptComponent(Component):
         for event in self.comm.lasif.list_events(iteration=prev_iter):
             if event not in prev_it_dict["new_control_group"]:
                 blocked_events.append(event)
-
+        if needed_events > (
+            len(events) - len(blocked_events) + len(validation_events)
+        ):
+            blocked_events = validation_events
         return blocked_events, use_these
 
     def _get_all_model_names(self) -> list:
         """
         Get name of all the existing models
-        
+
         :return: list of model names
         :rtype: list
         """
@@ -550,7 +559,7 @@ class SalvusOptComponent(Component):
         """
         Create an iteration name in the salvus opt format based on
         number of iteration and it's trust region.
-        
+
         :param number: Number of iteration
         :type number: int
         :param tr_region: Trust region length
