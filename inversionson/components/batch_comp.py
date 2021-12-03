@@ -455,7 +455,7 @@ class BatchComponent(Component):
                 ctrl_group.remove(event)
                 print(f"Event: {event} randomly dropped from ctrl group")
 
-        while len(ctrl_group) > min_ctrl and len(ctrl_group) <= max_ctrl_group:
+        while len(ctrl_group) > min_ctrl:
             removal_order += 1
             event_names = self._find_most_useless_event(
                 full_gradient=full_grad,
@@ -464,11 +464,7 @@ class BatchComponent(Component):
                 unique_indices=unique_indices,
             )
             i = 0
-            while (
-                i < 5
-                and len(ctrl_group) > min_ctrl
-                and len(ctrl_group) <= max_ctrl_group
-            ):
+            while i < 5 and len(ctrl_group) > min_ctrl:
                 event_name = event_names[i][0]
                 test_batch_grad = self._remove_individual_grad_from_full_grad(
                     batch_grad,
@@ -480,7 +476,10 @@ class BatchComponent(Component):
                     test_batch_grad,
                 )
                 print(f"Angle between test_batch and full gradient: {angle}")
-                if angle >= self.comm.project.maximum_grad_divergence_angle:
+                if (
+                    angle >= self.comm.project.maximum_grad_divergence_angle
+                    and len(ctrl_group) <= max_ctrl_group
+                ):
                     break
                 else:
                     batch_grad = np.copy(test_batch_grad)
@@ -491,7 +490,10 @@ class BatchComponent(Component):
                     print(f"{event_name} does not continue to next iteration")
                     print(f"Current size of control group: {len(ctrl_group)}")
                     i += 1
-            if angle >= self.comm.project.maximum_grad_divergence_angle:
+            if (
+                angle >= self.comm.project.maximum_grad_divergence_angle
+                and len(ctrl_group) <= max_ctrl_group
+            ):
                 break
 
         for key, val in event_quality.items():
