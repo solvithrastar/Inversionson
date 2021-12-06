@@ -514,7 +514,7 @@ class SalvusOptComponent(Component):
         for r, d, f in os.walk(self.models):
             for file in f:
                 if "gradient" not in file:
-                    if not file.endswith(".xdmf"):
+                    if not file.endswith(".xdmf") and not file.startswith("."):
                         models.append(file[:-3])
 
         if len(models) == 0:
