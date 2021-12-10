@@ -354,13 +354,9 @@ class BatchComponent(Component):
             del events_quality[k]
         for k in self.comm.project.validation_dataset:
             if k in events_quality.keys():
-                print("Validation data in quality")
-                print(events_quality[k])
                 del events_quality[k]
         for k in self.comm.project.test_dataset:
             if k in events_quality.keys():
-                print("test data in events_quality")
-                print(events_quality[k])
                 del events_quality[k]
         if len(not_usable) > 0:
             for k in not_usable:
