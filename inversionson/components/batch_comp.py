@@ -364,7 +364,8 @@ class BatchComponent(Component):
                 del events_quality[k]
         if len(not_usable) > 0:
             for k in not_usable:
-                del events_quality[k]
+                if k in events_quality.keys():
+                    del events_quality[k]
         list_of_events = list(events_quality.keys())
         list_of_probabilities = list(events_quality.values())
         list_of_probabilities /= np.sum(list_of_probabilities)
