@@ -66,7 +66,7 @@ if __name__ == "__main__":
     toml_filename = sys.argv[1]
     info = toml.load(toml_filename)
     gradient_filenames = info["filenames"]
-    parameters = info["paramaters"]
+    parameters = info["parameters"]
     output_gradient = info["output_gradient"]
 
     print("Remote summing of gradients started...")
