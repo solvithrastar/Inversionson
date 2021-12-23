@@ -2,6 +2,7 @@ import h5py
 import sys
 import toml
 import shutil
+import os
 
 # Here I can add a scripts which adds the relevant fields to the mesh.
 def sum_gradient(gradients: list, output_gradient: str,
@@ -22,19 +23,21 @@ def sum_gradient(gradients: list, output_gradient: str,
     :rtype bool
     """
     first = True
+    tmp_file = "temo_gradient_sum.h5"
     for grad_file in gradients:
         print(grad_file)
 
         if first:
             # copy to target destination in which we will sum
-            shutil.copy(grad_file, output_gradient)
-            summed_gradient = h5py.File(output_gradient, "r+")
+            shutil.copy(grad_file, tmp_file)
+            summed_gradient = h5py.File(tmp_file, "r+")
             summed_gradient_data = summed_gradient["MODEL/data"]
             # Get dimension indices of relevant parameters
             # These should be constant for all gradients, so this is only done
             # once.
             dim_labels = (
                 summed_gradient_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+                .decode()
                 .replace(" ", "")
                 .split("|")
             )
@@ -50,12 +53,16 @@ def sum_gradient(gradients: list, output_gradient: str,
         gradient = h5py.File(grad_file, "r+")
         data = gradient["MODEL/data"]
         for i in indices:
-            summed_gradient_data[:, i, :] += data[:, i, :],
+            summed_gradient_data[:, i, :] = summed_gradient_data[:, i, :] + \
+                                            data[:, i, :],
         gradient.close()
 
     # finally close the summed_gradient
     summed_gradient.close()
 
+    # This is done to ensure that the file is only there when the above
+    # was successful.
+    shutil.move(tmp_file, output_gradient)
     return True
 
 
