@@ -1427,9 +1427,12 @@ class SmoothingHelper(object):
 
     def __remote_summing(self, events, verbose=False):
         """
-        Sum gradients on remote for mono-batch case.
+        Sum gradients on remote for mono-batch case in preparation for.
+        smoothing.
 
-        :param event: name of the event
+        Stores the summed gradient in the local lasif project.
+
+        :param events: List of events to be summed.
         """
         gradient_paths = []
         for event in events:
@@ -1443,8 +1446,12 @@ class SmoothingHelper(object):
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
 
-        #TODO remove hardcoded path
-        remote_inversionson_dir = "/scratch/snx3000/dpvanher"
+        remote_inversionson_dir = os.path.join(
+            self.comm.project.remote_diff_model_dir, "..", "summing_dir"
+        )
+        if not hpc_cluster.remote_exists(remote_inversionson_dir):
+            hpc_cluster.remote_mkdir(remote_inversionson_dir)
+
         remote_output_path = os.path.join(remote_inversionson_dir,
                                           "summed_gradient.h5")
 
@@ -1454,7 +1461,6 @@ class SmoothingHelper(object):
         )
         if not hpc_cluster.remote_exists(remote_script):
             hpc_cluster.remote_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
-
 
         info = {}
         info["filenames"] = gradient_paths
@@ -1476,9 +1482,8 @@ class SmoothingHelper(object):
                 f"python {remote_script} {remote_toml}"
             )
         )
-        print("SUCCESS OF SUMMING")
 
-        # copy over to
+        # copy summed gradient over to lasif project
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
         iteration = self.comm.project.current_iteration
         gradient = os.path.join(
@@ -1487,7 +1492,6 @@ class SmoothingHelper(object):
             "summed_gradient.h5",)
         hpc_cluster.remote_get(remote_output_path, gradient)
 
-        raise Exception("Stop here")
 
     def dispatch_smoothing_simulations(self, verbose=False):
         """

@@ -4,7 +4,7 @@ import toml
 import shutil
 import os
 
-# Here I can add a scripts which adds the relevant fields to the mesh.
+
 def sum_gradient(gradients: list, output_gradient: str,
                  parameters: list) -> bool:
     """
@@ -25,8 +25,6 @@ def sum_gradient(gradients: list, output_gradient: str,
     first = True
     tmp_file = "temo_gradient_sum.h5"
     for grad_file in gradients:
-        print(grad_file)
-
         if first:
             # copy to target destination in which we will sum
             shutil.copy(grad_file, tmp_file)
@@ -87,10 +85,9 @@ if __name__ == "__main__":
 
     if sum_gradient(gradient_filenames, output_gradient, parameters):
         # I could add something here, to ensure that it ran successfully
-        print("Seems to have worked!")
+        print("Gradient summing completed!")
 
-
-    # Set referece frame to spherical
+    # Set reference frame to spherical
     print("Set reference frame")
     with h5py.File(output_gradient, "r+") as f:
         attributes = f["MODEL"].attrs
