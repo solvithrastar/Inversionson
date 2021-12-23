@@ -1438,7 +1438,7 @@ class SmoothingHelper(object):
             gradient_path = output_files[0][
                 ("adjoint", "gradient", "output_filename")
             ]
-            gradient_paths.append(gradient_path)
+            gradient_paths.append(str(gradient_path))
 
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
