@@ -73,7 +73,7 @@ if __name__ == "__main__":
 
     if sum_gradient(gradient_filenames, output_gradient, parameters):
         # I could add something here, to ensure that it ran successfully
-        continue
+        print("Seems to have worked!")
 
 
     # Set referece frame to spherical
