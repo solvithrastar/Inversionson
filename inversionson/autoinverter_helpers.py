@@ -23,6 +23,16 @@ CUT_SOURCE_SCRIPT_PATH = os.path.join(
     "remote_scripts",
     "cut_and_clip.py",
 )
+SUM_GRADIENTS_SCRIPT_PATH = os.path.join(
+    os.path.dirname(
+        os.path.dirname(
+            os.path.abspath(inspect.getfile(inspect.currentframe()))
+        )
+    ),
+    "inversionson",
+    "remote_scripts",
+    "gradient_summing.py",
+)
 
 init()
 
@@ -1443,7 +1453,7 @@ class SmoothingHelper(object):
             remote_inversionson_dir, "gradient_summing.py"
         )
         if not hpc_cluster.remote_exists(remote_script):
-            hpc_cluster.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
+            hpc_cluster.remote_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
 
 
         info = {}
