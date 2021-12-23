@@ -1405,6 +1405,16 @@ class AdjointHelper(object):
             )
         )
 
+
+class SmoothingHelper(object):
+    """
+    A class related to everything regarding the smoothing simulations
+    """
+
+    def __init__(self, comm, events):
+        self.comm = comm
+        self.events = events
+
     def __remote_summing(self, events, verbose=False):
         """
         Sum gradients on remote for mono-batch case.
@@ -1456,16 +1466,9 @@ class AdjointHelper(object):
                 f"python {remote_script} {remote_toml}"
             )
         )
-
-
-class SmoothingHelper(object):
-    """
-    A class related to everything regarding the smoothing simulations
-    """
-
-    def __init__(self, comm, events):
-        self.comm = comm
-        self.events = events
+        print("SUCCESS OF SUMMING")
+        time.sleep(30)
+        raise Exception("Stop here")
 
     def dispatch_smoothing_simulations(self, verbose=False):
         """
@@ -1550,6 +1553,11 @@ class SmoothingHelper(object):
             events = self.comm.project.events_in_iteration
         else:
             events = self.events
+
+        if self.comm.project.inversion_mode == "mono-batch":
+            self.__remote_summing(events)
+            return
+
         grad_mesh = self.comm.lasif.find_gradient(
             iteration=self.comm.project.current_iteration,
             event=None,
