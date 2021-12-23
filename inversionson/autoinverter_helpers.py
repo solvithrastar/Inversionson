@@ -1477,10 +1477,9 @@ class SmoothingHelper(object):
             )
         )
         print("SUCCESS OF SUMMING")
-        time.sleep(30)
 
         # copy over to
-        gradients = self.comm.lasif.project.paths["gradients"]
+        gradients = self.comm.lasif.lasif_comm.paths["gradients"]
         iteration = self.comm.project.current_iteration
         gradient = os.path.join(
             gradients,
