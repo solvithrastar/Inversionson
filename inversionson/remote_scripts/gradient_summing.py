@@ -47,17 +47,20 @@ def sum_gradient(gradients: list, output_gradient: str,
 
             # go to next gradient
             first = False
+            summed_gradient_data_copy = summed_gradient_data[:, :, :].copy()
             continue
 
         # open file, read_data, add to summed gradient and close.
         gradient = h5py.File(grad_file, "r+")
         data = gradient["MODEL/data"]
         for i in indices:
-            summed_gradient_data[:, i, :] = summed_gradient_data[:, i, :] + \
-                                            data[:, i, :],
+            summed_gradient_data_copy[:, i, :] = \
+                data[:, i, :] + summed_gradient_data_copy[:, i, :]
+
         gradient.close()
 
     # finally close the summed_gradient
+    summed_gradient_data[:, :, :] = summed_gradient_data_copy[:, :, :]
     summed_gradient.close()
 
     # This is done to ensure that the file is only there when the above
@@ -77,6 +80,10 @@ if __name__ == "__main__":
     output_gradient = info["output_gradient"]
 
     print("Remote summing of gradients started...")
+
+    # clear the temporary file to avoid mixing up summed gradients.
+    if os.path.exists(output_gradient):
+        os.remove(output_gradient)
 
     if sum_gradient(gradient_filenames, output_gradient, parameters):
         # I could add something here, to ensure that it ran successfully

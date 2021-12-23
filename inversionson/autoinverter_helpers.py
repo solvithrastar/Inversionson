@@ -1478,6 +1478,16 @@ class SmoothingHelper(object):
         )
         print("SUCCESS OF SUMMING")
         time.sleep(30)
+
+        # copy over to
+        gradients = self.lasif_comm.project.paths["gradients"]
+        iteration = self.comm.project.current_iteration
+        gradient = os.path.join(
+            gradients,
+            f"ITERATION_{iteration}",
+            "summed_gradient.h5",)
+        hpc_cluster.remote_get(remote_output_path, gradient)
+
         raise Exception("Stop here")
 
     def dispatch_smoothing_simulations(self, verbose=False):
@@ -1610,6 +1620,8 @@ class SmoothingHelper(object):
     ):
         submitted, retrieved = self.__submitted_retrieved(event)
         # See if smoothing job already submitted
+        # TODO this needs to be fixed for remote summing case
+
         if submitted:
             sub_ret = "submitted"
             if retrieved:

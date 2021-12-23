@@ -166,6 +166,7 @@ class SalvusSmoothComponent(Component):
                     )
                 )
             else:
+                # mono-batch case
                 mesh = UnstructuredMesh.from_h5(
                     self.comm.lasif.find_gradient(
                         iteration=iteration,
