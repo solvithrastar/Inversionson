@@ -1405,6 +1405,58 @@ class AdjointHelper(object):
             )
         )
 
+    def __remote_summing(self, events, verbose=False):
+        """
+        Sum gradients on remote for mono-batch case.
+
+        :param event: name of the event
+        """
+        gradient_paths = []
+        for event in events:
+            job = self.comm.salvus_flow.get_job(event, "adjoint")
+            output_files = job.get_output_files()
+            gradient_path = output_files[0][
+                ("adjoint", "gradient", "output_filename")
+            ]
+            gradient_paths.append(gradient_path)
+
+        # Connect to daint
+        hpc_cluster = get_site(self.comm.project.site_name)
+
+        #TODO remove hardcoded path
+        remote_inversionson_dir = "/scratch/snx3000/dpvanher"
+        remote_output_path = os.path.join(remote_inversionson_dir,
+                                          "summed_gradient.h5")
+
+        # copy summing script to hpc
+        remote_script = os.path.join(
+            remote_inversionson_dir, "gradient_summing.py"
+        )
+        if not hpc_cluster.remote_exists(remote_script):
+            hpc_cluster.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
+
+
+        info = {}
+        info["filenames"] = gradient_paths
+        info["parameters"] = self.comm.project.inversion_params
+        info["output_gradient"] = remote_output_path
+
+        toml_filename = f"gradient_sum.toml"
+        with open(toml_filename, "w") as fh:
+            toml.dump(info, fh)
+
+        # put toml on daint and remove local toml
+        remote_toml = os.path.join(remote_inversionson_dir, toml_filename)
+        hpc_cluster.remote_put(toml_filename, remote_toml)
+        os.remove(toml_filename)
+
+        # Call script
+        print(
+            hpc_cluster.run_ssh_command(
+                f"python {remote_script} {remote_toml}"
+            )
+        )
+
 
 class SmoothingHelper(object):
     """

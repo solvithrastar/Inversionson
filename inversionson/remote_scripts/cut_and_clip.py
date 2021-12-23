@@ -36,6 +36,7 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
             a_min=np.quantile(data[:, i, :], 1.0 - percentile),
             a_max=np.quantile(data[:, i, :], percentile),
         )
+
     data[:, :, :] = clipped_data
     gradient.close()
 

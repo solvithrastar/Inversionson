@@ -330,6 +330,8 @@ class AutoInverter(object):
             smoothing_helper.retrieve_smooth_gradients()
         else:
             smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
+            # what seems to be missing here is either gradient retrieval or
+            # remote summing of the gradient
             smoothing_helper.sum_gradients()
             smoothing_helper.dispatch_smoothing_simulations()
             assert smoothing_helper.assert_all_simulations_dispatched()
