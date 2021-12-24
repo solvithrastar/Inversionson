@@ -8,10 +8,8 @@ import os
 def sum_gradient(gradients: list, output_gradient: str,
                  parameters: list) -> bool:
     """
-    Clip the gradient to remove abnormally high/low values from it.
-    Discrete gradients sometimes have the problem of unphysically high
-    values, especially at source/receiver locations so this should be
-    taken care of by cutting out a region around these.
+    Sum a list of gradients. This function is called on the remote cluster,
+    and expects to be able to use h5py and Python.
 
     :param gradients: List of paths to mesh containing gradient
     :type gradients: list
@@ -79,13 +77,10 @@ if __name__ == "__main__":
 
     print("Remote summing of gradients started...")
 
-    # clear the temporary file to avoid mixing up summed gradients.
+    # clear the temporary file to avoid accidentally mixing up summed
+    # gradients from prior iterations.
     if os.path.exists(output_gradient):
         os.remove(output_gradient)
-
-    if sum_gradient(gradient_filenames, output_gradient, parameters):
-        # I could add something here, to ensure that it ran successfully
-        print("Gradient summing completed!")
 
     # Set reference frame to spherical
     print("Set reference frame")
