@@ -1,3 +1,4 @@
+from __future__ import absolute_import
 import h5py
 import numpy as np
 import shutil
@@ -5,7 +6,7 @@ import os
 from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-from __future__ import absolute_import
+
 
 from lasif.components.component import Component
 
