@@ -9,11 +9,8 @@ import toml
 import os
 import subprocess
 import shutil
-import sys
 
-from inversionson import InversionsonError
-from inversionson import InversionsonOptError
-import numpy as np
+from inversionson import InversionsonError, InversionsonOptError
 
 
 class SalvusOptComponent(Component):

@@ -3,8 +3,6 @@ A class which takes care of everything related to selecting
 batches and control groups for coming iterations.
 """
 
-from numpy.core.fromnumeric import shape
-from numpy.core.numeric import full
 from .component import Component
 import numpy as np
 import h5py
@@ -15,7 +13,6 @@ import time
 import toml
 from tqdm import tqdm
 from typing import Union
-from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
 
 class BatchComponent(Component):

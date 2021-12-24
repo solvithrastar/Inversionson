@@ -1,14 +1,13 @@
-from __future__ import absolute_import
-from typing import NoReturn
-from .component import Component
+import h5py
 import numpy as np
-import sys
 import shutil
-from pathlib import Path
 import os
+from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-import h5py
+from __future__ import absolute_import
+from .component import Component
+
 
 
 class SalvusMeshComponent(Component):

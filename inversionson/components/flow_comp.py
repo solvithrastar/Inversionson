@@ -1,13 +1,13 @@
-from .component import Component
 import salvus.flow.api as sapi
-from salvus.flow.sites import job as s_job
-from inversionson import InversionsonError
 import os
 import time
 import numpy as np
-from typing import Union
 import json
 import pathlib
+
+from .component import Component
+from salvus.flow.sites import job as s_job
+from inversionson import InversionsonError
 
 
 class SalvusFlowComponent(Component):

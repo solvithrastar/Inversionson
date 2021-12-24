@@ -1,9 +1,9 @@
 from typing import Dict, List
 import emoji
 from colorama import init
-from colorama import Fore, Style
+from colorama import Fore
 import time
-import os, sys
+import os
 import inspect
 import warnings
 import glob

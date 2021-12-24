@@ -8,11 +8,8 @@ import lasif.api as lapi
 import os
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
-import subprocess
-import sys
 import toml
 import numpy as np
-from typing import Union
 import pathlib
 from salvus.flow.api import get_site
 

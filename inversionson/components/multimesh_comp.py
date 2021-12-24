@@ -1,7 +1,5 @@
 from inversionson import InversionsonError
-from salvus.flow.simple_config import simulation
 from salvus.flow.sites import job, remote_io_site
-import salvus.flow.sites as sites
 import salvus.flow.api as sapi
 from .component import Component
 import os

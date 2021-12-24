@@ -9,7 +9,6 @@ or something like that.
 import numpy as np
 import os, sys
 import h5py
-from tqdm import tqdm
 
 
 def latlondepth_to_cartesian(

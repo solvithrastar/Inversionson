@@ -7,7 +7,6 @@ the inversion itself.
 
 import os
 import toml
-import pprint
 import shutil
 from inversionson import InversionsonError, InversionsonWarning
 import warnings

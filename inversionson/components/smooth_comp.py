@@ -1,7 +1,6 @@
 from .component import Component
 from inversionson import InversionsonError
 
-import toml
 import os
 from salvus.opt import smoothing
 
