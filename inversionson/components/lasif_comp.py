@@ -1014,10 +1014,10 @@ class LasifComponent(Component):
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
         )
-        if self.comm.project.inversion_mode == "mini-batch":
-            if os.path.exists(path) and not validation:
-                print(f"Window set for event {event} exists.")
-                return
+
+        if os.path.exists(path) and not validation:
+            print(f"Window set for event {event} exists.")
+            return
 
         lapi.select_windows_multiprocessing(
             self.lasif_comm,
