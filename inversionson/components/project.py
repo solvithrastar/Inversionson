@@ -12,8 +12,8 @@ from inversionson import InversionsonError, InversionsonWarning
 import warnings
 
 
-from .communicator import Communicator
-from .component import Component
+from lasif.components.communicator import Communicator
+from lasif.components.component import Component
 from .lasif_comp import LasifComponent
 from .multimesh_comp import MultiMeshComponent
 from .flow_comp import SalvusFlowComponent

@@ -4,7 +4,7 @@ Currently I have only used salvus opt in exodus mode so I'll
 initialize it as such but change into hdf5 once I can.
 """
 
-from .component import Component
+from lasif.components.component import Component
 import toml
 import os
 import subprocess

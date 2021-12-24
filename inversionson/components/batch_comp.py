@@ -3,7 +3,7 @@ A class which takes care of everything related to selecting
 batches and control groups for coming iterations.
 """
 
-from .component import Component
+from lasif.components.component import Component
 import numpy as np
 import h5py
 import random

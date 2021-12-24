@@ -1,9 +1,7 @@
 from __future__ import absolute_import
 import shutil
 
-from numpy.lib.function_base import gradient
-
-from .component import Component
+from lasif.components.component import Component
 import lasif.api as lapi
 import os
 from inversionson import InversionsonError, InversionsonWarning

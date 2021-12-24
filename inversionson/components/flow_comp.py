@@ -5,7 +5,7 @@ import numpy as np
 import json
 import pathlib
 
-from .component import Component
+from lasif.components.component import Component
 from salvus.flow.sites import job as s_job
 from inversionson import InversionsonError
 

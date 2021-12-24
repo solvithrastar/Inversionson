@@ -1,7 +1,7 @@
 from inversionson import InversionsonError
 from salvus.flow.sites import job, remote_io_site
 import salvus.flow.api as sapi
-from .component import Component
+from lasif.components.component import Component
 import os
 import inspect
 import shutil

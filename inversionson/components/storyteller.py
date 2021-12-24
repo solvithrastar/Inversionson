@@ -1,4 +1,4 @@
-from .component import Component
+from lasif.components.component import Component
 import os
 import shutil
 import toml

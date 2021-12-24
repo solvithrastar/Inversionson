@@ -1,10 +1,7 @@
 import os
 
-from inversionson.components.communicator import Communicator
-from inversionson.components.component import Component
 from inversionson.create_dummy_info_file import create_info
 from inversionson.components import project
-from inversionson import InversionsonOptError, InversionsonError
 
 import lasif.api
 

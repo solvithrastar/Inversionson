@@ -6,7 +6,8 @@ from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
 from __future__ import absolute_import
-from .component import Component
+
+from lasif.components.component import Component
 
 
 
