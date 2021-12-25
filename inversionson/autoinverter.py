@@ -384,8 +384,7 @@ class AutoInverter(object):
 
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
-            task = adam_opt.get_inversionson_task()
-            verbose = f"Iteration {adam_opt.get_previous_iteration()} done."
+            task, verbose = self.finalize_iteration()
             return task, verbose
         self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
         self.comm.project.update_iteration_toml()
@@ -626,10 +625,16 @@ class AutoInverter(object):
         print(Fore.RED + "\n =================== \n")
         print(f"Current Iteration: {self.comm.project.current_iteration}")
         print(f"Current Task: {task}")
-        iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        if BOOL_ADAM:
+            adam_opt = AdamOptimizer(
+                opt_folder=self.comm.project.paths["inversion_root"])
+            iteration = adam_opt.get_iteration_name()
+        else:
+            iteration = self.comm.salvus_opt.get_newest_iteration_name()
         self.comm.project.get_iteration_attributes()
         self.comm.storyteller.document_task(task)
-        self.comm.salvus_opt.close_salvus_opt_task()
+        if not BOOL_ADAM:
+            self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
 
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
@@ -644,6 +649,12 @@ class AutoInverter(object):
             self._send_whatsapp_announcement()
         except:
             print("Not able to send whatsapp message")
+
+        if BOOL_ADAM:
+            task = adam_opt.get_inversionson_task()
+            verbose = "Very verbose"
+            return task, verbose
+
         self.comm.salvus_opt.run_salvus_opt()
         task_2, verbose_2 = self.comm.salvus_opt.read_salvus_opt_task()
         if task_2 == task and verbose_2 == verbose:
