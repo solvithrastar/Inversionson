@@ -697,8 +697,10 @@ class AutoInverter(object):
                                      initial_model=
                                      os.path.join(
                                          self.comm.project.paths["inversion_root"],
-                                         "initial.model.h5"))
-            self.task = adam_opt.get_inversionson_task()
+                                         "initial_model.h5"))
+            task = adam_opt.get_inversionson_task()
+            self.task = task
+            verbose = "Verbose for sure"
         else:
             task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
             self.task = task

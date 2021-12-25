@@ -354,7 +354,17 @@ class LasifComponent(Component):
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
             if BOOL_ADAM:
-                print("")
+                adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"])
+                model = adam_opt.get_model_path()
+                # copy to lasif project and also move to cluster
+                simulation_mesh = self.comm.lasif.get_simulation_mesh(
+                    event_name=None, iteration=iteration
+                )
+                shutil.copy(model, simulation_mesh)
+                self._move_model_to_cluster(
+                    hpc_cluster=hpc_cluster, overwrite=False,
+                    validation=validation
+                )
             else:
                 self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
                 self._move_model_to_cluster(
