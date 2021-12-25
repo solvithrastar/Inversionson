@@ -10,7 +10,7 @@ import toml
 import shutil
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
-
+from inversionson.optimizers.adam_optimizer import BOOL_ADAM, AdamOptimizer
 
 from lasif.components.communicator import Communicator
 from lasif.components.component import Component
@@ -719,7 +719,7 @@ class ProjectComponent(Component):
         last_control_group = []
         if (
             iteration != "it0000_model"
-            and not validation
+            and not validation and not BOOL_ADAM
             and self.inversion_mode == "mini-batch"
         ):
             ctrl_grps = toml.load(
@@ -951,7 +951,12 @@ class ProjectComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        iteration = self.comm.salvus_opt.get_newest_iteration_name()
+        if BOOL_ADAM:
+            adam_opt = AdamOptimizer(
+                opt_folder=self.comm.project.paths["inversion_root"])
+            iteration = adam_opt.get_iteration_name()
+        else:
+            iteration = self.comm.salvus_opt.get_newest_iteration_name()
         if validation:
             iteration = f"validation_{iteration}"
         remote_interp = False

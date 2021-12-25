@@ -3,10 +3,12 @@ import emoji
 from inversionson import InversionsonError
 import toml
 from colorama import init
+import random
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
-
+from inversionson.optimizers.adam_optimizer import BOOL_ADAM
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
 init()
 
 
@@ -71,11 +73,25 @@ class AutoInverter(object):
         Make meshes if needed
         Update information in iteration dictionary.
         """
-        it_name = self.comm.salvus_opt.get_newest_iteration_name()
+        if BOOL_ADAM:
+            if validation:
+                raise Exception("Not yet implemented.")
+            adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"])
+            it_name = adam_opt.get_iteration_name()
+        else:
+            it_name = self.comm.salvus_opt.get_newest_iteration_name()
+
         if validation:
             it_name = f"validation_{it_name}"
-        move_meshes = "it0000" in it_name if validation else True
-        first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
+        if BOOL_ADAM:
+            move_meshes = True
+        else:
+            move_meshes = "it0000" in it_name if validation else True
+
+        if BOOL_ADAM:
+            first_try = True
+        else:
+            first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
         self.comm.project.change_attribute("current_iteration", it_name)
         it_toml = os.path.join(
             self.comm.project.paths["iteration_tomls"], it_name + ".toml"
@@ -112,7 +128,12 @@ class AutoInverter(object):
         if first_try and not validation:
             if self.comm.project.inversion_mode == "mini-batch":
                 print("Getting minibatch")
-                events = self.comm.lasif.get_minibatch(first)
+                if BOOL_ADAM:
+                    events = self.comm.lasif.list_events()
+                    # choose random events
+                    events = random.sample(events, int(0.1 * len(events)))
+                else:
+                    events = self.comm.lasif.get_minibatch(first)
             else:
                 events = self.comm.lasif.list_events()
         elif validation:
@@ -266,7 +287,10 @@ class AutoInverter(object):
         print(Fore.RED + "\n =================== \n")
         print("Will prepare iteration")
 
-        self.prepare_iteration(first=True)
+        if BOOL_ADAM:
+            self.prepare_iteration()
+        else:
+            self.prepare_iteration(first=True)
 
         print(
             emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True)
@@ -643,8 +667,16 @@ class AutoInverter(object):
         # for checking status
         # self.initialize_inversion()
 
-        task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
-        self.task = task
+        if BOOL_ADAM:
+            adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"],
+                                     initial_model=
+                                     os.path.join(
+                                         self.comm.project.paths["inversion_root"],
+                                         "initial.model.h5"))
+            self.task = adam_opt.get_inversionson_task()
+        else:
+            task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
+            self.task = task
 
         while True:
             task, verbose = self.assign_task_to_function(task, verbose)
