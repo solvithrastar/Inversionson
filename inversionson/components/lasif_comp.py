@@ -2,6 +2,7 @@ from __future__ import absolute_import
 import shutil
 
 from lasif.components.component import Component
+from inversionson.optimizers.adam_optimizer import AdamOptimizer, BOOL_ADAM
 import lasif.api as lapi
 import os
 from inversionson import InversionsonError, InversionsonWarning
@@ -272,8 +273,13 @@ class LasifComponent(Component):
         """
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-        iteration = self.comm.project.current_iteration
-        local_model = self.comm.multi_mesh.find_model_file(iteration)
+        if BOOL_ADAM:
+            adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"])
+            iteration = adam_opt.get_iteration_name()
+            local_model = adam_opt.get_model_path()
+        else:
+            iteration = self.comm.project.current_iteration
+            local_model = self.comm.multi_mesh.find_model_file(iteration)
 
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
@@ -347,10 +353,14 @@ class LasifComponent(Component):
 
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
-            self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
-            self._move_model_to_cluster(
-                hpc_cluster=hpc_cluster, overwrite=False, validation=validation
-            )
+            if BOOL_ADAM:
+                print("")
+            else:
+                self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
+                self._move_model_to_cluster(
+                    hpc_cluster=hpc_cluster, overwrite=False, validation=validation
+                )
+
             return
         if self.comm.project.interpolation_mode == "remote":
             if event is None:

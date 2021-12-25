@@ -229,10 +229,23 @@ class AdamOptimizer:
         task_info = toml.load(self.get_latest_task())
         return task_info["model"].split("/")[-1].split(".")[0]
 
+    def get_previous_iteration(self):
+        timestep = self.get_latest_timestep()
+        task_info = toml.load(self.get_task_path(timestep=timestep - 1))
+        return task_info["model"].split("/")[-1].split(".")[0]
+
     def get_inversionson_task(self):
         """Gets the task for inversionson"""
         task_info = toml.load(self.get_latest_task())
         return task_info["task"]
+
+    def set_task_to_finished(self):
+        """ Set the misfit in latest toml"""
+        task_info = toml.load(self.get_latest_task())
+        task_info["completed"] = True
+
+        with open(self.get_latest_task(), "w") as fh:
+            toml.dump(task_info, fh)
 
     def set_misfit(self, misfit):
         """ Set the misfit in latest toml"""
