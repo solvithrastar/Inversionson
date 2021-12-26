@@ -123,9 +123,10 @@ class AdamOptimizer:
             # once.
             dim_labels = (
                 h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-                    .replace(" ", "")
-                    .split("|")
             )
+            if not type(dim_labels) == str:
+                dim_labels = dim_labels.decode()
+            dim_labels = dim_labels.replace(" ", "").split("|")
             indices = []
             for param in self.parameters:
                 indices.append(dim_labels.index(param))
@@ -186,18 +187,19 @@ class AdamOptimizer:
             # Also initialize second moments with zeros
             shutil.copy(first_moment_path, second_moment_path)
 
-        m_t = (1 - self.beta_1) * self.get_h5_data(
+        m_t = self.beta_1 * self.get_h5_data(
             self.get_first_moment_path(timestep=self.timestep - 1)) + \
-            self.beta_1 * g_t
+              (1 - self.beta_1) * g_t
 
         # Store first moment
         shutil.copy(self.get_first_moment_path(timestep=self.timestep - 1),
                     self.get_first_moment_path())
         self.set_h5_data(self.get_first_moment_path(), m_t)
 
-        v_t = (1 - self.beta_2) * self.get_h5_data(
+        v_t = self.beta_2 * self.get_h5_data(
             self.get_second_moment_path(timestep=self.timestep - 1)) + \
-              self.beta_2 * (g_t ** 2)
+              (1 - self.beta_2) * (g_t ** 2)
+
 
         # Store second moment
         shutil.copy(self.get_second_moment_path(timestep=self.timestep - 1),
@@ -209,8 +211,7 @@ class AdamOptimizer:
         v_t = v_t / (1 - self.beta_2 ** self.timestep)
 
         # Update parameters
-        #TODO parameterize theta in terms of deviation from starting model
-        #Also write the update to a file that can be sent to the smoother
+        # TODO provide option to smooth update with smoother
         theta_prev = self.get_h5_data(self.get_model_path(
             timestep=self.timestep-1))
 

@@ -7,7 +7,7 @@ import random
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM
+from inversionson.optimizers.adam_optimizer import BOOL_ADAM, AdamOptimizer
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
 init()
 
