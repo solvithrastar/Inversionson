@@ -14,7 +14,10 @@ import h5py  # Use h5py to avoid lots of dependencies and slow reading
 
 BOOL_ADAM = True
 
-
+# TODO add AdamW to reglarize weights
+# TODO: To ensure smoothness, we may also just smooth the total update
+# Essentially this means that in order to ramp the solution to our prior (let's say Prem)
+# we need to
 class AdamOptimizer:
     def __init__(self, opt_folder, initial_model=None):
         """
@@ -98,13 +101,13 @@ class AdamOptimizer:
         if timestep is None:
             timestep = self.timestep
         return os.path.join(self.first_moment_dir,
-                            f"first_moment{timestep:05d}.h5")
+                            f"first_moment_{timestep:05d}.h5")
 
     def get_second_moment_path(self, timestep=None):
         if timestep is None:
             timestep = self.timestep
         return os.path.join(self.second_moment_dir,
-                            f"second_moment{timestep:05d}.h5")
+                            f"second_moment_{timestep:05d}.h5")
 
     def get_model_path(self, timestep=None):
         if timestep is None:
@@ -120,7 +123,6 @@ class AdamOptimizer:
             # once.
             dim_labels = (
                 h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-                    .decode()
                     .replace(" ", "")
                     .split("|")
             )
@@ -200,26 +202,34 @@ class AdamOptimizer:
         # Store second moment
         shutil.copy(self.get_second_moment_path(timestep=self.timestep - 1),
                     self.get_second_moment_path())
-        self.set_h5_data(self.get_first_moment_path(), v_t)
+        self.set_h5_data(self.get_second_moment_path(), v_t)
 
         # Correct bias
         m_t = m_t / (1 - self.beta_1 ** self.timestep)
         v_t = v_t / (1 - self.beta_2 ** self.timestep)
 
         # Update parameters
+        #TODO parameterize theta in terms of deviation from starting model
+        #Also write the update to a file that can be sent to the smoother
         theta_prev = self.get_h5_data(self.get_model_path(
             timestep=self.timestep-1))
 
-        # step size .1% inn model space
-        alpha = self.alpha * theta_prev
+        # normalise theta_ with initial
+        # theta_prev = theta_prev / theta_initial -1
+        theta_0 = self.get_h5_data(self.get_model_path(
+            timestep=0))
+        theta_prev = theta_prev / theta_0 - 1
+
         # ensure e is sufficiently small, even for tiny gradient values
         e = self.e * np.mean(v_t)
-        theta_new = theta_prev - alpha * m_t / (np.sqrt(v_t) + e)
+        weight_decay = 0.001 #AdamW, prefer small weights
+        theta_new = theta_prev - self.alpha * m_t / (np.sqrt(v_t) + e) - weight_decay * theta_prev
 
-        # copy old
+        # remove normalization
+        theta_physical = (theta_new + 1) * theta_0
         shutil.copy(self.get_model_path(timestep=self.timestep - 1),
                     self.get_model_path())
-        self.set_h5_data(self.get_model_path(), theta_new)
+        self.set_h5_data(self.get_model_path(), theta_physical)
 
         # Write next task.
         self.read_and_write_task()
