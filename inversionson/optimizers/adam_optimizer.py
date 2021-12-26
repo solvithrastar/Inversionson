@@ -186,18 +186,18 @@ class AdamOptimizer:
             # Also initialize second moments with zeros
             shutil.copy(first_moment_path, second_moment_path)
 
-        m_t = self.beta_1 * self.get_h5_data(
+        m_t = (1 - self.beta_1) * self.get_h5_data(
             self.get_first_moment_path(timestep=self.timestep - 1)) + \
-            (1 - self.beta_1) * g_t
+            self.beta_1 * g_t
 
         # Store first moment
         shutil.copy(self.get_first_moment_path(timestep=self.timestep - 1),
                     self.get_first_moment_path())
         self.set_h5_data(self.get_first_moment_path(), m_t)
 
-        v_t = self.beta_2 * self.get_h5_data(
+        v_t = (1 - self.beta_2) * self.get_h5_data(
             self.get_second_moment_path(timestep=self.timestep - 1)) + \
-              (1 - self.beta_2) * g_t ** 2
+              self.beta_2 * (g_t ** 2)
 
         # Store second moment
         shutil.copy(self.get_second_moment_path(timestep=self.timestep - 1),
