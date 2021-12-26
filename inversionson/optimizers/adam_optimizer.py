@@ -222,7 +222,7 @@ class AdamOptimizer:
         theta_prev = theta_prev / theta_0 - 1
 
         # ensure e is sufficiently small, even for tiny gradient values
-        e = self.e * np.mean(v_t)
+        e = self.e * np.mean(np.sqrt(v_t))
         weight_decay = 0.001 #AdamW, prefer small weights
         theta_new = theta_prev - self.alpha * m_t / (np.sqrt(v_t) + e) - weight_decay * theta_prev
 
