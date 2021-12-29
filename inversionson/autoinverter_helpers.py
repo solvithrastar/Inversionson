@@ -1772,7 +1772,7 @@ class SmoothingHelper(object):
 
     def assert_all_simulations_retrieved(self):
         all = True
-        if self.comm.project.inversion_mode == "mono-batch":
+        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             _, retrieved = self.__submitted_retrieved(None)
             if retrieved:
                 return True
