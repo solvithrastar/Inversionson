@@ -12,7 +12,6 @@ import toml
 from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -58,7 +57,8 @@ class RemoteJobListener(object):
         if events is None:
             if (
                 job_type == "smoothing"
-                and (self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM)
+                and (self.comm.project.inversion_mode == "mono-batch" or
+                     self.comm.project.AdamOpt)
             ):
                 self.events = [None]
             else:
@@ -280,7 +280,7 @@ class RemoteJobListener(object):
 
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mono-batch" or self.comm.project.AdamOpt:
             if job_dict["retrieved"]:
                 self.events_already_retrieved = events
                 finished += 1
@@ -617,7 +617,7 @@ class ForwardHelper(object):
 
         # If event is in control group, we look for newest window set for event
         if (
-            iteration != "it0000_model" and not BOOL_ADAM
+            iteration != "it0000_model" and not self.comm.project.AdamOpt
             and event in self.comm.project.old_control_group
         ):
 
@@ -1206,7 +1206,7 @@ class AdjointHelper(object):
                             event, interpolate=False, verbose=verbose
                         )
                 else:
-                    if not BOOL_ADAM:
+                    if not self.comm.project.AdamOpt:
                         self.__dispatch_smoothing(
                             event, interpolate, verbose=verbose
                         )
@@ -1503,7 +1503,7 @@ class SmoothingHelper(object):
         :param verbose: Print information, defaults to False
         :type verbose: bool, optional
         """
-        if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mini-batch" and not self.comm.project.AdamOpt:
             if (
                 self.comm.project.interpolation_mode == "remote"
                 and self.comm.project.meshes == "multi-mesh"
@@ -1579,7 +1579,7 @@ class SmoothingHelper(object):
         else:
             events = self.events
 
-        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mono-batch" or self.comm.project.AdamOpt:
             self.__remote_summing(events)
             return
 
@@ -1610,7 +1610,7 @@ class SmoothingHelper(object):
     def __submitted_retrieved(self, event: str, sim_type="smoothing"):
 
         if sim_type == "smoothing":
-            if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
+            if self.comm.project.inversion_mode == "mini-batch" and not self.comm.project.AdamOpt:
                 job_info = self.comm.project.smoothing_job[event]
             else:
                 job_info = self.comm.project.smoothing_job
@@ -1704,7 +1704,7 @@ class SmoothingHelper(object):
     def retrieve_smooth_gradients(self, events=None, verbose=False):
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mono-batch" or self.comm.project.AdamOpt:
             events = [events]
             print(events)
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
@@ -1716,7 +1716,8 @@ class SmoothingHelper(object):
             smooth_job_listener.monitor_jobs()
             for event in smooth_job_listener.events_retrieved_now:
                 self.comm.smoother.retrieve_smooth_gradient(event_name=event)
-                if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+                if self.comm.project.inversion_mode == "mono-batch" or \
+                        self.comm.project.AdamOpt:
                     attribute = 'smoothing_job["retrieved"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["retrieved"]'
@@ -1726,7 +1727,8 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
             for event in smooth_job_listener.to_repost:
-                if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+                if self.comm.project.inversion_mode == "mono-batch" or \
+                        self.comm.project.AdamOpt:
                     attribute = 'smoothing_job["submitted"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["submitted"]'
@@ -1758,7 +1760,8 @@ class SmoothingHelper(object):
 
     def assert_all_simulations_dispatched(self):
         all = True
-        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mono-batch" or \
+                self.comm.project.AdamOpt:
             submitted, _ = self.__submitted_retrieved(None)
             if submitted:
                 return True
@@ -1773,7 +1776,8 @@ class SmoothingHelper(object):
 
     def assert_all_simulations_retrieved(self):
         all = True
-        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mono-batch" or \
+                self.comm.project.AdamOpt:
             _, retrieved = self.__submitted_retrieved(None)
             if retrieved:
                 return True

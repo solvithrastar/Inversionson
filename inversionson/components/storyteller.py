@@ -4,7 +4,7 @@ import shutil
 import toml
 
 from inversionson import InversionsonError
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM
+
 
 class StoryTellerComponent(Component):
     """
@@ -199,7 +199,7 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            if BOOL_ADAM:
+            if self.comm.project.AdamOpt:
                 iteration_number = int(
                     self.comm.project.current_iteration.split("_")[-1].lstrip(
                         "0"))
@@ -503,7 +503,7 @@ class StoryTellerComponent(Component):
         :param verbose: Additional information regarding task, optional.
         :type verbose: str
         """
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             # skip this stuff for now
             return
         if task == "compute_misfit_and_gradient":

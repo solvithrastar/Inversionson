@@ -9,7 +9,6 @@ import random
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM, AdamOptimizer
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
 init()
 
@@ -75,7 +74,7 @@ class AutoInverter(object):
         Make meshes if needed
         Update information in iteration dictionary.
         """
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             if validation:
                 raise Exception("Not yet implemented.")
             adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
@@ -85,12 +84,12 @@ class AutoInverter(object):
 
         if validation:
             it_name = f"validation_{it_name}"
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             move_meshes = True
         else:
             move_meshes = "it0000" in it_name if validation else True
 
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             first_try = True
         else:
             first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
@@ -130,7 +129,7 @@ class AutoInverter(object):
         if first_try and not validation:
             if self.comm.project.inversion_mode == "mini-batch":
                 print("Getting minibatch")
-                if BOOL_ADAM:
+                if self.comm.project.AdamOpt:
                     events = self.comm.lasif.list_events()
                     # choose random events
                     events = random.sample(events, int(0.1 * len(events)))
@@ -173,7 +172,7 @@ class AutoInverter(object):
         elif self.comm.project.meshes == "mono-mesh" and move_meshes:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
-        if not validation and not BOOL_ADAM and \
+        if not validation and not self.comm.project.AdamOpt and \
                 self.comm.project.inversion_mode == "mini-batch":
             self.comm.project.update_control_group_toml(first=first)
         # self.comm.project.create_iteration_toml(it_name)
@@ -362,7 +361,7 @@ class AutoInverter(object):
             )
         )
 
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             from inversionson.remote_scripts.gradient_summing import sum_gradient
             adam_opt = AdamOptimizer(
                 inversion_root=self.comm.project.paths["inversion_root"])
@@ -419,7 +418,6 @@ class AutoInverter(object):
 
         # TODO: implement the following:
         - importance sampling
-        - single update smoothing
 
         :param task: Task issued by the Adam Optimizer
         :type task: str
@@ -519,6 +517,7 @@ class AutoInverter(object):
 
         self.comm.project.update_iteration_toml()
         self.comm.storyteller.document_task(task)
+        # Here we mainly call this to
         task, verbose = self.finalize_iteration(task, verbose)
 
         print(Fore.RED + "\n =================== \n")
@@ -745,17 +744,17 @@ class AutoInverter(object):
         print(Fore.RED + "\n ==============finalize_iter===== \n")
         print(f"Current Iteration: {self.comm.project.current_iteration}")
         print(f"Current Task: {task}")
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             adam_opt = AdamOptimizer(
                 inversion_root=self.comm.project.paths["inversion_root"])
             # adam already went for the next iter, so query the previous one.
             iteration = adam_opt.get_iteration_name()
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
-        if not BOOL_ADAM:  # TODO sort this 2 lines below out
+        if not self.comm.project.AdamOpt:  # TODO sort this 2 lines below out
             self.comm.project.get_iteration_attributes()
             self.comm.storyteller.document_task(task)
-        if not BOOL_ADAM:
+        if not self.comm.project.AdamOpt:
             self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
 
@@ -772,7 +771,7 @@ class AutoInverter(object):
         except:
             print("Not able to send whatsapp message")
 
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             adam_opt.finalize_iteration()
             task = adam_opt.get_inversionson_task()
             verbose = "Compute gradient for Adam optimizer."
@@ -828,7 +827,7 @@ class AutoInverter(object):
         # for checking status
         # self.initialize_inversion()
 
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
 
             adam_opt = AdamOptimizer(inversion_root=
                                      self.comm.project.paths["inversion_root"])

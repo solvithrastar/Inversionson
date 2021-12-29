@@ -10,7 +10,7 @@ import toml
 import shutil
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM, AdamOptimizer
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
 
 from lasif.components.communicator import Communicator
 from lasif.components.component import Component
@@ -39,6 +39,7 @@ class ProjectComponent(Component):
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
         self.remote_gradient_processing = True
+        self.AdamOpt = True
 
     def _read_config_file(self) -> dict:
         """
@@ -636,7 +637,7 @@ class ProjectComponent(Component):
         ]
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
-            if BOOL_ADAM:
+            if self.AdamOpt:
                 adam_opt = AdamOptimizer(inversion_root=
                                          self.comm.project.
                                          paths["inversion_root"])
@@ -725,7 +726,7 @@ class ProjectComponent(Component):
         last_control_group = []
         if (
             iteration != "it0000_model"
-            and not validation and not BOOL_ADAM
+            and not validation and not self.AdamOpt
             and self.inversion_mode == "mini-batch"
         ):
             ctrl_grps = toml.load(
@@ -777,7 +778,7 @@ class ProjectComponent(Component):
                 jobs = {"forward": f_job_dict}
                 if remote_interp:
                     jobs["model_interp"] = i_job_dict
-            if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
+            if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                 if not validation:
                     jobs = {
                         "forward": f_job_dict,
@@ -810,7 +811,7 @@ class ProjectComponent(Component):
             if not validation:
                 it_dict["events"][str(_i)]["misfit"] = 0.0
                 it_dict["events"][str(_i)]["usage_updated"] = False
-        if (self.inversion_mode == "mono-batch" or BOOL_ADAM) and not validation:
+        if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
             it_dict["smoothing"] = s_job_dict
 
         with open(iteration_toml, "w") as fh:
@@ -904,7 +905,7 @@ class ProjectComponent(Component):
         if os.path.exists(self.paths["control_group_toml"]) and not validation:
             control_group_dict = toml.load(self.paths["control_group_toml"])
             control_group_dict = control_group_dict[iteration]
-        elif self.inversion_mode == "mini-batch" and not BOOL_ADAM:
+        elif self.inversion_mode == "mini-batch" and not self.AdamOpt:
             control_group_dict = {"old": [], "new": []}
         it_dict = {}
         it_dict["name"] = iteration
@@ -915,7 +916,7 @@ class ProjectComponent(Component):
 
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
-        if not (validation or BOOL_ADAM) and self.inversion_mode == "mini-batch":
+        if not (validation or self.AdamOpt) and self.inversion_mode == "mini-batch":
             it_dict["last_control_group"] = control_group_dict["old"]
             it_dict["new_control_group"] = control_group_dict["new"]
         for _i, event in enumerate(
@@ -928,7 +929,7 @@ class ProjectComponent(Component):
                 jobs["model_interp"] = self.model_interp_job[event]
                 if not validation:
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
-            if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
+            if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
                 it_dict["events"][str(_i)] = {
@@ -944,7 +945,7 @@ class ProjectComponent(Component):
                 it_dict["events"][str(_i)]["usage_updated"] = self.updated[
                     event
                 ]
-        if (self.inversion_mode == "mono-batch" or BOOL_ADAM) and not validation:
+        if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
             it_dict["smoothing"] = self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
@@ -957,7 +958,7 @@ class ProjectComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        if BOOL_ADAM:
+        if self.AdamOpt:
             adam_opt = AdamOptimizer(
                 inversion_root=self.comm.project.paths["inversion_root"])
             iteration = adam_opt.get_iteration_name()
@@ -984,7 +985,7 @@ class ProjectComponent(Component):
             iteration=iteration
         )
         if not validation:
-            if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
+            if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                 self.old_control_group = it_dict["last_control_group"]
                 self.new_control_group = it_dict["new_control_group"]
             self.adjoint_job = {}
@@ -1015,7 +1016,7 @@ class ProjectComponent(Component):
                 self.adjoint_job[event] = it_dict["events"][str(_i)][
                     "job_info"
                 ]["adjoint"]
-                if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
+                if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                     self.smoothing_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["smoothing"]
@@ -1030,7 +1031,7 @@ class ProjectComponent(Component):
                     self.gradient_interp_job[event] = it_dict["events"][
                         str(_i)
                     ]["job_info"]["gradient_interp"]
-        if (self.inversion_mode == "mono-batch" or BOOL_ADAM) and not validation:
+        if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
             self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:

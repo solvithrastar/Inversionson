@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import shutil
 
 from lasif.components.component import Component
-from inversionson.optimizers.adam_optimizer import AdamOptimizer, BOOL_ADAM
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
 import lasif.api as lapi
 import os
 from inversionson import InversionsonError, InversionsonWarning
@@ -273,7 +273,7 @@ class LasifComponent(Component):
         """
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-        if BOOL_ADAM:
+        if self.comm.project.AdamOpt:
             adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
             iteration = adam_opt.get_iteration_name()
             local_model = adam_opt.get_model_path()
@@ -353,8 +353,9 @@ class LasifComponent(Component):
 
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
-            if BOOL_ADAM:
-                adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
+            if self.comm.project.AdamOpt:
+                adam_opt = AdamOptimizer(
+                    inversion_root=self.comm.project.paths["inversion_root"])
                 model = adam_opt.get_model_path()
                 # copy to lasif project and also move to cluster
                 simulation_mesh = self.comm.lasif.get_simulation_mesh(
@@ -580,7 +581,8 @@ class LasifComponent(Component):
         :rtype: str
         """
         gradients = self.lasif_comm.project.paths["gradients"]
-        if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mini-batch" and not \
+                self.comm.project.AdamOpt:
             if smooth:
                 gradient = os.path.join(
                     gradients,
@@ -599,7 +601,8 @@ class LasifComponent(Component):
                         event,
                         "smooth_grad_master.h5",
                     )
-        elif self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        elif self.comm.project.inversion_mode == "mono-batch" or \
+                self.comm.project.AdamOpt:
             if summed:
                 if smooth:
                     gradient = os.path.join(
@@ -621,7 +624,8 @@ class LasifComponent(Component):
                     "gradient.h5",
                 )
 
-        if not smooth and self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
+        if not smooth and self.comm.project.inversion_mode == "mini-batch" \
+                and not self.comm.project.AdamOpt:
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):

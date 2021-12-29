@@ -1,6 +1,6 @@
 from lasif.components.component import Component
 from inversionson import InversionsonError
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM, AdamOptimizer
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
 
 import os
 from salvus.opt import smoothing
@@ -93,7 +93,8 @@ class SalvusSmoothComponent(Component):
             job_array_name=job_name,
         )
 
-        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mono-batch" or \
+                self.comm.project.AdamOpt:
             smooth_grad = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=None,
@@ -159,15 +160,16 @@ class SalvusSmoothComponent(Component):
             grad = output_files[0][("adjoint", "gradient", "output_filename")]
             mesh = UnstructuredMesh.from_h5(str(grad))
         else:
-            if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
+            if self.comm.project.inversion_mode == "mini-batch" and not \
+                    self.comm.project.AdamOpt:
                 mesh = UnstructuredMesh.from_h5(
                     self.comm.lasif.find_gradient(
                         iteration=iteration, event=event
                     )
                 )
-            elif BOOL_ADAM:
-                adam_opt = AdamOptimizer(inversion_root=
-                                         self.comm.project.paths["inversion_root"])
+            elif self.comm.project.AdamOpt:
+                adam_opt = AdamOptimizer(
+                    inversion_root=self.comm.project.paths["inversion_root"])
                 mesh = UnstructuredMesh.\
                     from_h5(adam_opt.get_raw_update_path())
             else:
@@ -192,7 +194,8 @@ class SalvusSmoothComponent(Component):
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-        if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
+        if self.comm.project.inversion_mode == "mini-batch" and not \
+                self.comm.project.AdamOpt:
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
             )

@@ -8,7 +8,6 @@ import pathlib
 from lasif.components.component import Component
 from salvus.flow.sites import job as s_job
 from inversionson import InversionsonError
-from inversionson.optimizers.adam_optimizer import BOOL_ADAM
 
 
 class SalvusFlowComponent(Component):
@@ -88,7 +87,8 @@ class SalvusFlowComponent(Component):
                     event, iteration
                 )
                 if (
-                    (self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM)
+                    (self.comm.project.inversion_mode == "mono-batch" or
+                     self.comm.project.AdamOpt)
                     and sim_type == "smoothing"
                 ):
                     job = iteration_info[sim_type]["name"]
@@ -106,7 +106,8 @@ class SalvusFlowComponent(Component):
                 elif sim_type == "gradient_interp":
                     job = self.comm.project.gradient_interp_job[event]["name"]
                 else:
-                    if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+                    if self.comm.project.inversion_mode == "mono-batch" or \
+                            self.comm.project.AdamOpt:
                         job = self.comm.project.smoothing_job["name"]
                     else:
                         job = self.comm.project.smoothing_job[event]["name"]
@@ -154,7 +155,8 @@ class SalvusFlowComponent(Component):
                         "submitted"
                     )
             elif sim_type == "smoothing":
-                if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
+                if self.comm.project.inversion_mode == "mono-batch" or \
+                        self.comm.project.AdamOpt:
                     smoothing_job = self.comm.project.smoothing_job
                 else:
                     smoothing_job = self.comm.project.smoothing_job[event]
@@ -170,7 +172,8 @@ class SalvusFlowComponent(Component):
             it_dict = self.comm.project.get_old_iteration_info(iteration)
             if (
                 sim_type == "smoothing"
-                and self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM
+                and self.comm.project.inversion_mode == "mono-batch"
+                    or self.comm.project.AdamOpt
             ):
                 job_name = it_dict["smoothing"]["name"]
             else:
