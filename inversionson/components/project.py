@@ -984,7 +984,7 @@ class ProjectComponent(Component):
             iteration=iteration
         )
         if not validation:
-            if self.inversion_mode == "mini-batch":
+            if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
                 self.old_control_group = it_dict["last_control_group"]
                 self.new_control_group = it_dict["new_control_group"]
             self.adjoint_job = {}
