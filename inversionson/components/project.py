@@ -1030,7 +1030,7 @@ class ProjectComponent(Component):
                     self.gradient_interp_job[event] = it_dict["events"][
                         str(_i)
                     ]["job_info"]["gradient_interp"]
-        if self.inversion_mode == "mono-batch" and not validation:
+        if (self.inversion_mode == "mono-batch" or BOOL_ADAM) and not validation:
             self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:
