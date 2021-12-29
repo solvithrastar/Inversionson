@@ -1464,7 +1464,7 @@ class SmoothingHelper(object):
         remote_output_path = os.path.join(remote_inversionson_dir,
                                           "summed_gradient.h5")
         remote_norms_path = os.path.join(remote_inversionson_dir,
-                                          f"{iteration}_gradient_norms.h5")
+                                          f"{iteration}_gradient_norms.toml")
 
         # copy summing script to hpc
         remote_script = os.path.join(
@@ -1495,7 +1495,28 @@ class SmoothingHelper(object):
                 f"python {remote_script} {remote_toml}"
             )
         )
+        doc_path = os.path.join(self.comm.project.paths["inversion_root"],
+                                      "DOCUMENTATION")
+        norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
 
+        store_norms = True
+        if store_norms:
+            hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
+            all_norms_path = os.path.join(doc_path, "all_norms.toml")
+            if not os.path.exists(all_norms_path):
+                norm_dict = {}
+                with open(all_norms_path, "w") as fh:
+                    toml.dump(norm_dict, fh)
+            else:
+                norm_dict = toml.load(all_norms_path)
+
+            norm_iter_dict = toml.load(norm_dict_toml)
+            for event, norm in norm_iter_dict.items():
+                if event not in norm_dict.keys():
+                    norm_dict[event] = norm
+
+            with open(all_norms_path, "w") as fh:
+                toml.dump(norm_dict, fh)
         # copy summed gradient over to lasif project
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
         gradient = os.path.join(
