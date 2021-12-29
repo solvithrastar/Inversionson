@@ -837,6 +837,7 @@ class AutoInverter(object):
             if adam_config["initial_model"] == "":
                 raise Exception("Set adam config file and provide initial"
                                 " model.")
+
             task = adam_opt.get_inversionson_task()
             self.task = task
             verbose = "Computing gradient for Adam optimization."

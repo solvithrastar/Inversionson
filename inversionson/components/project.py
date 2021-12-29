@@ -1009,7 +1009,7 @@ class ProjectComponent(Component):
                 self.adjoint_job[event] = it_dict["events"][str(_i)][
                     "job_info"
                 ]["adjoint"]
-                if self.inversion_mode == "mini-batch":
+                if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
                     self.smoothing_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["smoothing"]
