@@ -215,7 +215,7 @@ class AdamOptimizer:
             for i in range(len(indices)):
                 dat[:, indices[i], :] = data[:, i, :]
             dat[:, :, :] = dat[:, :, :].astype(dtype)
-            
+
     def compute_raw_update(self):
         """Computes the raw update"""
 
@@ -257,8 +257,10 @@ class AdamOptimizer:
                     self.get_first_moment_path(time_step=time_step))
         self.set_h5_data(self.get_first_moment_path(), m_t)
 
+        # v_t was sometimes becoming too small, so enforce double precision
         v_t = self.beta_2 * self.get_h5_data(
-            self.get_second_moment_path(time_step=time_step - 1)) + \
+            self.get_second_moment_path(time_step=time_step - 1),
+            dtype=np.float64) + \
               (1 - self.beta_2) * (g_t ** 2)
 
         # Store second moment
