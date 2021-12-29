@@ -13,6 +13,8 @@ from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
+
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
         os.path.dirname(
@@ -1493,6 +1495,17 @@ class SmoothingHelper(object):
             f"ITERATION_{iteration}",
             "summed_gradient.h5",)
         hpc_cluster.remote_get(remote_output_path, gradient)
+
+        # Only sum the raw gradient in AdamOpt, not the update
+        if self.comm.project.AdamOpt:
+            adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
+
+            if "VPV" in adam_opt.parameters:
+                self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
+                    mesh=gradient,
+                    fieldname_1="VPV",
+                    fieldname_2="VPH",
+                )
 
 
     def dispatch_smoothing_simulations(self, verbose=False):

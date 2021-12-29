@@ -127,7 +127,9 @@ class SalvusSmoothComponent(Component):
             model=self.comm.lasif.get_master_model(),
         )
         smooth_gradient.write_h5(smooth_grad)
-        if "VPV" in list(smooth_gradient.element_nodal_fields.keys()):
+        # Only sum the raw gradient in AdamOpt, not the update
+        if "VPV" in list(smooth_gradient.element_nodal_fields.keys()) and \
+                not self.comm.project.AdamOpt:
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
                 mesh=smooth_grad,
                 fieldname_1="VPV",
