@@ -334,6 +334,7 @@ class AdamOptimizer:
             toml.dump(task_info, fh)
 
         self.time_step = task_info["time_step"] + 1
+        print("writing task with timestep", self.time_step)
         self.read_and_write_task(time_step=self.time_step)
 
     def get_iteration_name(self):
@@ -394,6 +395,7 @@ class AdamOptimizer:
             if not task_info["iteration_finalized"]:
                 print("Please complete task first")
         else:  # write task
+            print("writing bla", self.time_step, time_step)
             task_dict = {"task": "compute_gradient_for_adam", "misfit": "",
                          "model": self.get_model_path(),
                          "raw_gradient_path": self.get_gradient_path(),
