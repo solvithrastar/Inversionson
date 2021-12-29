@@ -34,6 +34,8 @@ class AdamOptimizer:
         :type inversion_root: str:
         """
         self.optimization_folder = os.path.join(inversion_root, "AdamOpt")
+        if not os.path.exists(self.optimization_folder):
+            os.mkdir(self.optimization_folder)
         self.config_file = os.path.join(self.optimization_folder,
                                         "adam_config.toml")
         if not os.path.exists(self.config_file):
