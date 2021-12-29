@@ -38,19 +38,6 @@ class AdamOptimizer:
             os.mkdir(self.optimization_folder)
         self.config_file = os.path.join(self.optimization_folder,
                                         "adam_config.toml")
-        if not os.path.exists(self.config_file):
-            self._write_initial_config()
-            print(f"Please set config and provide initial model to "
-                  f"Adam optimizer in {self.config_file} \n"
-                  f"Then reinitialize the Adam Optimizer.")
-            return
-        self._read_config()
-
-        if self.initial_model == "":
-            print(f"Please set config and provide initial model to "
-                  f"Adam optimizer in {self.config_file} \n"
-                  f"Then reinitialize the Adam Optimizer.")
-            return
 
         self.model_dir = os.path.join(self.optimization_folder,
                                       "MODELS")
@@ -66,6 +53,20 @@ class AdamOptimizer:
                                               "SECOND_MOMENTS")
         self.task_dir = os.path.join(self.optimization_folder,
                                      "TASKS")
+
+        if not os.path.exists(self.config_file):
+            self._write_initial_config()
+            print(f"Please set config and provide initial model to "
+                  f"Adam optimizer in {self.config_file} \n"
+                  f"Then reinitialize the Adam Optimizer.")
+            return
+        self._read_config()
+
+        if self.initial_model == "":
+            print(f"Please set config and provide initial model to "
+                  f"Adam optimizer in {self.config_file} \n"
+                  f"Then reinitialize the Adam Optimizer.")
+            return
 
         # Initialize folders if needed
         if not os.path.exists(self.get_model_path(time_step=0)):
