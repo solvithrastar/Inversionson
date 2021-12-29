@@ -6,6 +6,7 @@ from inversionson import InversionsonError
 import toml
 from colorama import init
 import random
+import numpy as np
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
@@ -131,8 +132,28 @@ class AutoInverter(object):
                 print("Getting minibatch")
                 if self.comm.project.AdamOpt:
                     events = self.comm.lasif.list_events()
+                    n_events = int(0.15 * len(events))
                     # choose random events
-                    events = random.sample(events, int(0.1 * len(events)))
+                    doc_path = os.path.join(
+                        self.comm.project.paths["inversion_root"],
+                        "DOCUMENTATION")
+                    all_norms_path = os.path.join(doc_path,
+                                                      "all_norms.toml")
+                    if os.path.exists(all_norms_path):
+                        norm_dict = toml.load(all_norms_path)
+                        probs = list(norm_dict.values())
+                        probs /= np.sum(probs)
+                        unused_events = list(set(events).difference(set(norm_dict.keys())))
+                        if len(unused_events) >= n_events:
+                            events = random.sample(events, n_events)
+                        else:
+                            random_events = random.sample(len(unused_events))
+                            other_events = list(np.random.choice(list(
+                                norm_dict.keys()), n_events - len(unused_events),
+                                replace=False, p=probs))
+                            events = random_events + other_events
+                    else:
+                        events = random.sample(events, n_events)
                 else:
                     events = self.comm.lasif.get_minibatch(first)
             else:

@@ -1441,6 +1441,7 @@ class SmoothingHelper(object):
 
         :param events: List of events to be summed.
         """
+
         gradient_paths = []
         event_list = []
         iteration = self.comm.project.current_iteration
@@ -1496,7 +1497,7 @@ class SmoothingHelper(object):
             )
         )
         doc_path = os.path.join(self.comm.project.paths["inversion_root"],
-                                      "DOCUMENTATION")
+                                "DOCUMENTATION")
         norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
 
         store_norms = True
@@ -1512,8 +1513,7 @@ class SmoothingHelper(object):
 
             norm_iter_dict = toml.load(norm_dict_toml)
             for event, norm in norm_iter_dict.items():
-                if event not in norm_dict.keys():
-                    norm_dict[event] = norm
+                norm_dict[event] = float(norm)
 
             with open(all_norms_path, "w") as fh:
                 toml.dump(norm_dict, fh)
