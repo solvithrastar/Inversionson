@@ -617,7 +617,7 @@ class ForwardHelper(object):
 
         # If event is in control group, we look for newest window set for event
         if (
-            iteration != "it0000_model"
+            iteration != "it0000_model" and not BOOL_ADAM
             and event in self.comm.project.old_control_group
         ):
 
