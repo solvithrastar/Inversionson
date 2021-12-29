@@ -2,6 +2,7 @@ import h5py
 import sys
 import toml
 import shutil
+import numpy as np
 import os
 
 
@@ -22,6 +23,7 @@ def sum_gradient(gradients: list, output_gradient: str,
     """
     first = True
     tmp_file = "temo_gradient_sum.h5"
+    gradient_norms = []
     for grad_file in gradients:
         if first:
             # copy to target destination in which we will sum
@@ -41,14 +43,20 @@ def sum_gradient(gradients: list, output_gradient: str,
             for param in parameters:
                 indices.append(dim_labels.index(param))
 
+            sorted_indices = indices.copy()
+            sorted_indices.sort()
             # go to next gradient
             first = False
             summed_gradient_data_copy = summed_gradient_data[:, :, :].copy()
+            grad_dat = summed_gradient_data_copy[:, sorted_indices, :]
+            gradient_norms.append(np.sqrt(np.sum(grad_dat ** 2)))
             continue
 
         # open file, read_data, add to summed gradient and close.
         gradient = h5py.File(grad_file, "r+")
         data = gradient["MODEL/data"]
+        grad_dat = data[:, sorted_indices, :].copy()
+        gradient_norms.append(np.sqrt(np.sum(grad_dat ** 2)))
         for i in indices:
             summed_gradient_data_copy[:, i, :] = \
                 data[:, i, :] + summed_gradient_data_copy[:, i, :]
@@ -62,7 +70,7 @@ def sum_gradient(gradients: list, output_gradient: str,
     # This is done to ensure that the file is only there when the above
     # was successful.
     shutil.move(tmp_file, output_gradient)
-    return True
+    return gradient_norms
 
 
 if __name__ == "__main__":
@@ -74,7 +82,9 @@ if __name__ == "__main__":
     gradient_filenames = info["filenames"]
     parameters = info["parameters"]
     output_gradient = info["output_gradient"]
+    event_list = info["event_list"]
 
+    norms_path = info["gradient_norms_path"]
     print("Remote summing of gradients started...")
 
     # clear the temporary file to avoid accidentally mixing up summed
@@ -82,11 +92,24 @@ if __name__ == "__main__":
     if os.path.exists(output_gradient):
         os.remove(output_gradient)
 
+    gradient_norms = sum_gradient(gradient_filenames, output_gradient,
+                                  parameters)
+
+    gradient_norm_dict = {}
+    for i in range(len(event_list)):
+        gradient_norm_dict[event_list[i]] = gradient_norms[i]
+
+    with open(norms_path, "w") as fh:
+        toml.dump(gradient_norm_dict, fh)
+
+    # I could add something here, to ensure that it ran successfully
+    print("Seems to have worked!")
     # Set reference frame to spherical
     print("Set reference frame")
     with h5py.File(output_gradient, "r+") as f:
         attributes = f["MODEL"].attrs
         attributes.modify("reference_frame", b"spherical")
 
+    # not sure if this is doing anything useful
     with open(toml_filename, "w") as fh:
         toml.dump(info, fh)

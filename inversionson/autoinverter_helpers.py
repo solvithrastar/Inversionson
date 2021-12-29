@@ -1442,6 +1442,8 @@ class SmoothingHelper(object):
         :param events: List of events to be summed.
         """
         gradient_paths = []
+        event_list = []
+        iteration = self.comm.project.current_iteration
         for event in events:
             job = self.comm.salvus_flow.get_job(event, "adjoint")
             output_files = job.get_output_files()
@@ -1449,7 +1451,7 @@ class SmoothingHelper(object):
                 ("adjoint", "gradient", "output_filename")
             ]
             gradient_paths.append(str(gradient_path))
-
+            event_list.append(event_list)
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
 
@@ -1461,6 +1463,8 @@ class SmoothingHelper(object):
 
         remote_output_path = os.path.join(remote_inversionson_dir,
                                           "summed_gradient.h5")
+        remote_norms_path = os.path.join(remote_inversionson_dir,
+                                          f"{iteration}_gradient_norms.h5")
 
         # copy summing script to hpc
         remote_script = os.path.join(
@@ -1473,6 +1477,8 @@ class SmoothingHelper(object):
         info["filenames"] = gradient_paths
         info["parameters"] = self.comm.project.inversion_params
         info["output_gradient"] = remote_output_path
+        info["event_list"] = event_list
+        info["gradient_norms_path"] = remote_norms_path
 
         toml_filename = f"gradient_sum.toml"
         with open(toml_filename, "w") as fh:
@@ -1492,7 +1498,6 @@ class SmoothingHelper(object):
 
         # copy summed gradient over to lasif project
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
-        iteration = self.comm.project.current_iteration
         gradient = os.path.join(
             gradients,
             f"ITERATION_{iteration}",
