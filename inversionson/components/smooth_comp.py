@@ -224,10 +224,19 @@ class SalvusSmoothComponent(Component):
         :param event: Name of event
         :type event: str
         """
+        # TODO implement this faster version for mono-batch too
+        # send over update or summed grad and call smoother in the same way
+        # should be easy peasy
+
         from salvus.opt import smoothing
         import salvus.flow.simple_config as sc
         from salvus.flow.api import get_site
         from salvus.flow import api as sapi
+
+        if self.comm.project.AdamOpt:
+            event = None
+        if not self.comm.project.inversion_mode == "mini-batch":
+            raise Exception("Not yet implemented.")
 
         int_mode = self.comm.project.interpolation_mode
         if self.comm.project.meshes == "multi-mesh":
@@ -237,24 +246,8 @@ class SalvusSmoothComponent(Component):
         freq = 1.0 / self.comm.project.min_period
         smoothing_lengths = self.comm.project.smoothing_lengths
 
-        # get remote gradient filename
-        if int_mode == "remote" and self.comm.project.meshes == "multi-mesh":
-            # The gradient we want has been interpolated
-            job = self.comm.salvus_flow.get_job(event, "gradient_interp")
-            remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")
-        else:
-            job = self.comm.salvus_flow.get_job(event, "adjoint")
-            output_files = job.get_output_files()
-            remote_grad = str(
-                output_files[0][("adjoint", "gradient", "output_filename")]
-            )
-
         hpc_cluster = get_site(self.comm.project.site_name)
         remote_diff_dir = self.comm.project.remote_diff_model_dir
-        # username = daint.config["ssh_settings"]["username"]
-        # remote_diff_dir = os.path.join(
-        #     "/scratch/snx3000", username, "diff_models"
-        # )
         local_diff_model_dir = "DIFF_MODELS"
 
         if not os.path.exists(local_diff_model_dir):
@@ -262,6 +255,25 @@ class SalvusSmoothComponent(Component):
 
         if not hpc_cluster.remote_exists(remote_diff_dir):
             hpc_cluster.remote_mkdir(remote_diff_dir)
+
+        # get remote gradient filename
+        if int_mode == "remote" and self.comm.project.meshes == "multi-mesh":
+            # The gradient we want has been interpolated
+            job = self.comm.salvus_flow.get_job(event, "gradient_interp")
+            remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")
+        elif self.comm.project.AdamOpt:
+            adam_opt = AdamOptimizer(inversion_root=
+                                     self.comm.project.paths["inversion_root"])
+            local_update = adam_opt.get_raw_update_path()
+            file_name = local_update.split("/")[-1]
+            remote_grad = os.path.join(remote_diff_dir, file_name)
+            hpc_cluster.remote_put(local_update, remote_grad)
+        else:
+            job = self.comm.salvus_flow.get_job(event, "adjoint")
+            output_files = job.get_output_files()
+            remote_grad = str(
+                output_files[0][("adjoint", "gradient", "output_filename")]
+            )
 
         sims = []
         for param in self.comm.project.inversion_params:
@@ -336,7 +348,8 @@ class SalvusSmoothComponent(Component):
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-        if self.comm.project.inversion_mode == "mini-batch":
+        if self.comm.project.inversion_mode == "mini-batch" and not \
+                self.comm.project.AdamOpt:
             print(f"Submitted smoothing for event {event}")
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name

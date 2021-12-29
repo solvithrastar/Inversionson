@@ -1507,7 +1507,6 @@ class SmoothingHelper(object):
                     fieldname_2="VPH",
                 )
 
-
     def dispatch_smoothing_simulations(self, verbose=False):
         """
         Dispatch smoothing simulations. If interpolations needed, they
@@ -1648,12 +1647,15 @@ class SmoothingHelper(object):
                 print(f"Event {event} has been {sub_ret}. Moving on.")
             return
         if event is None: # mono-batch case, no events
-            config = self.comm.smoother.generate_smoothing_config()
-            self.comm.smoother.run_smoother(
-                config,
-                event=None,
-                iteration=self.comm.project.current_iteration,
-            )
+            if self.comm.project.AdamOpt:
+                self.comm.smoother.run_remote_smoother(event=None)
+            else:
+                config = self.comm.smoother.generate_smoothing_config()
+                self.comm.smoother.run_smoother(
+                    config,
+                    event=None,
+                    iteration=self.comm.project.current_iteration,
+                )
             return
         if not interpolate:
             if verbose:
@@ -1717,7 +1719,8 @@ class SmoothingHelper(object):
     def retrieve_smooth_gradients(self, events=None, verbose=False):
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch" or self.comm.project.AdamOpt:
+        if self.comm.project.inversion_mode == "mono-batch" or \
+                self.comm.project.AdamOpt:
             events = [events]
             print(events)
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
