@@ -140,8 +140,8 @@ class AdamOptimizer:
         return indices
 
     def get_latest_time_step(self):
-        """ Extracts the latest time step from the task dir."""
-        models = glob.glob(os.path.join(self.task_dir, "task_*.toml"))
+        """ Extracts the latest time step from the model dir."""
+        models = glob.glob(os.path.join(self.model_dir, "model_*.toml"))
         models.sort()
         if len(models) < 1:
             raise Exception("No models found,"
