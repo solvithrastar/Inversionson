@@ -330,11 +330,11 @@ class AdamOptimizer:
         task_info = toml.load(self.get_latest_task())
         task_info["iteration_finalized"] = True
 
-        self.time_step = task_info["time_step"] + 1
-        self.read_and_write_task(time_step=self.time_step)
-
         with open(self.get_task_path(time_step=self.time_step), "w") as fh:
             toml.dump(task_info, fh)
+
+        self.time_step = task_info["time_step"] + 1
+        self.read_and_write_task(time_step=self.time_step)
 
     def get_iteration_name(self):
         """ Get iteration name"""
@@ -391,7 +391,7 @@ class AdamOptimizer:
         # If task exists, read it and see if model needs updating
         if os.path.exists(task_path):
             task_info = toml.load(task_path)
-            if not task_info["iteration_completed"]:
+            if not task_info["iteration_finalized"]:
                 print("Please complete task first")
         else:  # write task
             task_dict = {"task": "compute_gradient_for_adam", "misfit": "",
