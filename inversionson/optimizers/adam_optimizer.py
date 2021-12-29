@@ -226,7 +226,7 @@ class AdamOptimizer:
 
     def compute_raw_update(self):
         """Computes the raw update"""
-
+        print("Adam: Computing raw update...")
         # Read task toml
         task_info = toml.load(self.get_latest_task())
 
@@ -316,7 +316,7 @@ class AdamOptimizer:
         # such that we don't scale too much.
 
         """
-
+        print("Adam: Applying smooth update...")
         task_info = toml.load(self.get_latest_task())
 
         if not task_info["smoothing_completed"]:
