@@ -38,6 +38,8 @@ class AdamOptimizer:
             os.mkdir(self.optimization_folder)
         self.config_file = os.path.join(self.optimization_folder,
                                         "adam_config.toml")
+        # gradient scaling factor avoid issues with floats
+        self.grad_scaling_fac = 10e20
 
         self.model_dir = os.path.join(self.optimization_folder,
                                       "MODELS")
@@ -193,17 +195,17 @@ class AdamOptimizer:
         time_step = self.time_step if time_step is None else time_step
         return os.path.join(self.model_dir, f"model_{time_step:05d}.h5")
 
-    def get_h5_data(self, filename, dtype=np.float64):
+    def get_h5_data(self, filename):
         """
         Returns the relevant data in the form of ND_array with all the data.
         """
         indices = self._get_parameter_indices(filename)
 
         with h5py.File(filename, "r") as h5:
-            data = h5["MODEL/data"][:, :, :].copy().astype(dtype)
+            data = h5["MODEL/data"][:, :, :].copy()
             return data[:, indices, :]
 
-    def set_h5_data(self, filename, data, dtype=np.float64):
+    def set_h5_data(self, filename, data):
         """Writes the data with shape [:, indices :]. Requires existing file."""
         if not os.path.exists(filename):
             raise Exception("only works on existing files.")
@@ -214,7 +216,6 @@ class AdamOptimizer:
             dat = h5["MODEL/data"]
             for i in range(len(indices)):
                 dat[:, indices[i], :] = data[:, i, :]
-            dat[:, :, :] = dat[:, :, :].astype(dtype)
 
     def compute_raw_update(self):
         """Computes the raw update"""
@@ -231,7 +232,8 @@ class AdamOptimizer:
         raw_update_path = task_info["raw_update_path"]
 
         indices = self._get_parameter_indices(gradient_path)
-        g_t = self.get_h5_data(gradient_path)
+        # scale the gradients, because they can be tiny and this leads to issues
+        g_t = self.get_h5_data(gradient_path) * self.grad_scaling_fac
 
         if time_step == 1:  # Initialize moments if needed
             first_moment_path = self.get_first_moment_path(time_step=0)
@@ -259,8 +261,7 @@ class AdamOptimizer:
 
         # v_t was sometimes becoming too small, so enforce double precision
         v_t = self.beta_2 * self.get_h5_data(
-            self.get_second_moment_path(time_step=time_step - 1),
-            dtype=np.float64) + \
+            self.get_second_moment_path(time_step=time_step - 1)) + \
               (1 - self.beta_2) * (g_t ** 2)
 
         # Store second moment
@@ -289,10 +290,16 @@ class AdamOptimizer:
         update = self.alpha * m_t / (
                     np.sqrt(v_t) + e) - self.weight_decay * theta_prev
 
+        max_upd = np.max(np.abs(update))
+        if max_upd > self.alpha * 1.05:
+            raise Exception("Raw update seems to large")
+        if np.sum(np.isnan(update)) > 1:
+            raise Exception("NaNs were found.")
+
         # Write raw update to file for smoothing
         shutil.copy(gradient_path, raw_update_path)
         self.set_h5_data(raw_update_path,
-                         update, dtype=np.float32)
+                         update)
 
     def apply_smooth_update(self):
         """Apply the smoothed update
@@ -333,7 +340,7 @@ class AdamOptimizer:
         shutil.copy(self.get_model_path(time_step=time_step - 1),
                     self.get_model_path(time_step=time_step))
         self.set_h5_data(self.get_model_path(time_step=time_step),
-                         theta_physical, dtype=np.float32)
+                         theta_physical)
 
         # Iteration still has to be finalized. This is done separately
         # for inversionson purposes, such that files can be cleaned.
