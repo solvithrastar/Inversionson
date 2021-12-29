@@ -1443,7 +1443,6 @@ class SmoothingHelper(object):
         """
 
         gradient_paths = []
-        event_list = []
         iteration = self.comm.project.current_iteration
         for event in events:
             job = self.comm.salvus_flow.get_job(event, "adjoint")
@@ -1452,7 +1451,6 @@ class SmoothingHelper(object):
                 ("adjoint", "gradient", "output_filename")
             ]
             gradient_paths.append(str(gradient_path))
-            event_list.append(event_list)
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
 
@@ -1478,7 +1476,7 @@ class SmoothingHelper(object):
         info["filenames"] = gradient_paths
         info["parameters"] = self.comm.project.inversion_params
         info["output_gradient"] = remote_output_path
-        info["event_list"] = event_list
+        info["event_list"] = events
         info["gradient_norms_path"] = remote_norms_path
 
         toml_filename = f"gradient_sum.toml"
