@@ -1610,7 +1610,7 @@ class SmoothingHelper(object):
     def __submitted_retrieved(self, event: str, sim_type="smoothing"):
 
         if sim_type == "smoothing":
-            if self.comm.project.inversion_mode == "mini-batch":
+            if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
                 job_info = self.comm.project.smoothing_job[event]
             else:
                 job_info = self.comm.project.smoothing_job
