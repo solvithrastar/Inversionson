@@ -211,8 +211,6 @@ class AdamOptimizer:
             raise Exception("only works on existing files.")
 
         indices = self._get_parameter_indices(filename)
-        # indices have to be in increasing order
-        indices.sort()
 
         with h5py.File(filename, "r+") as h5:
             dat = h5["MODEL/data"]
@@ -220,6 +218,10 @@ class AdamOptimizer:
             # avoid writing the file many times. work on array in memory
             for i in range(len(indices)):
                 data_copy[:, indices[i], :] = data[:, i, :]
+
+            # writing only works in sorted order. This sort can only happen after
+            # the above executed to preserve the ordering that data came in
+            indices.sort()
             dat[:, indices, :] = data_copy[:, indices, :]
 
     def compute_raw_update(self):
