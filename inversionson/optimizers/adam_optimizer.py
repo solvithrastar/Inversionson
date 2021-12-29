@@ -214,7 +214,7 @@ class AdamOptimizer:
 
         with h5py.File(filename, "r+") as h5:
             dat = h5["MODEL/data"]
-            data_copy = dat.copy()
+            data_copy = dat[:, :, :].copy()
             # avoid writing the file many times. work on array in memory
             for i in range(len(indices)):
                 data_copy[:, indices[i], :] = data[:, i, :]
