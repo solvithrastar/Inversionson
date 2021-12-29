@@ -316,9 +316,21 @@ class AdamOptimizer:
         self.set_h5_data(self.get_model_path(time_step=time_step),
                          theta_physical)
 
-        # Write next task, set self.time_step for writing purposes
-        self.time_step = time_step
+        # Iteration still has to be finalized. This is done separately
+        # for inversionson purposes, such that files can be cleaned.
+
+    def finalize_iteration(self):
+        """
+        Finalize iteration, and write new task
+        """
+        task_info = toml.load(self.get_latest_task())
+        task_info["iteration_finalized"] = True
+
+        self.time_step = task_info["time_step"] + 1
         self.read_and_write_task()
+
+        with open(self.get_latest_task(), "w") as fh:
+            toml.dump(task_info, fh)
 
     def get_iteration_name(self):
         """ Get iteration name"""
@@ -381,6 +393,7 @@ class AdamOptimizer:
                          "raw_update_path": self.get_raw_update_path(),
                          "smooth_update_path": self.get_smooth_path(),
                          "smoothing_completed": False,
+                         "iteration_finalized": False
                          "time_step": self.time_step}
 
             with open(task_path, "w+") as fh:

@@ -750,7 +750,7 @@ class AutoInverter(object):
             adam_opt = AdamOptimizer(
                 inversion_root=self.comm.project.paths["inversion_root"])
             # adam already went for the next iter, so query the previous one.
-            iteration = adam_opt.get_previous_iteration()
+            iteration = adam_opt.get_iteration_name()
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
         if not BOOL_ADAM:  # TODO sort this 2 lines below out
@@ -774,8 +774,9 @@ class AutoInverter(object):
             print("Not able to send whatsapp message")
 
         if BOOL_ADAM:
+            adam_opt.finalize_iteration()
             task = adam_opt.get_inversionson_task()
-            verbose = "Very verbose"
+            verbose = "Compute gradient for Adam optimizer."
             return task, verbose
 
         self.comm.salvus_opt.run_salvus_opt()
