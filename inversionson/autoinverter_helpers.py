@@ -16,6 +16,8 @@ from salvus.flow.api import get_site
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
 from inversionson.utils import sum_two_parameters_h5
 
+SLEEP_TIME = 30
+
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
         os.path.dirname(
@@ -878,8 +880,8 @@ class ForwardHelper(object):
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 30 seconds before trying again")
-                time.sleep(30)
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
             else:
                 j += 1
         # In case of failure:
@@ -941,8 +943,8 @@ class ForwardHelper(object):
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
-            print("Waiting 30 seconds before trying again")
-            time.sleep(30)
+            print(f"Waiting {SLEEP_TIME} seconds before trying again")
+            time.sleep(SLEEP_TIME)
 
     def __dispatch_forwards_normal(self, verbose):
         """
@@ -1024,8 +1026,8 @@ class ForwardHelper(object):
             vint_job_listener.to_repost = []
             vint_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 30 seconds before trying again")
-                time.sleep(30)
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
             else:
                 j += 1
 
@@ -1099,8 +1101,8 @@ class ForwardHelper(object):
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 300 seconds before trying again")
-                time.sleep(30)
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
             else:
                 j += 1
 
@@ -1255,8 +1257,8 @@ class AdjointHelper(object):
             adj_job_listener.to_repost = []
             adj_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 300 seconds before trying again")
-                time.sleep(30)
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
             else:
                 j += 1
 
@@ -1576,8 +1578,8 @@ class SmoothingHelper(object):
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 30 seconds before trying again")
-                time.sleep(30)
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
             else:
                 j += 1
 
@@ -1766,8 +1768,8 @@ class SmoothingHelper(object):
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []
             if j != 0:
-                print("Waiting 180 seconds before trying again")
-                time.sleep(30)
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
             else:
                 j += 1
 
