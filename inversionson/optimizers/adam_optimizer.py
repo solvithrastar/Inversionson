@@ -331,6 +331,12 @@ class AdamOptimizer:
         if np.max(np.abs(update)) > 1.05 * self.alpha:
             raise Exception("check smooth gradient, something seems off")
 
+        rescale_update = True
+        if rescale_update:
+            print("Rescaling maximum update to alpha")
+            max_update_ratio = self.alpha / np.max(np.abs(update))
+            update *= max_update_ratio
+            
         # Update parameters
         theta_prev = self.get_h5_data(self.get_model_path(
             time_step=time_step - 1))
