@@ -331,7 +331,7 @@ class AdamOptimizer:
         task_info["iteration_finalized"] = True
 
         self.time_step = task_info["time_step"] + 1
-        self.read_and_write_task()
+        self.read_and_write_task(time_step=self.time_step)
 
         with open(self.get_task_path(time_step=self.time_step), "w") as fh:
             toml.dump(task_info, fh)
@@ -379,11 +379,14 @@ class AdamOptimizer:
         with open(self.get_latest_task(), "w") as fh:
             toml.dump(task_info, fh)
 
-    def read_and_write_task(self):
+    def read_and_write_task(self, time_step=None):
         """
         Checks task status and writes new task if task is already completed.
         """
-        task_path = self.get_latest_task()
+        if time_step is None:
+            task_path = self.get_latest_task()
+        else:
+            task_path = self.get_task_path(time_step)
 
         # If task exists, read it and see if model needs updating
         if os.path.exists(task_path):
