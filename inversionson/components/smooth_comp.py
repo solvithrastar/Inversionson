@@ -159,7 +159,7 @@ class SalvusSmoothComponent(Component):
             grad = output_files[0][("adjoint", "gradient", "output_filename")]
             mesh = UnstructuredMesh.from_h5(str(grad))
         else:
-            if self.comm.project.inversion_mode == "mini-batch":
+            if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
                 mesh = UnstructuredMesh.from_h5(
                     self.comm.lasif.find_gradient(
                         iteration=iteration, event=event
