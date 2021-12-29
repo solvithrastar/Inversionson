@@ -193,17 +193,17 @@ class AdamOptimizer:
         time_step = self.time_step if time_step is None else time_step
         return os.path.join(self.model_dir, f"model_{time_step:05d}.h5")
 
-    def get_h5_data(self, filename):
+    def get_h5_data(self, filename, dtype=np.float64):
         """
         Returns the relevant data in the form of ND_array with all the data.
         """
         indices = self._get_parameter_indices(filename)
 
         with h5py.File(filename, "r") as h5:
-            data = h5["MODEL/data"][:, :, :].copy()
+            data = h5["MODEL/data"][:, :, :].copy().astype(dtype)
             return data[:, indices, :]
 
-    def set_h5_data(self, filename, data):
+    def set_h5_data(self, filename, data, dtype=np.float64):
         """Writes the data with shape [:, indices :]. Requires existing file."""
         if not os.path.exists(filename):
             raise Exception("only works on existing files.")
@@ -214,7 +214,8 @@ class AdamOptimizer:
             dat = h5["MODEL/data"]
             for i in range(len(indices)):
                 dat[:, indices[i], :] = data[:, i, :]
-
+            dat[:, :, :] = dat[:, :, :].astype(dtype)
+            
     def compute_raw_update(self):
         """Computes the raw update"""
 
@@ -289,7 +290,7 @@ class AdamOptimizer:
         # Write raw update to file for smoothing
         shutil.copy(gradient_path, raw_update_path)
         self.set_h5_data(raw_update_path,
-                         update)
+                         update, dtype=np.float32)
 
     def apply_smooth_update(self):
         """Apply the smoothed update
@@ -330,7 +331,7 @@ class AdamOptimizer:
         shutil.copy(self.get_model_path(time_step=time_step - 1),
                     self.get_model_path(time_step=time_step))
         self.set_h5_data(self.get_model_path(time_step=time_step),
-                         theta_physical)
+                         theta_physical, dtype=np.float32)
 
         # Iteration still has to be finalized. This is done separately
         # for inversionson purposes, such that files can be cleaned.
