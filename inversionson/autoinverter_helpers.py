@@ -1503,7 +1503,7 @@ class SmoothingHelper(object):
         :param verbose: Print information, defaults to False
         :type verbose: bool, optional
         """
-        if self.comm.project.inversion_mode == "mini-batch":
+        if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
             if (
                 self.comm.project.interpolation_mode == "remote"
                 and self.comm.project.meshes == "multi-mesh"

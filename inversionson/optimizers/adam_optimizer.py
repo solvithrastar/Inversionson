@@ -227,7 +227,7 @@ class AdamOptimizer:
         indices = self._get_parameter_indices(gradient_path)
         g_t = self.get_h5_data(gradient_path)
 
-        if self.time_step == 1:  # Initialize moments if needed
+        if time_step == 1:  # Initialize moments if needed
             first_moment_path = self.get_first_moment_path(time_step=0)
             second_moment_path = self.get_second_moment_path(time_step=0)
             shutil.copy(gradient_path, first_moment_path)
