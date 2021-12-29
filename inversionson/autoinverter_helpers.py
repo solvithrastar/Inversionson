@@ -1206,9 +1206,10 @@ class AdjointHelper(object):
                             event, interpolate=False, verbose=verbose
                         )
                 else:
-                    self.__dispatch_smoothing(
-                        event, interpolate, verbose=verbose
-                    )
+                    if not BOOL_ADAM:
+                        self.__dispatch_smoothing(
+                            event, interpolate, verbose=verbose
+                        )
 
             for event in adj_job_listener.to_repost:
                 self.comm.project.change_attribute(
