@@ -909,7 +909,7 @@ class ProjectComponent(Component):
 
         # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
-        if not validation and self.inversion_mode == "mini-batch":
+        if not (validation or BOOL_ADAM) and self.inversion_mode == "mini-batch":
             it_dict["last_control_group"] = control_group_dict["old"]
             it_dict["new_control_group"] = control_group_dict["new"]
         for _i, event in enumerate(
