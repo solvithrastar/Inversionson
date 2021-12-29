@@ -141,12 +141,16 @@ class AdamOptimizer:
 
     def get_latest_time_step(self):
         """ Extracts the latest time step from the model dir."""
-        models = glob.glob(os.path.join(self.model_dir, "model_*.h5"))
-        models.sort()
-        if len(models) < 1:
+        tasks = glob.glob(os.path.join(self.task_dir, "task_*.toml"))
+        # if no task exists, get the latest status from the model_dir
+        if len(tasks) < 1:
+            tasks = glob.glob(os.path.join(self.model_dir, "model_*.h5"))
+
+        tasks.sort()
+        if len(tasks) < 1:
             raise Exception("No models found,"
                             "please initialize first.")
-        self.time_step = int(models[-1].split("/")
+        self.time_step = int(tasks[-1].split("/")
                             [-1].split("_")[-1].split(".")[0])
         return self.time_step
 
@@ -393,7 +397,7 @@ class AdamOptimizer:
                          "raw_update_path": self.get_raw_update_path(),
                          "smooth_update_path": self.get_smooth_path(),
                          "smoothing_completed": False,
-                         "iteration_finalized": False
+                         "iteration_finalized": False,
                          "time_step": self.time_step}
 
             with open(task_path, "w+") as fh:
