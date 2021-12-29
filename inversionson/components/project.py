@@ -31,6 +31,7 @@ class ProjectComponent(Component):
         a running inversion can be restarted although this is done.
         """
         self.info = information_dict
+        self.AdamOpt = True
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
         self.simulation_dict = self._read_config_file()
@@ -39,7 +40,7 @@ class ProjectComponent(Component):
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
         self.remote_gradient_processing = True
-        self.AdamOpt = True
+
 
     def _read_config_file(self) -> dict:
         """

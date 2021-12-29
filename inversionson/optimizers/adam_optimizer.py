@@ -292,7 +292,13 @@ class AdamOptimizer:
                          update)
 
     def apply_smooth_update(self):
-        """Apply the smoothed update """
+        """Apply the smoothed update
+        # TODO: smmoothing might significantly reduce the step size,
+        # so check this and maybe rescale the smoothed update back to the step size
+        # this could be done based on the peak amplitudes in the raw and smoothed update
+        # such that we don't scale too much.
+
+        """
 
         task_info = toml.load(self.get_latest_task())
 
@@ -303,6 +309,11 @@ class AdamOptimizer:
         time_step = task_info["time_step"] + 1
         smooth_path = task_info["smooth_update_path"]
         update = self.get_h5_data(smooth_path)
+
+        print("Maximum update step:", np.max(update))
+        raise Exception("testing")
+        if np.max(np.abs(update)) > 1.05 * self.alpha:
+            raise Exception("check smooth gradient, something seems off")
 
         # Update parameters
         theta_prev = self.get_h5_data(self.get_model_path(
@@ -396,7 +407,6 @@ class AdamOptimizer:
             if not task_info["iteration_finalized"]:
                 print("Please complete task first")
         else:  # write task
-            print("writing bla", self.time_step, time_step)
             task_dict = {"task": "compute_gradient_for_adam", "misfit": "",
                          "model": self.get_model_path(),
                          "raw_gradient_path": self.get_gradient_path(),

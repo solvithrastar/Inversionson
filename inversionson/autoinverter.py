@@ -417,6 +417,7 @@ class AutoInverter(object):
         A task associated with the task in Adam optimization.
 
         # TODO: implement the following:
+        - fix documentation
         - importance sampling
 
         :param task: Task issued by the Adam Optimizer
