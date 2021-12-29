@@ -580,7 +580,7 @@ class LasifComponent(Component):
         :rtype: str
         """
         gradients = self.lasif_comm.project.paths["gradients"]
-        if self.comm.project.inversion_mode == "mini-batch":
+        if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
             if smooth:
                 gradient = os.path.join(
                     gradients,
@@ -599,7 +599,7 @@ class LasifComponent(Component):
                         event,
                         "smooth_grad_master.h5",
                     )
-        elif self.comm.project.inversion_mode == "mono-batch":
+        elif self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             if summed:
                 if smooth:
                     gradient = os.path.join(
@@ -621,7 +621,7 @@ class LasifComponent(Component):
                     "gradient.h5",
                 )
 
-        if not smooth and self.comm.project.inversion_mode == "mini-batch":
+        if not smooth and self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):

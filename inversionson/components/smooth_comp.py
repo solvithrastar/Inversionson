@@ -93,7 +93,7 @@ class SalvusSmoothComponent(Component):
             job_array_name=job_name,
         )
 
-        if self.comm.project.inversion_mode == "mono-batch":
+        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             smooth_grad = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=None,

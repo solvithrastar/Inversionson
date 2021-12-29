@@ -58,7 +58,7 @@ class RemoteJobListener(object):
         if events is None:
             if (
                 job_type == "smoothing"
-                and self.comm.project.inversion_mode == "mono-batch"
+                and (self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM)
             ):
                 self.events = [None]
             else:
@@ -280,7 +280,7 @@ class RemoteJobListener(object):
 
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch":
+        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             if job_dict["retrieved"]:
                 self.events_already_retrieved = events
                 finished += 1

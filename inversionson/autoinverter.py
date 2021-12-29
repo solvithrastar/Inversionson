@@ -471,8 +471,8 @@ class AutoInverter(object):
 
         # Here we directly sum the gradients on the remote and recover the
         # raw summed gradient and pass it to Adam
-        smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
-        smoothing_helper.sum_gradients()
+        #smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
+        #smoothing_helper.sum_gradients()
 
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
         iteration = self.comm.project.current_iteration
@@ -484,10 +484,10 @@ class AutoInverter(object):
         adam_opt = AdamOptimizer(inversion_root=
                                  self.comm.project.paths["inversion_root"])
         adam_grad = adam_opt.get_gradient_path()
-        shutil.copy(gradient, adam_grad)
+        #shutil.copy(gradient, adam_grad)
         adam_opt.set_gradient_task_to_finished()
         # the below increases the timestep in the object, but not of the task toml
-        adam_opt.compute_raw_update() # the update is at timestep t -1
+        #adam_opt.compute_raw_update() # the update is at timestep t -1
 
         # Then we smooth the update with the smoother
         smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
@@ -520,7 +520,7 @@ class AutoInverter(object):
 
         self.comm.project.update_iteration_toml()
         self.comm.storyteller.document_task(task)
-        task, verbose = self.finalize_iteration()
+        task, verbose = self.finalize_iteration(task, verbose)
 
         print(Fore.RED + "\n =================== \n")
         print(
