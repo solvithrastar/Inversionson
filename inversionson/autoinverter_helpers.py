@@ -1704,8 +1704,9 @@ class SmoothingHelper(object):
     def retrieve_smooth_gradients(self, events=None, verbose=False):
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch":
+        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             events = [events]
+            print(events)
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
         j = 0
         interpolate = False
@@ -1715,7 +1716,7 @@ class SmoothingHelper(object):
             smooth_job_listener.monitor_jobs()
             for event in smooth_job_listener.events_retrieved_now:
                 self.comm.smoother.retrieve_smooth_gradient(event_name=event)
-                if self.comm.project.inversion_mode == "mono-batch":
+                if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
                     attribute = 'smoothing_job["retrieved"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["retrieved"]'
@@ -1725,7 +1726,7 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
             for event in smooth_job_listener.to_repost:
-                if self.comm.project.inversion_mode == "mono-batch":
+                if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
                     attribute = 'smoothing_job["submitted"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["submitted"]'
@@ -1757,7 +1758,7 @@ class SmoothingHelper(object):
 
     def assert_all_simulations_dispatched(self):
         all = True
-        if self.comm.project.inversion_mode == "mono-batch":
+        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             submitted, _ = self.__submitted_retrieved(None)
             if submitted:
                 return True
