@@ -202,6 +202,47 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     gradient.close()
 
 
+def get_h5_parameter_indices(filename, parameters):
+    """ Get indices in h5 file for parameters in filename
+    """
+    with h5py.File(filename, "r") as h5:
+        h5_data = h5["MODEL/data"]
+        # Get dimension indices of relevant parameters
+        # These should be constant for all gradients, so this is only done
+        # once.
+        dim_labels = (
+            h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+        )
+        if not type(dim_labels) == str:
+            dim_labels = dim_labels.decode()
+        dim_labels = dim_labels.replace(" ", "").split("|")
+        indices = []
+        for param in parameters:
+            indices.append(dim_labels.index(param))
+    return indices
+
+
+def sum_two_parameters_h5(filename, parameters):
+        """sum two parameters in h5 file. Mostly used for summing VPV and VPH"""
+        if not os.path.exists(filename):
+            raise Exception("only works on existing files.")
+
+        indices = get_h5_parameter_indices(filename, parameters)
+        indices.sort()
+
+        if len(indices) != 2:
+            raise Exception("Only implemented for 2 fields.")
+
+        with h5py.File(filename, "r+") as h5:
+            dat = h5["MODEL/data"]
+            data_copy = dat[:,:,:].copy()
+            par_sum = data_copy[:, indices[0], :] + data_copy[:, indices[1], :]
+            data_copy[:, indices[0], :] = par_sum
+            data_copy[:, indices[1], :] = par_sum
+
+            dat[:, indices, :] = data_copy[:, indices, :]
+
+
 def sum_gradients(mesh: str, gradients: list):
     """
     Sum the parameters on gradients for a list of events in an iteration

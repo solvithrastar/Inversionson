@@ -211,11 +211,16 @@ class AdamOptimizer:
             raise Exception("only works on existing files.")
 
         indices = self._get_parameter_indices(filename)
+        # indices have to be in increasing order
+        indices.sort()
 
         with h5py.File(filename, "r+") as h5:
             dat = h5["MODEL/data"]
+            data_copy = dat.copy()
+            # avoid writing the file many times. work on array in memory
             for i in range(len(indices)):
-                dat[:, indices[i], :] = data[:, i, :]
+                data_copy[:, indices[i], :] = data[:, i, :]
+            dat[:, indices, :] = data_copy[:, indices, :]
 
     def compute_raw_update(self):
         """Computes the raw update"""
@@ -321,7 +326,6 @@ class AdamOptimizer:
         update = self.get_h5_data(smooth_path)
 
         print("Maximum update step:", np.max(update))
-        raise Exception("testing")
         if np.max(np.abs(update)) > 1.05 * self.alpha:
             raise Exception("check smooth gradient, something seems off")
 

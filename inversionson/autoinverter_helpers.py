@@ -14,6 +14,7 @@ from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.utils import sum_two_parameters_h5
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -1498,14 +1499,11 @@ class SmoothingHelper(object):
 
         # Only sum the raw gradient in AdamOpt, not the update
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
-
+            adam_opt = AdamOptimizer(inversion_root=
+                                     self.comm.project.paths["inversion_root"])
             if "VPV" in adam_opt.parameters:
-                self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
-                    mesh=gradient,
-                    fieldname_1="VPV",
-                    fieldname_2="VPH",
-                )
+                sum_two_parameters_h5(gradient, ["VPV", "VPH"])
+
 
     def dispatch_smoothing_simulations(self, verbose=False):
         """
@@ -1722,7 +1720,6 @@ class SmoothingHelper(object):
         if self.comm.project.inversion_mode == "mono-batch" or \
                 self.comm.project.AdamOpt:
             events = [events]
-            print(events)
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
         j = 0
         interpolate = False
