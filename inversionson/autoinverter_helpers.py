@@ -1097,7 +1097,7 @@ class ForwardHelper(object):
             for_job_listener.events_retrieved_now = []
             if j != 0:
                 print("Waiting 300 seconds before trying again")
-                time.sleep(300)
+                time.sleep(30)
             else:
                 j += 1
 
@@ -1252,7 +1252,7 @@ class AdjointHelper(object):
             adj_job_listener.events_retrieved_now = []
             if j != 0:
                 print("Waiting 300 seconds before trying again")
-                time.sleep(300)
+                time.sleep(30)
             else:
                 j += 1
 
@@ -1750,7 +1750,7 @@ class SmoothingHelper(object):
             smooth_job_listener.events_retrieved_now = []
             if j != 0:
                 print("Waiting 180 seconds before trying again")
-                time.sleep(180)
+                time.sleep(30)
             else:
                 j += 1
 

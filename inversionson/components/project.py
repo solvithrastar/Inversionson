@@ -636,9 +636,15 @@ class ProjectComponent(Component):
         ]
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
-            self.current_iteration = (
-                self.comm.salvus_opt.get_newest_iteration_name()
-            )
+            if BOOL_ADAM:
+                adam_opt = AdamOptimizer(inversion_root=
+                                         self.comm.project.
+                                         paths["inversion_root"])
+                adam_opt.get_iteration_name()
+            else:
+                self.current_iteration = (
+                    self.comm.salvus_opt.get_newest_iteration_name()
+                )
             print(f"Current Iteration: {self.current_iteration}")
             self.event_quality = toml.load(
                 self.comm.storyteller.events_quality_toml
