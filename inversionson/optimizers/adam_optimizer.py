@@ -1,7 +1,4 @@
-"""
-A class that performs ADAM optimization, also ensures
-that we will be able to transition
-"""
+
 
 from lasif.components.component import Component
 
@@ -14,105 +11,113 @@ import h5py  # Use h5py to avoid lots of dependencies and slow reading
 
 BOOL_ADAM = True
 
-# TODO add AdamW to reglarize weights
+
 # TODO: To ensure smoothness, we may also just smooth the total update
-# Essentially this means that in order to ramp the solution to our prior (let's say Prem)
-# we need to
+# TODO: Add smart sampling
+
 class AdamOptimizer:
-    def __init__(self, opt_folder, initial_model=None):
+    """
+    A class that performs Adam optimization, if weight_decay is
+    set to a non-zero value, it performs AdamW optimization. This is
+    essentially a type of L2 smoothing.
+
+    Useful references:
+    https://arxiv.org/abs/1412.6980
+    https://towardsdatascience.com/why-adamw-matters-736223f31b5d
+
+    And somewhat unrelated, but relevant on Importance Sampling:
+    https://arxiv.org/pdf/1803.00942.pdf
+    """
+    def __init__(self, inversion_root):
         """
-        initial_model: path to initial model, only required upon init
-        init, also set init to True in that case.
+        :param inversion_root: path to the folder that ADAM will use.
+        :type inversion_root: str:
         """
+        self.optimization_folder = os.path.join(inversion_root, "AdamOpt")
+        self.config_file = os.path.join(self.optimization_folder,
+                                        "adam_config.toml")
+        if not os.path.exists(self.config_file):
+            self._write_initial_config()
+            print(f"Please set config and provide initial model to "
+                  f"Adam optimizer in {self.config_file} \n"
+                  f"Then reinitialize the Adam Optimizer.")
+            return
+        self._read_config()
 
-        self.initial_model = initial_model
-        self.alpha = 0.001  # appstep size when parameters are normalized
-        self.beta_1 = 0.9
-        self.beta_2 = 0.999
-        # Regularization parameter to avoid dividing by zero
-        self.e = 10e-8
-        self.parameters = ["VSV", "VSH", "VPV", "VPH"]
+        if self.initial_model == "":
+            print(f"Please set config and provide initial model to "
+                  f"Adam optimizer in {self.config_file} \n"
+                  f"Then reinitialize the Adam Optimizer.")
+            return
 
-        self.optimization_folder = opt_folder
-
-        self.model_dir = os.path.join(self.optimization_folder, "MODELS")
-        self.gradient_dir = os.path.join(self.optimization_folder, "GRADIENTS")
+        self.model_dir = os.path.join(self.optimization_folder,
+                                      "MODELS")
+        self.gradient_dir = os.path.join(self.optimization_folder,
+                                         "RAW_GRADIENTS")
+        self.raw_update_dir = os.path.join(self.optimization_folder,
+                                           "RAW_UPDATES")
+        self.smooth_update_dir = os.path.join(self.optimization_folder,
+                                              "SMOOTHED_UPDATES")
         self.first_moment_dir = os.path.join(self.optimization_folder,
                                              "FIRST_MOMENTS")
         self.second_moment_dir = os.path.join(self.optimization_folder,
                                               "SECOND_MOMENTS")
-        self.task_dir = os.path.join(self.optimization_folder, "TASKS")
+        self.task_dir = os.path.join(self.optimization_folder,
+                                     "TASKS")
 
         # Initialize folders if needed
-        if not os.path.exists(self.get_model_path(timestep=0)):
+        if not os.path.exists(self.get_model_path(time_step=0)):
             if self.initial_model is None:
                 raise Exception(
                     "AdamOptimizer needs to be initialized with a "
                     "path to an initial model.")
-            self.timestep = 0
-
-            task_file = os.path.join(self.task_dir, self.get_task_path())
-            if os.path.exists(task_file):
-                raise Exception("Init requires an empty TASKS folder.")
+            self.time_step = 0
+            print("Initializing Adam...")
             self._init_directories()
             self.read_and_write_task()
-        else:  # Figure out timestep and read task
-            self.get_latest_timestep()
+        else:  # Figure out time step and read task
+            self.get_latest_time_step()
 
-    def get_latest_timestep(self):
-        models = glob.glob(os.path.join(self.task_dir, "task_*.toml"))
-        models.sort()
-        if len(models) < 1:
-            raise Exception("No models found,"
-                            "please initialize first.")
-        self.timestep = int(models[-1].split("/")
-                            [-1].split("_")[-1].split(".")[0])
-        return self.timestep
+    def _write_initial_config(self):
+        """Writes the initial config file."""
+        config = {"alpha": 0.001, "beta_1": 0.9, "beta_2": 0.999,
+                  "weight_decay": 0.001, "epsilon": 10e-8,
+                  "parameters": ["VSV", "VSH", "VPV", "VPH"],
+                  "initial_model": ""}
+        with open(self.config_file, "w") as fh:
+            toml.dump(config, fh)
 
-    def get_latest_task(self):
-        self.get_latest_timestep()
-        return self.get_task_path()
+        print("Wrote a config file for the Adam optimizer. Please provide "
+              "an initial model.")
+
+    def _read_config(self):
+        """ Reads the config file."""
+        if not os.path.exists(self.config_file):
+            raise Exception("Can't read the ADAM config file")
+        config = toml.load(self.config_file)
+        self.initial_model = config["initial_model"]
+        self.alpha = config["alpha"]
+        self.beta_1 = config["beta_1"]  # decay factor for first moments
+        self.beta_2 = config["beta_2"]  # decay factor for second moments
+        # weight decay as percentage of # deviation from initial
+        self.weight_decay = config["weight_decay"]
+        # Regularization parameter to avoid dividing by zero
+        self.e = config["epsilon"]  # this is automatically scaled
+        self.parameters = config["parameters"]
 
     def _init_directories(self):
         """
         Build directory structure.
         """
         folders = [self.model_dir, self.gradient_dir, self.first_moment_dir,
-                   self.second_moment_dir,
-                   self.task_dir]
+                   self.second_moment_dir, self.raw_update_dir,
+                   self.smooth_update_dir, self.task_dir]
 
         for folder in folders:
             if not os.path.exists(folder):
                 os.mkdir(folder)
 
         shutil.copy(self.initial_model, self.get_model_path())
-
-    def get_task_path(self, timestep=None):
-        if timestep is None:
-            timestep = self.timestep
-        return os.path.join(self.task_dir, f"task_{timestep:05d}.toml")
-
-    def get_gradient_path(self, timestep=None):
-        if timestep is None:
-            timestep = self.timestep
-        return os.path.join(self.gradient_dir, f"gradient_{timestep:05d}.h5")
-
-    def get_first_moment_path(self, timestep=None):
-        if timestep is None:
-            timestep = self.timestep
-        return os.path.join(self.first_moment_dir,
-                            f"first_moment_{timestep:05d}.h5")
-
-    def get_second_moment_path(self, timestep=None):
-        if timestep is None:
-            timestep = self.timestep
-        return os.path.join(self.second_moment_dir,
-                            f"second_moment_{timestep:05d}.h5")
-
-    def get_model_path(self, timestep=None):
-        if timestep is None:
-            timestep = self.timestep
-        return os.path.join(self.model_dir, f"model_{timestep:05d}.h5")
 
     def _get_parameter_indices(self, filename):
         """ Get parameter indices in h5 file"""
@@ -131,6 +136,55 @@ class AdamOptimizer:
             for param in self.parameters:
                 indices.append(dim_labels.index(param))
         return indices
+
+    def get_latest_time_step(self):
+        """ Extracts the latest time step from the task dir."""
+        models = glob.glob(os.path.join(self.task_dir, "task_*.toml"))
+        models.sort()
+        if len(models) < 1:
+            raise Exception("No models found,"
+                            "please initialize first.")
+        self.time_step = int(models[-1].split("/")
+                            [-1].split("_")[-1].split(".")[0])
+        return self.time_step
+
+    def get_latest_task(self):
+        self.get_latest_time_step()
+        return self.get_task_path()
+
+    def get_task_path(self, time_step=None):
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.task_dir, f"task_{time_step:05d}.toml")
+
+    def get_gradient_path(self, time_step=None):
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.gradient_dir, f"gradient_{time_step:05d}.h5")
+
+    def get_first_moment_path(self, time_step=None):
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.first_moment_dir,
+                            f"first_moment_{time_step:05d}.h5")
+
+    def get_second_moment_path(self, time_step=None):
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.second_moment_dir,
+                            f"second_moment_{time_step:05d}.h5")
+
+    def get_raw_update_path(self, time_step=None):
+        """Get path to raw update"""
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.raw_update_dir,
+                            f"raw_update_{time_step:05d}.h5")
+
+    def get_smooth_path(self, time_step=None):
+        """Get the path of the smoothed gradient"""
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.smooth_update_dir,
+                            f"smooth_update_{time_step:05d}.h5")
+
+    def get_model_path(self, time_step=None):
+        time_step = self.time_step if time_step is None else time_step
+        return os.path.join(self.model_dir, f"model_{time_step:05d}.h5")
 
     def get_h5_data(self, filename):
         """
@@ -154,28 +208,27 @@ class AdamOptimizer:
             for i in range(len(indices)):
                 dat[:, indices[i], :] = data[:, i, :]
 
-    def _check_task_completion(self):
-        task_path = self.get_latest_task()
-        if os.path.exists(task_path):
-            current_task = toml.load(task_path)
-            if current_task["completed"]:
-                return True
-            else:
-                return False
+    def compute_raw_update(self):
+        """Computes the raw update"""
 
-    def compute_update(self):
-        if not self._check_task_completion():
-            raise Exception("Task must be completed first")
-        self.timestep += 1
-        gradient_path = self.get_gradient_path(timestep=self.timestep - 1)
+        # Read task toml
+        task_info = toml.load(self.get_latest_task())
+
+        if not task_info["gradient_completed"]:
+            raise Exception("Gradient must be computed first. Compute gradient"
+                            "and set gradient_completed to True.")
+
+        time_step = task_info["time_step"] + 1
+        gradient_path = task_info["raw_gradient_path"]
+        raw_update_path = task_info["raw_update_path"]
 
         indices = self._get_parameter_indices(gradient_path)
         g_t = self.get_h5_data(gradient_path)
 
-        if self.timestep == 1:  # Initialize moments if needed
-            first_moment_path = self.get_first_moment_path(timestep=0)
-            second_moment_path = self.get_second_moment_path(timestep=0)
-            shutil.copy(self.get_gradient_path(timestep=0), first_moment_path)
+        if self.time_step == 1:  # Initialize moments if needed
+            first_moment_path = self.get_first_moment_path(time_step=0)
+            second_moment_path = self.get_second_moment_path(time_step=0)
+            shutil.copy(gradient_path, first_moment_path)
 
             with h5py.File(first_moment_path, "r+") as h5:
                 data = h5["MODEL/data"]
@@ -188,51 +241,81 @@ class AdamOptimizer:
             shutil.copy(first_moment_path, second_moment_path)
 
         m_t = self.beta_1 * self.get_h5_data(
-            self.get_first_moment_path(timestep=self.timestep - 1)) + \
+            self.get_first_moment_path(time_step=time_step - 1)) + \
               (1 - self.beta_1) * g_t
 
         # Store first moment
-        shutil.copy(self.get_first_moment_path(timestep=self.timestep - 1),
-                    self.get_first_moment_path())
+        shutil.copy(self.get_first_moment_path(time_step=time_step - 1),
+                    self.get_first_moment_path(time_step=time_step))
         self.set_h5_data(self.get_first_moment_path(), m_t)
 
         v_t = self.beta_2 * self.get_h5_data(
-            self.get_second_moment_path(timestep=self.timestep - 1)) + \
+            self.get_second_moment_path(time_step=time_step - 1)) + \
               (1 - self.beta_2) * (g_t ** 2)
 
-
         # Store second moment
-        shutil.copy(self.get_second_moment_path(timestep=self.timestep - 1),
-                    self.get_second_moment_path())
-        self.set_h5_data(self.get_second_moment_path(), v_t)
+        shutil.copy(self.get_second_moment_path(time_step=time_step - 1),
+                    self.get_second_moment_path(time_step=time_step))
+        self.set_h5_data(self.get_second_moment_path(time_step=time_step), v_t)
 
         # Correct bias
-        m_t = m_t / (1 - self.beta_1 ** self.timestep)
-        v_t = v_t / (1 - self.beta_2 ** self.timestep)
+        m_t = m_t / (1 - self.beta_1 ** time_step)
+        v_t = v_t / (1 - self.beta_2 ** time_step)
 
         # Update parameters
-        # TODO provide option to smooth update with smoother
         theta_prev = self.get_h5_data(self.get_model_path(
-            timestep=self.timestep-1))
+            time_step=time_step - 1))
 
         # normalise theta_ with initial
         # theta_prev = theta_prev / theta_initial -1
         theta_0 = self.get_h5_data(self.get_model_path(
-            timestep=0))
+            time_step=0))
         theta_prev = theta_prev / theta_0 - 1
 
-        # ensure e is sufficiently small, even for tiny gradient values
+        # ensure e is sufficiently small, even for the small gradient values
+        # that we typically have.
         e = self.e * np.mean(np.sqrt(v_t))
-        weight_decay = 0.001 #AdamW, prefer small weights
-        theta_new = theta_prev - self.alpha * m_t / (np.sqrt(v_t) + e) - weight_decay * theta_prev
 
-        # remove normalization
+        update = self.alpha * m_t / (
+                    np.sqrt(v_t) + e) - self.weight_decay * theta_prev
+
+        # Write raw update to file for smoothing
+        shutil.copy(gradient_path, raw_update_path)
+        self.set_h5_data(raw_update_path,
+                         update)
+
+    def apply_smooth_update(self):
+        """Apply the smoothed update """
+
+        task_info = toml.load(self.get_latest_task())
+
+        if not task_info["smoothing_completed"]:
+            raise Exception("Smooth update first and set smoothing_completed to"
+                            "True.")
+
+        time_step = task_info["time_step"] + 1
+        smooth_path = task_info["smooth_update_path"]
+        update = self.get_h5_data(smooth_path)
+
+        # Update parameters
+        theta_prev = self.get_h5_data(self.get_model_path(
+            time_step=time_step - 1))
+
+        # normalise theta and apply update
+        theta_0 = self.get_h5_data(self.get_model_path(
+            time_step=0))
+        theta_prev = theta_prev / theta_0 - 1
+        theta_new = theta_prev - update
+
+        # remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
-        shutil.copy(self.get_model_path(timestep=self.timestep - 1),
-                    self.get_model_path())
-        self.set_h5_data(self.get_model_path(), theta_physical)
+        shutil.copy(self.get_model_path(time_step=time_step - 1),
+                    self.get_model_path(time_step=time_step))
+        self.set_h5_data(self.get_model_path(time_step=time_step),
+                         theta_physical)
 
-        # Write next task.
+        # Write next task, set self.time_step for writing purposes
+        self.time_step = time_step
         self.read_and_write_task()
 
     def get_iteration_name(self):
@@ -241,25 +324,37 @@ class AdamOptimizer:
         return task_info["model"].split("/")[-1].split(".")[0]
 
     def get_previous_iteration(self):
-        timestep = self.get_latest_timestep()
-        task_info = toml.load(self.get_task_path(timestep=timestep - 1))
+        time_step = self.get_latest_time_step()
+        task_info = toml.load(self.get_task_path(time_step=time_step - 1))
         return task_info["model"].split("/")[-1].split(".")[0]
 
     def get_inversionson_task(self):
         """Gets the task for inversionson"""
+        if not os.path.exists(self.get_latest_task()):
+            raise Exception("Please ensure that the config file is filled and"
+                            "the optimizer is reinitialized.")
         task_info = toml.load(self.get_latest_task())
         return task_info["task"]
 
-    def set_task_to_finished(self):
-        """ Set the misfit in latest toml"""
+    def set_gradient_task_to_finished(self):
+        """ Set the gradient task to completed in latest task toml."""
         task_info = toml.load(self.get_latest_task())
-        task_info["completed"] = True
+        task_info["gradient_completed"] = True
+
+        with open(self.get_latest_task(), "w") as fh:
+            toml.dump(task_info, fh)
+
+    def set_smoothing_task_to_finished(self):
+        """ Set the smoothing task to completed in latest task toml."""
+        task_info = toml.load(self.get_latest_task())
+        task_info["smoothing_completed"] = True
 
         with open(self.get_latest_task(), "w") as fh:
             toml.dump(task_info, fh)
 
     def set_misfit(self, misfit):
-        """ Set the misfit in latest toml"""
+        """ Set the misfit in latest toml. This is purely optional,
+        because it is not used by ADAM itself."""
         task_info = toml.load(self.get_latest_task())
         task_info["misfit"] = float(misfit)
 
@@ -270,22 +365,21 @@ class AdamOptimizer:
         """
         Checks task status and writes new task if task is already completed.
         """
-
-        # Don't do this if task is completed already
-        # it needs to have the latest timestep here:
-
-        task_path = self.get_task_path()
+        task_path = self.get_latest_task()
 
         # If task exists, read it and see if model needs updating
         if os.path.exists(task_path):
-            if not self._check_task_completion():
+            if not self.check_task_completion():
                 print("Please complete task first")
-        else: # write task
-            task_dict = {"task": "compute_misfit_and_gradient", "misfit": "",
+        else:  # write task
+            task_dict = {"task": "compute_gradient_for_adam", "misfit": "",
                          "model": self.get_model_path(),
-                         "gradient": self.get_gradient_path(), "completed": False,
-                         "timestep": self.timestep}
+                         "raw_gradient_path": self.get_gradient_path(),
+                         "gradient_completed": False,
+                         "raw_update_path": self.get_raw_update_path(),
+                         "smooth_update_path": self.get_smooth_path(),
+                         "smoothing_completed": False,
+                         "time_step": self.time_step}
 
             with open(task_path, "w+") as fh:
                 toml.dump(task_dict, fh)
-

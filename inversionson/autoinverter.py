@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import emoji
 from inversionson import InversionsonError
 import toml
@@ -76,7 +78,7 @@ class AutoInverter(object):
         if BOOL_ADAM:
             if validation:
                 raise Exception("Not yet implemented.")
-            adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
             it_name = adam_opt.get_iteration_name()
         else:
             it_name = self.comm.salvus_opt.get_newest_iteration_name()
@@ -363,7 +365,7 @@ class AutoInverter(object):
         if BOOL_ADAM:
             from inversionson.remote_scripts.gradient_summing import sum_gradient
             adam_opt = AdamOptimizer(
-                opt_folder=self.comm.project.paths["inversion_root"])
+                inversion_root=self.comm.project.paths["inversion_root"])
             events_used = self.comm.project.events_in_iteration
             inversion_grid = False
             if self.comm.project.meshes == "multi-mesh":
@@ -384,7 +386,7 @@ class AutoInverter(object):
 
             self.comm.project.update_iteration_toml()
             self.comm.storyteller.document_task(task)
-            task, verbose = self.finalize_iteration()
+            task, verbose = self.ation(task, verbose)
             return task, verbose
         self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
         self.comm.project.update_iteration_toml()
@@ -410,6 +412,125 @@ class AutoInverter(object):
             message += "updated."
             raise InversionsonError(message)
         return task_2, verbose_2
+
+    def compute_gradient_for_adam(self, task: str, verbose: str):
+        """
+        A task associated with the task in Adam optimization.
+
+        # TODO: implement the following:
+        - importance sampling
+        - single update smoothing
+
+        :param task: Task issued by the Adam Optimizer
+        :type task: str
+        :param verbose: Detailed info regarding task
+        :type verbose: str
+        """
+        print(Fore.RED + "\n =================== \n")
+        print("Will prepare iteration")
+
+        self.prepare_iteration(first=True)
+
+        print(
+            emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True)
+        )
+
+        print(f"Current Iteration: {self.comm.project.current_iteration}")
+
+        forward_helper = helpers.ForwardHelper(
+            self.comm, self.comm.project.events_in_iteration
+        )
+        forward_helper.dispatch_forward_simulations(verbose=True)
+        print("Making sure all forward simulations have been dispatched")
+        assert forward_helper.assert_all_simulations_dispatched()
+        print("Retrieving forward simulations")
+        forward_helper.retrieve_forward_simulations(adjoint=True, verbose=True)
+
+        self.compute_misfit_on_validation_data()
+
+        print(Fore.BLUE + "\n ========================= \n")
+        print(
+            emoji.emojize(
+                ":hourglass: | Making sure all forward jobs are " "done",
+                use_aliases=True,
+            )
+        )
+
+        assert forward_helper.assert_all_simulations_retrieved()
+
+        adjoint_helper = helpers.AdjointHelper(
+            self.comm, self.comm.project.events_in_iteration
+        )
+        adjoint_helper.dispatch_adjoint_simulations(verbose=True)
+        assert adjoint_helper.assert_all_simulations_dispatched()
+        interpolate = False
+        if self.comm.project.meshes == "multi-mesh":
+            interpolate = True
+        adjoint_helper.process_gradients(interpolate=interpolate, verbose=True)
+        assert adjoint_helper.assert_all_simulations_retrieved()
+
+        # Here we directly sum the gradients on the remote and recover the
+        # raw summed gradient and pass it to Adam
+        smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
+        smoothing_helper.sum_gradients()
+
+        gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
+        iteration = self.comm.project.current_iteration
+        gradient = os.path.join(
+            gradients,
+            f"ITERATION_{iteration}",
+            "summed_gradient.h5",)
+
+        adam_opt = AdamOptimizer(inversion_root=
+                                 self.comm.project.paths["inversion_root"])
+        adam_grad = adam_opt.get_gradient_path()
+        shutil.copy(gradient, adam_grad)
+        adam_opt.set_gradient_task_to_finished()
+        # the below increases the timestep in the object, but not of the task toml
+        adam_opt.compute_raw_update() # the update is at timestep t -1
+
+        # Then we smooth the update with the smoother
+        smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
+        smoothing_helper.dispatch_smoothing_simulations()
+        assert smoothing_helper.assert_all_simulations_dispatched()
+        smoothing_helper.retrieve_smooth_gradients()
+        assert smoothing_helper.assert_all_simulations_retrieved()
+
+        # Now adam_opt still needs the update and apply the update
+        # for now we used the mono-batch smoother, so it is written to the summed
+        # gradient location. Get it there and pass it to Adam
+        smooth_update = self.comm.lasif.find_gradient(
+            iteration=iteration,
+            event=None,
+            smooth=True,
+            summed=True,
+        )
+        adam_smooth = adam_opt.get_smooth_path()
+        shutil.copy(smooth_update, adam_smooth)
+        adam_opt.set_smoothing_task_to_finished()
+        adam_opt.apply_smooth_update()
+
+        print(Fore.RED + "\n =================== \n")
+        print(
+            emoji.emojize(
+                ":love_letter: | Finalizing iteration " "documentation",
+                use_aliases=True,
+            )
+        )
+
+        self.comm.project.update_iteration_toml()
+        self.comm.storyteller.document_task(task)
+        task, verbose = self.finalize_iteration()
+
+        print(Fore.RED + "\n =================== \n")
+        print(
+            emoji.emojize(
+                f":grinning: | Iteration "
+                f"{self.comm.project.current_iteration} done",
+                use_aliases=True,
+            )
+        )
+        return task, verbose
 
     def compute_misfit(self, task: str, verbose: str):
         """
@@ -622,17 +743,19 @@ class AutoInverter(object):
         :param verbose: Detailed info regarding task
         :type verbose: str
         """
-        print(Fore.RED + "\n =================== \n")
+        print(Fore.RED + "\n ==============finalize_iter===== \n")
         print(f"Current Iteration: {self.comm.project.current_iteration}")
         print(f"Current Task: {task}")
         if BOOL_ADAM:
             adam_opt = AdamOptimizer(
-                opt_folder=self.comm.project.paths["inversion_root"])
-            iteration = adam_opt.get_iteration_name()
+                inversion_root=self.comm.project.paths["inversion_root"])
+            # adam already went for the next iter, so query the previous one.
+            iteration = adam_opt.get_previous_iteration()
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
-        self.comm.project.get_iteration_attributes()
-        self.comm.storyteller.document_task(task)
+        if not BOOL_ADAM:  # TODO sort this 2 lines below out
+            self.comm.project.get_iteration_attributes()
+            self.comm.storyteller.document_task(task)
         if not BOOL_ADAM:
             self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
@@ -678,6 +801,8 @@ class AutoInverter(object):
 
         if task == "compute_misfit_and_gradient":
             task, verbose = self.compute_misfit_and_gradient(task, verbose)
+        elif task == "compute_gradient_for_adam":
+            task, verbose = self.compute_gradient_for_adam(task, verbose)
         elif task == "compute_misfit":
             task, verbose = self.compute_misfit(task, verbose)
         elif task == "compute_gradient":
@@ -704,14 +829,17 @@ class AutoInverter(object):
         # self.initialize_inversion()
 
         if BOOL_ADAM:
-            adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"],
-                                     initial_model=
-                                     os.path.join(
-                                         self.comm.project.paths["inversion_root"],
-                                         "initial_model.h5"))
+
+            adam_opt = AdamOptimizer(inversion_root=
+                                     self.comm.project.paths["inversion_root"])
+
+            adam_config = toml.load(adam_opt.config_file)
+            if adam_config["initial_model"] == "":
+                raise Exception("Set adam config file and provide initial"
+                                " model.")
             task = adam_opt.get_inversionson_task()
             self.task = task
-            verbose = "Verbose for sure"
+            verbose = "Computing gradient for Adam optimization."
         else:
             task, verbose = self.comm.salvus_opt.read_salvus_opt_task()
             self.task = task

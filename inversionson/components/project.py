@@ -771,7 +771,7 @@ class ProjectComponent(Component):
                 jobs = {"forward": f_job_dict}
                 if remote_interp:
                     jobs["model_interp"] = i_job_dict
-            if self.inversion_mode == "mini-batch":
+            if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
                 if not validation:
                     jobs = {
                         "forward": f_job_dict,
@@ -804,7 +804,7 @@ class ProjectComponent(Component):
             if not validation:
                 it_dict["events"][str(_i)]["misfit"] = 0.0
                 it_dict["events"][str(_i)]["usage_updated"] = False
-        if self.inversion_mode == "mono-batch" and not validation:
+        if (self.inversion_mode == "mono-batch" or BOOL_ADAM) and not validation:
             it_dict["smoothing"] = s_job_dict
 
         with open(iteration_toml, "w") as fh:
@@ -898,7 +898,7 @@ class ProjectComponent(Component):
         if os.path.exists(self.paths["control_group_toml"]) and not validation:
             control_group_dict = toml.load(self.paths["control_group_toml"])
             control_group_dict = control_group_dict[iteration]
-        elif self.inversion_mode == "mini-batch":
+        elif self.inversion_mode == "mini-batch" and not BOOL_ADAM:
             control_group_dict = {"old": [], "new": []}
         it_dict = {}
         it_dict["name"] = iteration
@@ -922,7 +922,7 @@ class ProjectComponent(Component):
                 jobs["model_interp"] = self.model_interp_job[event]
                 if not validation:
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
-            if self.inversion_mode == "mini-batch":
+            if self.inversion_mode == "mini-batch" and not BOOL_ADAM:
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
                 it_dict["events"][str(_i)] = {
@@ -938,7 +938,7 @@ class ProjectComponent(Component):
                 it_dict["events"][str(_i)]["usage_updated"] = self.updated[
                     event
                 ]
-        if self.inversion_mode == "mono-batch" and not validation:
+        if (self.inversion_mode == "mono-batch" or BOOL_ADAM) and not validation:
             it_dict["smoothing"] = self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
@@ -953,7 +953,7 @@ class ProjectComponent(Component):
         """
         if BOOL_ADAM:
             adam_opt = AdamOptimizer(
-                opt_folder=self.comm.project.paths["inversion_root"])
+                inversion_root=self.comm.project.paths["inversion_root"])
             iteration = adam_opt.get_iteration_name()
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()

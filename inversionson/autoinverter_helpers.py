@@ -12,6 +12,7 @@ import toml
 from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
+from inversionson.optimizers.adam_optimizer import BOOL_ADAM
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -1577,7 +1578,7 @@ class SmoothingHelper(object):
         else:
             events = self.events
 
-        if self.comm.project.inversion_mode == "mono-batch":
+        if self.comm.project.inversion_mode == "mono-batch" or BOOL_ADAM:
             self.__remote_summing(events)
             return
 
@@ -1632,7 +1633,7 @@ class SmoothingHelper(object):
             if verbose:
                 print(f"Event {event} has been {sub_ret}. Moving on.")
             return
-        if event is None:
+        if event is None: # mono-batch case, no events
             config = self.comm.smoother.generate_smoothing_config()
             self.comm.smoother.run_smoother(
                 config,

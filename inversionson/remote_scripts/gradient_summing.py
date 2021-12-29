@@ -33,10 +33,10 @@ def sum_gradient(gradients: list, output_gradient: str,
             # once.
             dim_labels = (
                 summed_gradient_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-                .decode()
-                .replace(" ", "")
-                .split("|")
             )
+            if not type(dim_labels) == str:
+                dim_labels = dim_labels.decode()
+            dim_labels = dim_labels.replace(" ", "").split("|")
             indices = []
             for param in parameters:
                 indices.append(dim_labels.index(param))

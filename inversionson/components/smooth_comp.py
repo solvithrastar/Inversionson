@@ -1,5 +1,6 @@
 from lasif.components.component import Component
 from inversionson import InversionsonError
+from inversionson.optimizers.adam_optimizer import BOOL_ADAM, AdamOptimizer
 
 import os
 from salvus.opt import smoothing
@@ -164,6 +165,11 @@ class SalvusSmoothComponent(Component):
                         iteration=iteration, event=event
                     )
                 )
+            elif BOOL_ADAM:
+                adam_opt = AdamOptimizer(inversion_root=
+                                         self.comm.project.paths["inversion_root"])
+                mesh = UnstructuredMesh.\
+                    from_h5(adam_opt.get_raw_update_path())
             else:
                 # mono-batch case
                 mesh = UnstructuredMesh.from_h5(
@@ -186,7 +192,7 @@ class SalvusSmoothComponent(Component):
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-        if self.comm.project.inversion_mode == "mini-batch":
+        if self.comm.project.inversion_mode == "mini-batch" and not BOOL_ADAM:
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
             )

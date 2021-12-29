@@ -274,7 +274,7 @@ class LasifComponent(Component):
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
         if BOOL_ADAM:
-            adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
             iteration = adam_opt.get_iteration_name()
             local_model = adam_opt.get_model_path()
         else:
@@ -354,7 +354,7 @@ class LasifComponent(Component):
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
             if BOOL_ADAM:
-                adam_opt = AdamOptimizer(opt_folder=self.comm.project.paths["inversion_root"])
+                adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
                 model = adam_opt.get_model_path()
                 # copy to lasif project and also move to cluster
                 simulation_mesh = self.comm.lasif.get_simulation_mesh(
