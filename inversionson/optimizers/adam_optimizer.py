@@ -295,7 +295,7 @@ class AdamOptimizer:
         e = self.e * np.mean(np.sqrt(v_t))
 
         update = self.alpha * m_t / (
-                    np.sqrt(v_t) + e) - self.weight_decay * theta_prev
+                    np.sqrt(v_t) + e)
 
         max_upd = np.max(np.abs(update))
         if max_upd > self.alpha * 1.05:
@@ -345,7 +345,9 @@ class AdamOptimizer:
         theta_0 = self.get_h5_data(self.get_model_path(
             time_step=0))
         theta_prev = theta_prev / theta_0 - 1
-        theta_new = theta_prev - update
+
+        # only add weight_decay at this stage
+        theta_new = theta_prev - update - self.weight_decay * theta_prev
 
         # remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
