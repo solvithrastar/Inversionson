@@ -149,22 +149,20 @@ class AutoInverter(object):
                                                       "all_norms.toml")
                     if os.path.exists(all_norms_path):
                         norm_dict = toml.load(all_norms_path)
-                        probs = list(norm_dict.values())
-                        probs /= np.sum(probs)
                         unused_events = list(set(all_events).difference(set(norm_dict.keys())))
                         if len(unused_events) >= n_events:
                             events = get_random_mitchell_subset(
-                                self.comm.project.lasif_comm, n_events,
+                                self.comm.lasif.lasif_comm, n_events,
                                 unused_events)
                         else:
                             existing_events = []
                             if len(unused_events) > 0:
                                 existing_events = get_random_mitchell_subset(
-                                    self.comm.project.lasif_comm,
-                                    len(unused_events), all_events)
+                                    self.comm.lasif.lasif_comm,
+                                    len(unused_events), unused_events)
                             remaining_events = list(set(all_events) - set(existing_events))
                             new_events = get_random_mitchell_subset(
-                                self.comm.project.lasif_comm, remaining_events,
+                                self.comm.lasif.lasif_comm, remaining_events,
                                 norm_dict, existing_events)
                             events = existing_events + new_events
                     else:
