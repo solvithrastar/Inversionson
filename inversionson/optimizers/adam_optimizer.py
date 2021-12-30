@@ -264,7 +264,7 @@ class AdamOptimizer:
         # Store first moment
         shutil.copy(self.get_first_moment_path(time_step=time_step - 1),
                     self.get_first_moment_path(time_step=time_step))
-        self.set_h5_data(self.get_first_moment_path(), m_t)
+        self.set_h5_data(self.get_first_moment_path(time_step=time_step), m_t)
 
         # v_t was sometimes becoming too small, so enforce double precision
         v_t = self.beta_2 * self.get_h5_data(
