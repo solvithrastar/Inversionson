@@ -7,7 +7,7 @@ import os
 
 
 def sum_gradient(gradients: list, output_gradient: str,
-                 parameters: list) -> bool:
+                 parameters: list, batch_average=False) -> bool:
     """
     Sum a list of gradients. This function is called on the remote cluster,
     and expects to be able to use h5py and Python.
@@ -18,6 +18,9 @@ def sum_gradient(gradients: list, output_gradient: str,
     :type output_gradient: str
     :param parameters: Parameters to clip
     :type parameters: list
+    :param batch_average: Set to try to divide the sum by
+    the number of gradients. Useful for stochastic methods.
+    :type batch_average: bool
     :return bool to indicate that function ran succesfully till the end
     :rtype bool
     """
@@ -63,6 +66,9 @@ def sum_gradient(gradients: list, output_gradient: str,
 
         gradient.close()
 
+    # divide by the number of gradients to obtain a batch average
+    if batch_average:
+        summed_gradient_data_copy /= len(gradients)
     # finally close the summed_gradient
     summed_gradient_data[:, :, :] = summed_gradient_data_copy[:, :, :]
     summed_gradient.close()
@@ -83,6 +89,10 @@ if __name__ == "__main__":
     parameters = info["parameters"]
     output_gradient = info["output_gradient"]
     event_list = info["event_list"]
+    if "batch_average" in info.keys():
+        batch_average = info["batch_average"]
+    else:
+        batch_average = False
 
     norms_path = info["gradient_norms_path"]
     print("Remote summing of gradients started...")
@@ -93,7 +103,7 @@ if __name__ == "__main__":
         os.remove(output_gradient)
 
     gradient_norms = sum_gradient(gradient_filenames, output_gradient,
-                                  parameters)
+                                  parameters, batch_average)
 
     gradient_norm_dict = {}
     for i in range(len(event_list)):

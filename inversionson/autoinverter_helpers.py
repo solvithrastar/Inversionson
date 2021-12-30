@@ -1479,6 +1479,9 @@ class SmoothingHelper(object):
         info["event_list"] = events
         info["gradient_norms_path"] = remote_norms_path
 
+        if self.comm.project.AdamOpt:
+            info["batch_average"] = True # compute sample average
+
         toml_filename = f"gradient_sum.toml"
         with open(toml_filename, "w") as fh:
             toml.dump(info, fh)

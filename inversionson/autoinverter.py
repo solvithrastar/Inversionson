@@ -12,7 +12,8 @@ from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
 init()
-
+from lasif.tools.query_gcmt_catalog import \
+                                get_random_mitchell_subset
 
 def _find_project_comm(info):
     """
@@ -131,8 +132,15 @@ class AutoInverter(object):
             if self.comm.project.inversion_mode == "mini-batch":
                 print("Getting minibatch")
                 if self.comm.project.AdamOpt:
-                    events = self.comm.lasif.list_events()
-                    n_events = int(0.15 * len(events))
+                    all_events = self.comm.lasif.list_events()
+                    valid_data = list(
+                        set(
+                            self.comm.project.validation_dataset
+                            + self.comm.project.test_dataset
+                        )
+                    )
+                    all_events = list(set(all_events) - set(valid_data))
+                    n_events = self.comm.project.initial_batch_size
                     # choose random events
                     doc_path = os.path.join(
                         self.comm.project.paths["inversion_root"],
@@ -143,17 +151,26 @@ class AutoInverter(object):
                         norm_dict = toml.load(all_norms_path)
                         probs = list(norm_dict.values())
                         probs /= np.sum(probs)
-                        unused_events = list(set(events).difference(set(norm_dict.keys())))
+                        unused_events = list(set(all_events).difference(set(norm_dict.keys())))
                         if len(unused_events) >= n_events:
-                            events = random.sample(events, n_events)
+                            events = get_random_mitchell_subset(
+                                self.comm.project.lasif_comm, n_events,
+                                unused_events)
                         else:
-                            random_events = random.sample(len(unused_events))
-                            other_events = list(np.random.choice(list(
-                                norm_dict.keys()), n_events - len(unused_events),
-                                replace=False, p=probs))
-                            events = random_events + other_events
+                            existing_events = []
+                            if len(unused_events) > 0:
+                                existing_events = get_random_mitchell_subset(
+                                    self.comm.project.lasif_comm,
+                                    len(unused_events), all_events)
+                            remaining_events = list(set(all_events) - set(existing_events))
+                            new_events = get_random_mitchell_subset(
+                                self.comm.project.lasif_comm, remaining_events,
+                                norm_dict, existing_events)
+                            events = existing_events + new_events
                     else:
-                        events = random.sample(events, n_events)
+                        events = get_random_mitchell_subset(
+                                self.comm.project.lasif_comm, n_events,
+                                all_events)
                 else:
                     events = self.comm.lasif.get_minibatch(first)
             else:
@@ -381,33 +398,6 @@ class AutoInverter(object):
                 use_aliases=True,
             )
         )
-
-        if self.comm.project.AdamOpt:
-            from inversionson.remote_scripts.gradient_summing import sum_gradient
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"])
-            events_used = self.comm.project.events_in_iteration
-            inversion_grid = False
-            if self.comm.project.meshes == "multi-mesh":
-                inversion_grid = True
-            gradient_list = []
-            for event in events_used:
-                grad_path = self.comm.lasif.find_gradient(
-                    iteration=adam_opt.get_iteration_name(),
-                    event=event,
-                    smooth=True,
-                    inversion_grid=inversion_grid,
-                )
-                gradient_list.append(grad_path)
-            sum_gradient(gradient_list, adam_opt.get_gradient_path(),
-                         adam_opt.parameters)
-            adam_opt.set_task_to_finished()
-            adam_opt.compute_update()
-
-            self.comm.project.update_iteration_toml()
-            self.comm.storyteller.document_task(task)
-            task, verbose = self.ation(task, verbose)
-            return task, verbose
         self.comm.salvus_opt.write_misfit_and_gradient_to_task_toml()
         self.comm.project.update_iteration_toml()
         self.comm.storyteller.document_task(task)
@@ -437,9 +427,11 @@ class AutoInverter(object):
         """
         A task associated with the task in Adam optimization.
 
-        # TODO: implement the following:
+        TODO: implement the following:
         - fix documentation
         - importance sampling
+        - Add options to smooth gradient/update/both
+        - when both are smoothed, sigma, should be set to 1/sqrt(2) twice.
 
         :param task: Task issued by the Adam Optimizer
         :type task: str
