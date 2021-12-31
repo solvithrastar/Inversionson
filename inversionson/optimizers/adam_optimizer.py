@@ -298,7 +298,8 @@ class AdamOptimizer:
                     np.sqrt(v_t) + e)
 
         max_upd = np.max(np.abs(update))
-        if max_upd > self.alpha * 1.05:
+        print(f"Max raw model update: {max_upd}")
+        if max_upd > self.alpha * 1.2:
             raise Exception("Raw update seems to large")
         if np.sum(np.isnan(update)) > 1:
             raise Exception("NaNs were found.")
@@ -327,8 +328,9 @@ class AdamOptimizer:
         smooth_path = task_info["smooth_update_path"]
         update = self.get_h5_data(smooth_path)
 
-        print("Maximum update step:", np.max(update))
-        if np.max(np.abs(update)) > 1.05 * self.alpha:
+        max_upd = np.max(np.abs(update))
+        print(f"Max smooth model update: {max_upd}")
+        if max_upd > 1.2 * self.alpha:
             raise Exception("check smooth gradient, something seems off")
 
         rescale_update = True
