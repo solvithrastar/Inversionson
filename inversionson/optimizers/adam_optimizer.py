@@ -39,7 +39,7 @@ class AdamOptimizer:
         self.config_file = os.path.join(self.optimization_folder,
                                         "adam_config.toml")
         # gradient scaling factor avoid issues with floats
-        self.grad_scaling_fac = 10e20
+        self.grad_scaling_fac = 10e15
 
         self.model_dir = os.path.join(self.optimization_folder,
                                       "MODELS")
@@ -299,7 +299,7 @@ class AdamOptimizer:
 
         max_upd = np.max(np.abs(update))
         print(f"Max raw model update: {max_upd}")
-        if max_upd > self.alpha * 1.2:
+        if max_upd > self.alpha * 2.0:
             raise Exception("Raw update seems to large")
         if np.sum(np.isnan(update)) > 1:
             raise Exception("NaNs were found.")
@@ -330,7 +330,7 @@ class AdamOptimizer:
 
         max_upd = np.max(np.abs(update))
         print(f"Max smooth model update: {max_upd}")
-        if max_upd > 1.2 * self.alpha:
+        if max_upd > 2.0 * self.alpha:
             raise Exception("check smooth gradient, something seems off")
 
         rescale_update = True

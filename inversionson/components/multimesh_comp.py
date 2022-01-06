@@ -10,6 +10,7 @@ import lasif.api as lapi
 from salvus.flow.api import get_site
 import pathlib
 from typing import Union
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -56,7 +57,13 @@ class MultiMeshComponent(Component):
                     / "mesh.h5"
                 )
             else:
-                model = os.path.join(self.physical_models, iteration + ".h5")
+                if self.AdamOpt:
+                    adam_opt = AdamOptimizer(inversion_root=
+                                             self.comm.project.
+                                             paths["inversion_root"])
+                    model = adam_opt.get_model_path()
+                else:
+                    model = os.path.join(self.physical_models, iteration + ".h5")
         return model
 
     def add_fields_for_interpolation_to_mesh(self, gradient=False):
