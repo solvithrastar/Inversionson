@@ -39,13 +39,20 @@ class MultiMeshComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        model = os.path.join(self.physical_models, iteration + ".h5")
+        if self.comm.project.AdamOpt:
+            adam_opt = AdamOptimizer(inversion_root=
+                                     self.comm.project.
+                                     paths["inversion_root"])
+            model = adam_opt.get_model_path()
+        else:
+            model = os.path.join(self.physical_models, iteration + ".h5")
+
         if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
 
             if (
                 self.comm.project.when_to_validate > 1
-                and iteration != "it0000_model"
+                and iteration != "it0000_model" and iteration != "model_00000"
             ):
                 it_number = (
                     self.comm.salvus_opt.get_number_of_newest_iteration()
@@ -57,7 +64,7 @@ class MultiMeshComponent(Component):
                     / "mesh.h5"
                 )
             else:
-                if self.AdamOpt:
+                if self.comm.project.AdamOpt:
                     adam_opt = AdamOptimizer(inversion_root=
                                              self.comm.project.
                                              paths["inversion_root"])
