@@ -396,11 +396,15 @@ class MultiMeshComponent(Component):
         """
         # get_remote
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
-        username = hpc_cluster.config["ssh_settings"]["username"]
-
-        remote_script_path = os.path.join(
-            "/users", username, "scripts", "interpolation.py"
-        )
+        if hpc_cluster.config["site_type"] == "local":
+            remote_script_path = os.path.join(
+                self.comm.project.remote_diff_model_dir, "..",
+                "scripts", "interpolation.py")
+        else:
+            username = hpc_cluster.config["ssh_settings"]["username"]
+            remote_script_path = os.path.join(
+                "/users", username, "scripts", "interpolation.py"
+            )
         if not hpc_cluster.remote_exists(remote_script_path):
             self._make_remote_interpolation_script(hpc_cluster)
         return remote_script_path
@@ -432,9 +436,13 @@ class MultiMeshComponent(Component):
         """
 
         # get_remote
-        username = hpc_cluster.config["ssh_settings"]["username"]
-
-        remote_script_dir = os.path.join("/users", username, "scripts")
+        if hpc_cluster.config["site_type"] == "local":
+            remote_script_dir = os.path.join(
+                self.comm.project.remote_diff_model_dir, "..",
+                "scripts")
+        else:
+            username = hpc_cluster.config["ssh_settings"]["username"]
+            remote_script_dir = os.path.join("/users", username, "scripts")
         local_script = os.path.join(
             self.comm.project.paths["inversion_root"], "interpolation.py"
         )

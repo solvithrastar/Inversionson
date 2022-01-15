@@ -5,15 +5,14 @@ import emoji
 from inversionson import InversionsonError
 import toml
 from colorama import init
-import random
-import numpy as np
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
+
 init()
-from lasif.tools.query_gcmt_catalog import \
-                                get_random_mitchell_subset
+from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
+
 
 def _find_project_comm(info):
     """
@@ -79,7 +78,8 @@ class AutoInverter(object):
         if self.comm.project.AdamOpt:
             if validation:
                 raise Exception("Not yet implemented.")
-            adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(
+                inversion_root=self.comm.project.paths["inversion_root"])
             it_name = adam_opt.get_iteration_name()
         else:
             it_name = self.comm.salvus_opt.get_newest_iteration_name()
@@ -146,10 +146,11 @@ class AutoInverter(object):
                         self.comm.project.paths["inversion_root"],
                         "DOCUMENTATION")
                     all_norms_path = os.path.join(doc_path,
-                                                      "all_norms.toml")
+                                                  "all_norms.toml")
                     if os.path.exists(all_norms_path):
                         norm_dict = toml.load(all_norms_path)
-                        unused_events = list(set(all_events).difference(set(norm_dict.keys())))
+                        unused_events = list(
+                            set(all_events).difference(set(norm_dict.keys())))
                         n_unused_events = len(unused_events)
                         if n_unused_events >= n_events:
                             events = get_random_mitchell_subset(
@@ -161,15 +162,17 @@ class AutoInverter(object):
                                 existing_events = get_random_mitchell_subset(
                                     self.comm.lasif.lasif_comm,
                                     n_unused_events, unused_events)
-                            remaining_events = list(set(all_events) - set(existing_events))
+                            remaining_events = list(
+                                set(all_events) - set(existing_events))
                             new_events = get_random_mitchell_subset(
-                                self.comm.lasif.lasif_comm, n_events - n_unused_events, remaining_events,
+                                self.comm.lasif.lasif_comm,
+                                n_events - n_unused_events, remaining_events,
                                 norm_dict, existing_events)
                             events = existing_events + new_events
                     else:
                         events = get_random_mitchell_subset(
-                                self.comm.project.lasif_comm, n_events,
-                                all_events)
+                            self.comm.lasif.lasif_comm, n_events,
+                            all_events)
                 else:
                     events = self.comm.lasif.get_minibatch(first)
             else:
@@ -196,7 +199,7 @@ class AutoInverter(object):
             )
             for event in events:
                 if not self.comm.lasif.has_mesh(
-                    event, hpc_cluster=interp_site
+                        event, hpc_cluster=interp_site
                 ):
                     self.comm.salvus_mesher.create_mesh(event=event)
                     self.comm.lasif.move_mesh(
@@ -274,8 +277,8 @@ class AutoInverter(object):
             )
         )
         if (
-            self.comm.project.when_to_validate > 1
-            and "it0000_model" not in self.comm.project.current_iteration
+                self.comm.project.when_to_validate > 1
+                and "it0000_model" not in self.comm.project.current_iteration
         ):
             # Find iteration range
             to_it = iteration_number
@@ -428,9 +431,10 @@ class AutoInverter(object):
 
         TODO: implement the following:
         - fix documentation
-        - importance sampling
-        - Add options to smooth gradient/update/both
-        - when both are smoothed, sigma, should be set to 1/sqrt(2) twice.
+        - fix gradient_interp resubmission
+        - search for bottlenecks
+        - Use interpolation weights, and improve remote paths.
+        - fix validation misfit stuff
 
         :param task: Task issued by the Adam Optimizer
         :type task: str
@@ -477,9 +481,24 @@ class AutoInverter(object):
         interpolate = False
         if self.comm.project.meshes == "multi-mesh":
             interpolate = True
+
+        # make sure standard gradient is there to interpolate to.
+        self.comm.lasif.move_gradient_to_cluster()
         adjoint_helper.process_gradients(interpolate=interpolate, verbose=True)
         assert adjoint_helper.assert_all_simulations_retrieved()
 
+        # TODO make sure failed gradient interp jobs are resubmitted.
+        if self.comm.project.meshes == "multi-mesh":
+            from .autoinverter_helpers import RemoteJobListener
+            gradient_interp_helper = RemoteJobListener(self.comm, "gradient_interp",
+                                                       events=self.comm.project.events_in_iteration)
+            import time
+            while len(gradient_interp_helper.events_already_retrieved) != \
+                    len(self.comm.project.events_in_iteration):
+                gradient_interp_helper.monitor_jobs()
+                time.sleep(5)
+
+            # self.comm.lasif.move_gradient_to_cluster()
         # Here we directly sum the gradients on the remote and recover the
         # raw summed gradient and pass it to Adam
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
@@ -487,9 +506,9 @@ class AutoInverter(object):
         gradient = os.path.join(
             gradients,
             f"ITERATION_{iteration}",
-            "summed_gradient.h5",)
+            "summed_gradient.h5")
+
         if not os.path.exists(gradient):
-            # get summed gradient
             smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
             smoothing_helper.sum_gradients()
 
@@ -570,8 +589,8 @@ class AutoInverter(object):
         adjoint = True
 
         if (
-            "compute misfit for" in verbose
-            and self.comm.project.inversion_mode == "mini-batch"
+                "compute misfit for" in verbose
+                and self.comm.project.inversion_mode == "mini-batch"
         ):
             events_to_use = self.comm.project.old_control_group
             adjoint = False

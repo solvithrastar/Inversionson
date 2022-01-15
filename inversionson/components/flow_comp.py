@@ -206,12 +206,18 @@ class SalvusFlowComponent(Component):
         """
         gradient = False
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
-        username = hpc_cluster.config["ssh_settings"]["username"]
-        interp_folder = os.path.join(
-            "/scratch/snx3000",
-            username,
-            "INTERPOLATION_WEIGHTS",
-        )
+
+        if hpc_cluster.config["site_type"] == "local":
+            interp_folder = os.path.join(
+                self.comm.project.remote_diff_model_dir, "..",
+                "INTERPOLATION_WEIGHTS")
+        else:
+            username = hpc_cluster.config["ssh_settings"]["username"]
+            interp_folder = os.path.join(
+                "/scratch/snx3000",
+                username,
+                "INTERPOLATION_WEIGHTS",
+            )
         if sim_type == "model_interp":
             if self.comm.project.model_interp_job[event]["submitted"]:
                 job_name = self.comm.project.model_interp_job[event]["name"]

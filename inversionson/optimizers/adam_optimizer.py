@@ -280,16 +280,6 @@ class AdamOptimizer:
         m_t = m_t / (1 - self.beta_1 ** time_step)
         v_t = v_t / (1 - self.beta_2 ** time_step)
 
-        # Update parameters
-        theta_prev = self.get_h5_data(self.get_model_path(
-            time_step=time_step - 1))
-
-        # normalise theta_ with initial
-        # theta_prev = theta_prev / theta_initial -1
-        theta_0 = self.get_h5_data(self.get_model_path(
-            time_step=0))
-        theta_prev = theta_prev / theta_0 - 1
-
         # ensure e is sufficiently small, even for the small gradient values
         # that we typically have.
         e = self.e * np.mean(np.sqrt(v_t))
@@ -409,15 +399,6 @@ class AdamOptimizer:
         with open(self.get_latest_task(), "w") as fh:
             toml.dump(task_info, fh)
 
-    def set_misfit(self, misfit):
-        """ Set the misfit in latest toml. This is purely optional,
-        because it is not used by ADAM itself."""
-        task_info = toml.load(self.get_latest_task())
-        task_info["misfit"] = float(misfit)
-
-        with open(self.get_latest_task(), "w") as fh:
-            toml.dump(task_info, fh)
-
     def read_and_write_task(self, time_step=None):
         """
         Checks task status and writes new task if task is already completed.
@@ -433,7 +414,7 @@ class AdamOptimizer:
             if not task_info["iteration_finalized"]:
                 print("Please complete task first")
         else:  # write task
-            task_dict = {"task": "compute_gradient_for_adam", "misfit": "",
+            task_dict = {"task": "compute_gradient_for_adam",
                          "model": self.get_model_path(),
                          "raw_gradient_path": self.get_gradient_path(),
                          "gradient_completed": False,

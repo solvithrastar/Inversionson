@@ -257,7 +257,7 @@ class SalvusSmoothComponent(Component):
             hpc_cluster.remote_mkdir(remote_diff_dir)
 
         # get remote gradient filename
-        if int_mode == "remote" and self.comm.project.meshes == "multi-mesh":
+        if int_mode == "remote" and self.comm.project.meshes == "multi-mesh" and not self.comm.project.AdamOpt:
             # The gradient we want has been interpolated
             job = self.comm.salvus_flow.get_job(event, "gradient_interp")
             remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")

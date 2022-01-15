@@ -256,6 +256,11 @@ class RemoteJobListener(object):
             if status == "finished":
                 self.events_retrieved_now.append(event)
                 finished += 1
+                if self.job_type == "gradient_interp":
+                    self.comm.project.change_attribute(
+                        attribute=f'gradient_interp_job["{event}"]["retrieved"]',
+                        new_value=True
+                    )
             elif status == "pending":
                 pending += 1
             elif status == "running":
@@ -457,14 +462,19 @@ class ForwardHelper(object):
                 )
                 return
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-            username = hpc_cluster.config["ssh_settings"]["username"]
-            interp_folder = os.path.join(
-                "/scratch/snx3000",
-                username,
-                "INTERPOLATION_WEIGHTS",
-                "MODELS",
-                event,
-            )
+            if hpc_cluster.config["site_type"] == "local":
+                interp_folder = os.path.join(
+                    self.comm.project.remote_diff_model_dir, "..",
+                    "MODELS", event)
+            else:
+                username = hpc_cluster.config["ssh_settings"]["username"]
+                interp_folder = os.path.join(
+                    "/scratch/snx3000",
+                    username,
+                    "INTERPOLATION_WEIGHTS",
+                    "MODELS",
+                    event,
+                )
             if not hpc_cluster.remote_exists(interp_folder):
                 hpc_cluster.remote_mkdir(interp_folder)
 
@@ -1278,14 +1288,18 @@ class AdjointHelper(object):
                 )
             return
         hpc_cluster = get_site(self.comm.project.interpolation_site)
-        username = hpc_cluster.config["ssh_settings"]["username"]
-        interp_folder = os.path.join(
-            "/scratch/snx3000",
-            username,
-            "INTERPOLATION_WEIGHTS",
-            "GRADIENTS",
-            event,
-        )
+        if hpc_cluster.config["site_type"] == "local":
+            interp_folder = os.path.join(self.comm.project.remote_diff_model_dir, "..",
+                                "INTERPOLATION_WEIGHTS", "GRADIENTS", event)
+        else:
+            username = hpc_cluster.config["ssh_settings"]["username"]
+            interp_folder = os.path.join(
+                "/scratch/snx3000",
+                username,
+                "INTERPOLATION_WEIGHTS",
+                "GRADIENTS",
+                event,
+            )
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
         # Here I need to make sure that the correct layers are interpolated
@@ -1444,12 +1458,20 @@ class SmoothingHelper(object):
 
         gradient_paths = []
         iteration = self.comm.project.current_iteration
+
         for event in events:
-            job = self.comm.salvus_flow.get_job(event, "adjoint")
-            output_files = job.get_output_files()
-            gradient_path = output_files[0][
-                ("adjoint", "gradient", "output_filename")
-            ]
+            if self.comm.project.meshes == "multi-mesh":
+                job = self.comm.salvus_flow.get_job(event, "gradient_interp")
+                gradient_path = os.path.join(str(job.stderr_path.parent),
+                                             "output/mesh.h5")
+
+            else:
+                job = self.comm.salvus_flow.get_job(event, "adjoint")
+
+                output_files = job.get_output_files()
+                gradient_path = output_files[0][
+                    ("adjoint", "gradient", "output_filename")
+                ]
             gradient_paths.append(str(gradient_path))
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
@@ -1556,6 +1578,14 @@ class SmoothingHelper(object):
                     event, interpolate=interpolate, verbose=verbose
                 )
         else:
+            if (
+                self.comm.project.interpolation_mode == "remote"
+                and self.comm.project.meshes == "multi-mesh"
+            ):
+                interpolate = True
+                self.__put_standard_gradient_to_cluster()
+            # if adam Opt is used, we don't need to smooth the gradients, but we still need to interpolate.
+            # so we still need this standard gradient to be there:
             self.__dispatch_smoothing_simulation(event=None, verbose=verbose)
 
     def monitor_interpolations_send_out_smoothjobs(self, verbose=False):
@@ -1695,14 +1725,19 @@ class SmoothingHelper(object):
             )
             if not submitted:
                 hpc_cluster = get_site(self.comm.project.interpolation_site)
-                username = hpc_cluster.config["ssh_settings"]["username"]
-                interp_folder = os.path.join(
-                    "/scratch/snx3000",
-                    username,
-                    "INTERPOLATION_WEIGHTS",
-                    "GRADIENTS",
-                    event,
-                )
+                if hpc_cluster.config["site_type"] == "local":
+                    interp_folder = os.path.join(
+                        self.comm.project.remote_diff_model_dir, "..",
+                        "INTERPOLATION_WEIGHTS", "GRADIENTS", event)
+                else:
+                    username = hpc_cluster.config["ssh_settings"]["username"]
+                    interp_folder = os.path.join(
+                        "/scratch/snx3000",
+                        username,
+                        "INTERPOLATION_WEIGHTS",
+                        "GRADIENTS",
+                        event,
+                    )
                 if not hpc_cluster.remote_exists(interp_folder):
                     hpc_cluster.remote_mkdir(interp_folder)
                 self.comm.multi_mesh.interpolate_gradient_to_model(
@@ -1729,14 +1764,19 @@ class SmoothingHelper(object):
         interpolate them to the inversion grid prior to smoothing.
         """
         hpc_cluster = get_site(self.comm.project.interpolation_site)
-        username = hpc_cluster.config["ssh_settings"]["username"]
-        interp_folder = os.path.join(
-            "/scratch/snx3000",
-            username,
-            "INTERPOLATION_WEIGHTS",
-            "GRADIENTS",
-            event,
-        )
+        if hpc_cluster.config["site_type"] == "local":
+            interp_folder = os.path.join(
+                self.comm.project.remote_diff_model_dir, "..",
+                "INTERPOLATION_WEIGHTS", "GRADIENTS", event)
+        else:
+            username = hpc_cluster.config["ssh_settings"]["username"]
+            interp_folder = os.path.join(
+                "/scratch/snx3000",
+                username,
+                "INTERPOLATION_WEIGHTS",
+                "GRADIENTS",
+                event,
+            )
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
         self.comm.multi_mesh.interpolate_gradient_to_model(

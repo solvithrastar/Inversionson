@@ -113,8 +113,11 @@ class SalvusMeshComponent(Component):
                         "DIMENSION_LABELS"
                     )[1]
                     elemental_fields = (
-                        elemental_fields[2:-2].replace(" ", "").split("|")
+                        elemental_fields[2:-2]
                     )
+                    if not type(elemental_fields) == str:
+                        elemental_fields = elemental_fields.decode()
+                    elemental_fields = elemental_fields.replace(" ", "").split("|")
                     if field_name in elemental_fields:
                         return True
                     else:
