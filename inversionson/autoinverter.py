@@ -76,8 +76,6 @@ class AutoInverter(object):
         Update information in iteration dictionary.
         """
         if self.comm.project.AdamOpt:
-            if validation:
-                raise Exception("Not yet implemented.")
             adam_opt = AdamOptimizer(
                 inversion_root=self.comm.project.paths["inversion_root"])
             it_name = adam_opt.get_iteration_name()
@@ -87,7 +85,7 @@ class AutoInverter(object):
         if validation:
             it_name = f"validation_{it_name}"
         if self.comm.project.AdamOpt:
-            move_meshes = True
+            move_meshes = "00000" in it_name if validation else True
         else:
             move_meshes = "it0000" in it_name if validation else True
 
@@ -223,10 +221,15 @@ class AutoInverter(object):
         Check whether it is time to run a validation iteration
         """
         run_function = False
+        if self.comm.project.AdamOpt:
+            iteration_number = AdamOptimizer.get_iteration_number()
+            if iteration_number == 0:
+                run_function == True
+        else:
+            iteration_number = (
+                self.comm.salvus_opt.get_number_of_newest_iteration()
+            )
 
-        iteration_number = (
-            self.comm.salvus_opt.get_number_of_newest_iteration()
-        )
         # We execute the validation check if iteration is either:
         # a) The initial iteration or
         # b) When #Iteration + 1 mod when_to_validate = 0
@@ -251,9 +254,12 @@ class AutoInverter(object):
         if not self.time_for_validation():
             print("Not time for a validation")
             return
-        iteration_number = (
-            self.comm.salvus_opt.get_number_of_newest_iteration()
-        )
+        if self.comm.project.AdamOpt:
+            iteration_number = AdamOptimizer.get_iteration_number()
+        else:
+            iteration_number = (
+                self.comm.salvus_opt.get_number_of_newest_iteration()
+            )
         print(Fore.GREEN + "\n ================== \n")
         print(
             emoji.emojize(
@@ -278,7 +284,7 @@ class AutoInverter(object):
         )
         if (
                 self.comm.project.when_to_validate > 1
-                and "it0000_model" not in self.comm.project.current_iteration
+                and "it0000_model" not in self.comm.project.current_iteration and "00000" not in self.comm.project.current_iteration
         ):
             # Find iteration range
             to_it = iteration_number

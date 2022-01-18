@@ -6,7 +6,8 @@ import os
 from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-
+from inversionson.optimizers.adam_optimizer import AdamOptimizer
+import toml
 
 from lasif.components.component import Component
 
@@ -315,10 +316,14 @@ class SalvusMeshComponent(Component):
             new_fields[field] = np.zeros_like(fields[field])
         # m.element_nodal_fields = {}
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
-            it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
-                number=iteration
-            )
-            model_path = self.comm.salvus_opt.get_model_path(iteration=it)
+            if self.comm.project.AdamOpt:
+                it = AdamOptimizer.get_task_path(time_step=it)
+                model_path = toml.load(it)["model"]
+            else:
+                it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
+                    number=iteration
+                )
+                model_path = self.comm.salvus_opt.get_model_path(iteration=it)
             m_tmp = UnstructuredMesh.from_h5(model_path)
             for field_name, field in new_fields.items():
                 field += m_tmp.element_nodal_fields[field_name]

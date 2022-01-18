@@ -370,6 +370,14 @@ class AdamOptimizer:
         task_info = toml.load(self.get_latest_task())
         return task_info["model"].split("/")[-1].split(".")[0]
 
+    def get_iteration_number(self):
+        """
+        Get the number of the iteration from the name
+        """
+        it_name = self.get_iteration_name()
+        num_index = it_name.index("0")
+        return int(it_name[num_index:num_index+5])
+
     def get_previous_iteration(self):
         time_step = self.get_latest_time_step()
         task_info = toml.load(self.get_task_path(time_step=time_step - 1))
