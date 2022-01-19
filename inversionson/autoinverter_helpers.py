@@ -1219,9 +1219,10 @@ class AdjointHelper(object):
                         # Here we do interpolate as false as the interpolate
                         # refers to remote interpolation in this case.
                         # It is related to where the gradient can be found.
-                        self.__dispatch_smoothing(
-                            event, interpolate=False, verbose=verbose
-                        )
+                        if not self.comm.project.AdamOpt:
+                            self.__dispatch_smoothing(
+                                event, interpolate=False, verbose=verbose
+                            )
                 else:
                     if not self.comm.project.AdamOpt:
                         self.__dispatch_smoothing(
@@ -1249,9 +1250,10 @@ class AdjointHelper(object):
                         new_value=True,
                     )
                     self.comm.project.update_iteration_toml()
-                    self.__dispatch_smoothing(
-                        event, interpolate, verbose=verbose
-                    )
+                    if not self.comm.project.AdamOpt:
+                        self.__dispatch_smoothing(
+                            event, interpolate, verbose=verbose
+                        )
                 for event in interp_job_listener.to_repost:
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["submitted"]',
