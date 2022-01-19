@@ -3,7 +3,6 @@ A class which includes information regarding inversion
 and sets up all the components that are needed inside
 the inversion itself.
 """
-# from __future__ import absolute_import
 
 import os
 import toml

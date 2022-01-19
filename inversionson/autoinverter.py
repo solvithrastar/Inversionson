@@ -382,7 +382,7 @@ class AutoInverter(object):
             smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             if self.comm.project.meshes == "multi-mesh":
                 if self.comm.project.interpolation_mode == "remote":
-                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(
+                    smoothing_helper.monitor_interpolations(
                         verbose=True
                     )
                     smoothing_helper.dispatch_smoothing_simulations(
@@ -437,7 +437,6 @@ class AutoInverter(object):
 
         TODO: implement the following:
         - fix documentation
-        - fix gradient_interp resubmission
         - search for bottlenecks
         - Use interpolation weights, and improve remote paths.
         - fix validation misfit stuff
@@ -493,18 +492,6 @@ class AutoInverter(object):
         adjoint_helper.process_gradients(interpolate=interpolate, verbose=True)
         assert adjoint_helper.assert_all_simulations_retrieved()
 
-        # TODO make sure failed gradient interp jobs are resubmitted.
-        if self.comm.project.meshes == "multi-mesh":
-            from .autoinverter_helpers import RemoteJobListener
-            gradient_interp_helper = RemoteJobListener(self.comm, "gradient_interp",
-                                                       events=self.comm.project.events_in_iteration)
-            import time
-            while len(gradient_interp_helper.events_already_retrieved) != \
-                    len(self.comm.project.events_in_iteration):
-                gradient_interp_helper.monitor_jobs()
-                time.sleep(5)
-
-            # self.comm.lasif.move_gradient_to_cluster()
         # Here we directly sum the gradients on the remote and recover the
         # raw summed gradient and pass it to Adam
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
@@ -514,8 +501,10 @@ class AutoInverter(object):
             f"ITERATION_{iteration}",
             "summed_gradient.h5")
 
+        smoothing_helper = helpers.SmoothingHelper(self.comm, events=self.comm.project.events_in_iteration)
         if not os.path.exists(gradient):
-            smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
+            if self.comm.project.meshes == "multi-mesh":
+                smoothing_helper.monitor_interpolations(verbose=True, smooth_all=False)
             smoothing_helper.sum_gradients()
 
         adam_opt = AdamOptimizer(inversion_root=
@@ -526,8 +515,6 @@ class AutoInverter(object):
         if not os.path.exists(adam_opt.get_raw_update_path()):
             adam_opt.compute_raw_update()
 
-        # Then we smooth the update with the smoother
-        smoothing_helper = helpers.SmoothingHelper(self.comm, events=None)
         smoothing_helper.dispatch_smoothing_simulations()
         assert smoothing_helper.assert_all_simulations_dispatched()
         smoothing_helper.retrieve_smooth_gradients()
@@ -685,7 +672,7 @@ class AutoInverter(object):
             smoothing_helper.dispatch_smoothing_simulations()
             if self.comm.project.meshes == "multi-mesh":
                 if self.comm.project.interpolation_mode == "remote":
-                    smoothing_helper.monitor_interpolations_send_out_smoothjobs(
+                    smoothing_helper.monitor_interpolations(
                         verbose=True
                     )
                     smoothing_helper.dispatch_smoothing_simulations(

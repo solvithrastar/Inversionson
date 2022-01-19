@@ -59,6 +59,7 @@ class RemoteJobListener(object):
         self.events_already_retrieved = []
         self.events_retrieved_now = []
         self.to_repost = []
+        self.not_submitted = []
         if events is None:
             if (
                 job_type == "smoothing"
@@ -249,6 +250,7 @@ class RemoteJobListener(object):
                 reposts = job_dict[event]["reposts"]
                 if not job_dict[event]["submitted"]:
                     status = "unsubmitted"
+                    self.not_submitted.append(event)
                     continue
                 status = self.__check_status_of_job(
                     event, reposts, verbose=verbose
@@ -1582,13 +1584,12 @@ class SmoothingHelper(object):
                 self.comm.project.interpolation_mode == "remote"
                 and self.comm.project.meshes == "multi-mesh"
             ):
-                interpolate = True
                 self.__put_standard_gradient_to_cluster()
             # if adam Opt is used, we don't need to smooth the gradients, but we still need to interpolate.
             # so we still need this standard gradient to be there:
             self.__dispatch_smoothing_simulation(event=None, verbose=verbose)
 
-    def monitor_interpolations_send_out_smoothjobs(self, verbose=False):
+    def monitor_interpolations(self, smooth_all=True, verbose=False):
         """
         Monitor the status of the interpolations, as soon as one is done,
         the smoothing simulation is dispatched
@@ -1601,6 +1602,11 @@ class SmoothingHelper(object):
             events=events,
         )
         j = 0
+        int_job_listener.monitor_jobs()
+        for event in int_job_listener.not_submitted:
+            self.__dispatch_raw_gradient_interpolation(
+                event=event, verbose=verbose
+            )
         while len(int_job_listener.events_already_retrieved) != len(events):
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
@@ -1609,11 +1615,12 @@ class SmoothingHelper(object):
                     new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
-                self.__dispatch_smoothing_simulation(
-                    event=event,
-                    verbose=verbose,
-                    interpolate=True,
-                )
+                if smooth_all:
+                    self.__dispatch_smoothing_simulation(
+                        event=event,
+                        verbose=verbose,
+                        interpolate=True,
+                    )
 
             for event in int_job_listener.to_repost:
                 self.comm.project.change_attribute(
@@ -1694,7 +1701,6 @@ class SmoothingHelper(object):
     ):
         submitted, retrieved = self.__submitted_retrieved(event)
         # See if smoothing job already submitted
-        # TODO this needs to be fixed for remote summing case
 
         if submitted:
             sub_ret = "submitted"
