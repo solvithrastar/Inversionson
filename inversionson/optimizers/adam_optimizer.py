@@ -434,9 +434,9 @@ class AdamOptimizer:
             task_dict = {"task": "compute_gradient_for_adam",
                          "model": self.get_model_path(),
                          "raw_gradient_path": self.get_gradient_path(),
-                         "gradient_completed": False,
                          "raw_update_path": self.get_raw_update_path(),
                          "smooth_update_path": self.get_smooth_path(),
+                         "gradient_completed": False,
                          "smoothing_completed": False,
                          "iteration_finalized": False,
                          "time_step": self.time_step}
