@@ -88,7 +88,7 @@ class AdamOptimizer:
         config = {"alpha": 0.001, "beta_1": 0.9, "beta_2": 0.999,
                   "weight_decay": 0.001, "epsilon": 10e-5,
                   "parameters": ["VSV", "VSH", "VPV", "VPH"],
-                  "initial_model": ""}
+                  "initial_model": "", "max_iterations": 1000}
         with open(self.config_file, "w") as fh:
             toml.dump(config, fh)
 
@@ -108,6 +108,7 @@ class AdamOptimizer:
         self.weight_decay = config["weight_decay"]
         # Regularization parameter to avoid dividing by zero
         self.e = config["epsilon"]  # this is automatically scaled
+        self.max_iterations = config["max_iterations"]
         self.parameters = config["parameters"]
 
     def _init_directories(self):
@@ -385,6 +386,12 @@ class AdamOptimizer:
 
     def get_inversionson_task(self):
         """Gets the task for inversionson"""
+        if self.get_iteration_number() >= self.max_iterations:
+            print("Maximum number of iterations reached. If you want to "
+                  "perform more iterations, please increase the maximum"
+                  "iteration number in AdamOpt/adam_config.toml")
+            exit()
+
         if not os.path.exists(self.get_latest_task()):
             raise Exception("Please ensure that the config file is filled and"
                             "the optimizer is reinitialized.")
