@@ -108,7 +108,10 @@ class AdamOptimizer:
         self.weight_decay = config["weight_decay"]
         # Regularization parameter to avoid dividing by zero
         self.e = config["epsilon"]  # this is automatically scaled
-        self.max_iterations = config["max_iterations"]
+        if "max_iterations" in config.keys():
+            self.max_iterations = config["max_iterations"]
+        else:
+            self.max_iterations = None
         self.parameters = config["parameters"]
 
     def _init_directories(self):
@@ -373,11 +376,10 @@ class AdamOptimizer:
 
     def get_iteration_number(self):
         """
-        Get the number of the iteration from the name
+        Get the number of the iteration from the iteration name.
         """
         it_name = self.get_iteration_name()
-        num_index = it_name.index("0")
-        return int(it_name[num_index:num_index+5])
+        return int(it_name.split("_")[-1])
 
     def get_previous_iteration(self):
         time_step = self.get_latest_time_step()
