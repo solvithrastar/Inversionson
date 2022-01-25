@@ -245,6 +245,10 @@ class AdamOptimizer:
         # scale the gradients, because they can be tiny and this leads to issues
         g_t = self.get_h5_data(gradient_path) * self.grad_scaling_fac
 
+        if np.sum(np.isnan(g_t)) > 1:
+            raise Exception("NaNs were found in the raw gradient."
+                            "Something must be wrong.")
+
         if time_step == 1:  # Initialize moments if needed
             first_moment_path = self.get_first_moment_path(time_step=0)
             second_moment_path = self.get_second_moment_path(time_step=0)
@@ -292,10 +296,11 @@ class AdamOptimizer:
 
         max_upd = np.max(np.abs(update))
         print(f"Max raw model update: {max_upd}")
-        if max_upd > self.alpha * 2.0:
-            raise Exception("Raw update seems to large")
+        if max_upd > 3.0 * self.alpha:
+            raise Exception("Raw update seems a bit large")
         if np.sum(np.isnan(update)) > 1:
-            raise Exception("NaNs were found.")
+            raise Exception("NaNs were found in the raw update."
+                            "Check if the gradient is not excessively small")
 
         # Write raw update to file for smoothing
         shutil.copy(gradient_path, raw_update_path)
@@ -319,10 +324,15 @@ class AdamOptimizer:
         max_raw_update = np.max(np.abs(self.get_h5_data(raw_update_path)))
         update = self.get_h5_data(smooth_path)
 
+        if np.sum(np.isnan(update)) > 1:
+            raise Exception("NaNs were found in the smoothed update."
+                            "Check the raw update and smoothing process.")
+
         max_upd = np.max(np.abs(update))
         print(f"Max smooth model update: {max_upd}")
-        if max_upd > 2.0 * self.alpha:
-            raise Exception("check smooth gradient, something seems off")
+        if max_upd > 3.0 * self.alpha:
+            raise Exception("Check smooth gradient, the update is larger"
+                            "than expected.")
 
         print("Rescaling maximum smooth update to max raw update:",
               max_raw_update)
