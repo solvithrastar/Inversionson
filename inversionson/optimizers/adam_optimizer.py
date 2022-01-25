@@ -1,18 +1,10 @@
-
-from lasif.components.component import Component
-
 import os
 import toml
 import numpy as np
 import glob
 import shutil
-import h5py  # Use h5py to avoid lots of dependencies and slow reading
+import h5py
 
-BOOL_ADAM = True
-
-
-# TODO: To ensure smoothness, we may also just smooth the total update
-# TODO: Add smart sampling
 
 class AdamOptimizer:
     """
