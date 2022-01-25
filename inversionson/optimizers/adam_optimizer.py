@@ -1,5 +1,4 @@
 
-
 from lasif.components.component import Component
 
 import os
@@ -304,12 +303,8 @@ class AdamOptimizer:
                          update)
 
     def apply_smooth_update(self):
-        """Apply the smoothed update
-        # TODO: smmoothing might significantly reduce the step size,
-        # so check this and maybe rescale the smoothed update back to the step size
-        # this could be done based on the peak amplitudes in the raw and smoothed update
-        # such that we don't scale too much.
-
+        """
+        Apply the smoothed update.
         """
         print("Adam: Applying smooth update...")
         task_info = toml.load(self.get_latest_task())
@@ -320,6 +315,8 @@ class AdamOptimizer:
 
         time_step = task_info["time_step"] + 1
         smooth_path = task_info["smooth_update_path"]
+        raw_update_path = task_info["raw_update_path"]
+        max_raw_update = np.max(np.abs(self.get_h5_data(raw_update_path)))
         update = self.get_h5_data(smooth_path)
 
         max_upd = np.max(np.abs(update))
@@ -327,11 +324,10 @@ class AdamOptimizer:
         if max_upd > 2.0 * self.alpha:
             raise Exception("check smooth gradient, something seems off")
 
-        rescale_update = True
-        if rescale_update:
-            print("Rescaling maximum update to alpha")
-            max_update_ratio = self.alpha / np.max(np.abs(update))
-            update *= max_update_ratio
+        print("Rescaling maximum smooth update to max raw update:",
+              max_raw_update)
+        update_scaling_fac = max_raw_update / max_upd
+        update *= update_scaling_fac
             
         # Update parameters
         theta_prev = self.get_h5_data(self.get_model_path(
@@ -351,9 +347,6 @@ class AdamOptimizer:
                     self.get_model_path(time_step=time_step))
         self.set_h5_data(self.get_model_path(time_step=time_step),
                          theta_physical)
-
-        # Iteration still has to be finalized. This is done separately
-        # for inversionson purposes, such that files can be cleaned.
 
     def finalize_iteration(self):
         """
