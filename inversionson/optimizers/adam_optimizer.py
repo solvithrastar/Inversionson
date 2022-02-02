@@ -338,7 +338,10 @@ class AdamOptimizer:
         # normalise theta and apply update
         theta_0 = self.get_h5_data(self.get_model_path(
             time_step=0))
-        theta_prev = theta_prev / theta_0 - 1
+
+        # Normalize the model and prevent division by zero in the outer core.
+        theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / \
+                                   theta_0[theta_0 != 0] - 1
 
         # only add weight_decay at this stage
         theta_new = theta_prev - update - self.weight_decay * theta_prev
