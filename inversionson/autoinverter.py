@@ -149,24 +149,15 @@ class AutoInverter(object):
                         norm_dict = toml.load(all_norms_path)
                         unused_events = list(
                             set(all_events).difference(set(norm_dict.keys())))
-                        n_unused_events = len(unused_events)
-                        if n_unused_events >= n_events:
-                            events = get_random_mitchell_subset(
-                                self.comm.lasif.lasif_comm, n_events,
-                                unused_events)
-                        else:
-                            existing_events = []
-                            if len(unused_events) > 0:
-                                existing_events = get_random_mitchell_subset(
-                                    self.comm.lasif.lasif_comm,
-                                    n_unused_events, unused_events)
-                            remaining_events = list(
-                                set(all_events) - set(existing_events))
-                            new_events = get_random_mitchell_subset(
-                                self.comm.lasif.lasif_comm,
-                                n_events - n_unused_events, remaining_events,
-                                norm_dict, existing_events)
-                            events = existing_events + new_events
+                        max_norm = max(norm_dict.values())
+
+                        # Assign high norm values to unused events, to give them
+                        # a higher chance to be included in a batch.
+                        for event in unused_events:
+                            norm_dict[event] = 2.0 * max_norm
+                        events = get_random_mitchell_subset(
+                            self.comm.lasif.lasif_comm, n_events,
+                            all_events, norm_dict)
                     else:
                         events = get_random_mitchell_subset(
                             self.comm.lasif.lasif_comm, n_events,
