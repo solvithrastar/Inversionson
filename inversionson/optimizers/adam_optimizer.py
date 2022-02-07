@@ -77,7 +77,7 @@ class AdamOptimizer:
     def _write_initial_config(self):
         """Writes the initial config file."""
         config = {"alpha": 0.001, "beta_1": 0.9, "beta_2": 0.999,
-                  "weight_decay": 0.001, "epsilon": 10e-5,
+                  "weight_decay": 0.001, "epsilon": 10e-1,
                   "parameters": ["VSV", "VSH", "VPV", "VPH"],
                   "initial_model": "", "max_iterations": 1000}
         with open(self.config_file, "w") as fh:
