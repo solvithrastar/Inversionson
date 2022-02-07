@@ -215,7 +215,7 @@ class AutoInverter(object):
         if self.comm.project.AdamOpt:
             iteration_number = AdamOptimizer.get_iteration_number()
             if iteration_number == 0:
-                run_function == True
+                run_function = True
         else:
             iteration_number = (
                 self.comm.salvus_opt.get_number_of_newest_iteration()
