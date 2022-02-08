@@ -1104,10 +1104,11 @@ class ForwardHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__run_forward_simulation(event=event)
-            print(
-                f"Retrieved {len(for_job_listener.events_retrieved_now)} "
-                "seismograms"
-            )
+            if len(for_job_listener.events_retrieved_now) > 0:
+                print(
+                    f"Retrieved {len(for_job_listener.events_retrieved_now)} "
+                    "seismograms"
+                )
             if len(for_job_listener.events_retrieved_now) + len(
                 for_job_listener.events_already_retrieved
             ) == len(events):
@@ -1240,10 +1241,11 @@ class AdjointHelper(object):
                 self.__dispatch_adjoint_simulation(
                     event=event, verbose=verbose
                 )
-            print(
-                f"Sent {len(adj_job_listener.events_retrieved_now)} "
-                "gradients to regularisation"
-            )
+                if len(adj_job_listener.events_retrieved_now) > 0:
+                    print(
+                        f"Sent {len(adj_job_listener.events_retrieved_now)} "
+                        "smoothing jobs to regularisation"
+                    )
             if interpolate:
                 interp_job_listener.monitor_jobs()
                 for event in interp_job_listener.events_retrieved_now:
