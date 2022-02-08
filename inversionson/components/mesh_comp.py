@@ -317,8 +317,11 @@ class SalvusMeshComponent(Component):
         # m.element_nodal_fields = {}
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
             if self.comm.project.AdamOpt:
-                it = AdamOptimizer.get_task_path(time_step=it)
-                model_path = toml.load(it)["model"]
+                adam_opt = AdamOptimizer(inversion_root=
+                                         self.comm.project.paths[
+                                             "inversion_root"])
+                time_step = adam_opt.get_latest_time_step()
+                model_path = adam_opt.get_model_path(time_step)
             else:
                 it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
                     number=iteration
