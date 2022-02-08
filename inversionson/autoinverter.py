@@ -280,7 +280,8 @@ class AutoInverter(object):
         )
         if (
                 self.comm.project.when_to_validate > 0
-                and "it0000_model" not in self.comm.project.current_iteration and "00000" not in self.comm.project.current_iteration
+                and "it0000_model" not in self.comm.project.current_iteration
+                and "00000" not in self.comm.project.current_iteration
         ):
             # Find iteration range
             to_it = iteration_number

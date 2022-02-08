@@ -791,7 +791,7 @@ class LasifComponent(Component):
             # return self.lasif_comm.project.lasif_config["domain_settings"][
             #     "domain_file"
             # ]
-            if "validation" in iteration and "it0000" not in iteration:
+            if "validation" in iteration and "it0000" and "00000" not in iteration:
                 if self.comm.project.AdamOpt:
                     adam_opt = AdamOptimizer(inversion_root=
                                              self.comm.project.paths[
@@ -809,7 +809,7 @@ class LasifComponent(Component):
                     f"it_{old_it_num}_to_{new_it_num}",
                     "mesh.h5",
                 )
-            elif "validation" in iteration and "it0000" in iteration:
+            elif "validation" in iteration and ("it0000" in iteration or "00000" in iteration):
                 iteration = iteration[11:]
             return os.path.join(
                 self.comm.project.lasif_root,
