@@ -249,7 +249,9 @@ class AutoInverter(object):
             print("Not time for a validation")
             return
         if self.comm.project.AdamOpt:
-            iteration_number = AdamOptimizer.get_iteration_number()
+            adam_opt = AdamOptimizer(inversion_root=
+                                     self.comm.project.paths["inversion_root"])
+            iteration_number = adam_opt.get_iteration_number()
         else:
             iteration_number = (
                 self.comm.salvus_opt.get_number_of_newest_iteration()
