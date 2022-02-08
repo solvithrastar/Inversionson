@@ -30,7 +30,7 @@ class AdamOptimizer:
         self.config_file = os.path.join(self.optimization_folder,
                                         "adam_config.toml")
         # gradient scaling factor avoid issues with floats
-        self.grad_scaling_fac = 10e15
+        self.grad_scaling_fac = 1e17
 
         self.model_dir = os.path.join(self.optimization_folder,
                                       "MODELS")
@@ -77,7 +77,7 @@ class AdamOptimizer:
     def _write_initial_config(self):
         """Writes the initial config file."""
         config = {"alpha": 0.001, "beta_1": 0.9, "beta_2": 0.999,
-                  "weight_decay": 0.001, "epsilon": 10e-1,
+                  "weight_decay": 0.001, "epsilon": 1e-1,
                   "parameters": ["VSV", "VSH", "VPV", "VPH"],
                   "initial_model": "", "max_iterations": 1000}
         with open(self.config_file, "w") as fh:
