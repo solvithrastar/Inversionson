@@ -881,10 +881,11 @@ class ForwardHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__interpolate_model(event, mode="remote")
-            print(
-                f"We dispatched {len(int_job_listener.events_retrieved_now)} "
-                "simulations"
-            )
+            if len(int_job_listener.events_retrieved_now) > 0:
+                print(
+                    f"We dispatched {len(int_job_listener.events_retrieved_now)} "
+                    "simulations"
+                )
             if len(int_job_listener.events_already_retrieved) + len(
                 int_job_listener.events_retrieved_now
             ) == len(self.events):
@@ -948,11 +949,11 @@ class ForwardHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__interpolate_model(event, mode="remote")
-            print(
-                f"We dispatched {len(int_job_listener.events_retrieved_now)} "
-                "simulations"
-            )
-
+            if len(int_job_listener.events_retrieved_now) > 0:
+                print(
+                    f"We dispatched {len(int_job_listener.events_retrieved_now)} "
+                    "simulations"
+                )
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
             print(f"Waiting {SLEEP_TIME} seconds before trying again")
@@ -1027,10 +1028,11 @@ class ForwardHelper(object):
                 self.__interpolate_model(
                     event=event, mode="remote", validation=True
                 )
-            print(
-                f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
-                "simulations"
-            )
+            if len(vint_job_listener.events_retrieved_now) > 0:
+                print(
+                    f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
+                    "simulations"
+                )
             if len(vint_job_listener.events_already_retrieved) + len(
                 vint_job_listener.events_retrieved_now
             ) == len(self.events):
