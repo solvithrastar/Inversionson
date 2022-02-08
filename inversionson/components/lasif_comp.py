@@ -792,9 +792,15 @@ class LasifComponent(Component):
             #     "domain_file"
             # ]
             if "validation" in iteration and "it0000" not in iteration:
-                new_it_num = (
-                    self.comm.salvus_opt.get_number_of_newest_iteration()
-                )
+                if self.project.AdamOpt:
+                    adam_opt = AdamOptimizer(inversion_root=
+                                             self.comm.project.paths[
+                                                 "inversion_root"])
+                    new_it_num = adam_opt.get_iteration_number()
+                else:
+                    new_it_num = (
+                        self.comm.salvus_opt.get_number_of_newest_iteration()
+                    )
                 old_it_num = (
                     new_it_num - self.comm.project.when_to_validate + 1
                 )
