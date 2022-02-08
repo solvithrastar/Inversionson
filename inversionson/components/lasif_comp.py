@@ -359,7 +359,7 @@ class LasifComponent(Component):
                 model = adam_opt.get_model_path()
                 # copy to lasif project and also move to cluster
                 simulation_mesh = self.comm.lasif.get_simulation_mesh(
-                    event_name=None, iteration=iteration
+                    event_name=None
                 )
                 shutil.copy(model, simulation_mesh)
                 self._move_model_to_cluster(
@@ -792,7 +792,7 @@ class LasifComponent(Component):
             #     "domain_file"
             # ]
             if "validation" in iteration and "it0000" not in iteration:
-                if self.project.AdamOpt:
+                if self.comm.project.AdamOpt:
                     adam_opt = AdamOptimizer(inversion_root=
                                              self.comm.project.paths[
                                                  "inversion_root"])
