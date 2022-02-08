@@ -1834,10 +1834,11 @@ class SmoothingHelper(object):
                 self.__dispatch_smoothing_simulation(
                     event=event, interpolate=interpolate, verbose=verbose
                 )
-            print(
-                f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
-                "Smooth gradients"
-            )
+            if len(smooth_job_listener.events_retrieved_now) > 0:
+                print(
+                    f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
+                    "smoothing jobs"
+                )
             if len(smooth_job_listener.events_already_retrieved) + len(
                 smooth_job_listener.events_retrieved_now
             ) == len(events):
