@@ -269,7 +269,7 @@ class RemoteJobListener(object):
                 running += 1
 
         if finished > 0:
-            print(f"{finished}/{len(events)}jobs finished")
+            print(f"{finished}/{len(events)} jobs finished")
         if running > 0:
             print(f"{running}/{len(events)} jobs running")
         if pending > 0:
