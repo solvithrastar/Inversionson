@@ -503,9 +503,6 @@ class StoryTellerComponent(Component):
         :param verbose: Additional information regarding task, optional.
         :type verbose: str
         """
-        if self.comm.project.AdamOpt:
-            # skip this stuff for now
-            return
         if task == "compute_misfit_and_gradient":
             # The compute misfit and gradient task is always associated
             # with the first iteration

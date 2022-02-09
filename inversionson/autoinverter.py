@@ -154,7 +154,7 @@ class AutoInverter(object):
                         # Assign high norm values to unused events, to give them
                         # a higher chance to be included in a batch.
                         for event in unused_events:
-                            norm_dict[event] = 2.0 * max_norm
+                            norm_dict[event] = max_norm
                         events = get_random_mitchell_subset(
                             self.comm.lasif.lasif_comm, n_events,
                             all_events, norm_dict)
@@ -775,9 +775,9 @@ class AutoInverter(object):
             iteration = adam_opt.get_iteration_name()
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
-        if not self.comm.project.AdamOpt:  # TODO sort this 2 lines below out
-            self.comm.project.get_iteration_attributes()
-            self.comm.storyteller.document_task(task)
+
+        self.comm.project.get_iteration_attributes()
+        self.comm.storyteller.document_task(task)
         if not self.comm.project.AdamOpt:
             self.comm.salvus_opt.close_salvus_opt_task()
         self.comm.project.update_iteration_toml()
