@@ -542,7 +542,8 @@ class AutoInverter(object):
         self.comm.project.update_iteration_toml()
         self.comm.storyteller.document_task(task)
         # Here we mainly call this to
-        task, verbose = self.finalize_iteration(task, verbose)
+        task, verbose = self.finalize_iteration(task="finalize_iteration",
+                                                verbose=verbose)
 
         print(Fore.RED + "\n =================== \n")
         print(

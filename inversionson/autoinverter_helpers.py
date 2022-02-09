@@ -1077,8 +1077,7 @@ class ForwardHelper(object):
         for_job_listener = RemoteJobListener(
             comm=self.comm, job_type="forward", events=events
         )
-        j = 0
-        while len(for_job_listener.events_already_retrieved) != len(events):
+        while True:
             for_job_listener.monitor_jobs()
             for event in for_job_listener.events_retrieved_now:
                 self.__retrieve_seismograms(event=event, verbose=verbose)
@@ -1109,17 +1108,16 @@ class ForwardHelper(object):
                     f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                     "seismograms"
                 )
-            if len(for_job_listener.events_retrieved_now) + len(
-                for_job_listener.events_already_retrieved
-            ) == len(events):
-                j = 0
-            for_job_listener.to_repost = []
-            for_job_listener.events_retrieved_now = []
-            if j != 0:
+            if len(for_job_listener.events_retrieved_now) + \
+                    len(for_job_listener.events_already_retrieved) == len(events):
+                break
+
+            if not for_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
-            else:
-                j += 1
+
+            for_job_listener.to_repost = []
+            for_job_listener.events_retrieved_now = []
 
 
 class AdjointHelper(object):
