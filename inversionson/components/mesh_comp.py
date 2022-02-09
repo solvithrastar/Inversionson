@@ -315,13 +315,14 @@ class SalvusMeshComponent(Component):
         for field in fields.keys():
             new_fields[field] = np.zeros_like(fields[field])
         # m.element_nodal_fields = {}
+        if self.comm.project.AdamOpt:
+            adam_opt = AdamOptimizer(inversion_root=
+                                     self.comm.project.paths[
+                                         "inversion_root"])
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
             if self.comm.project.AdamOpt:
-                adam_opt = AdamOptimizer(inversion_root=
-                                         self.comm.project.paths[
-                                             "inversion_root"])
-                time_step = adam_opt.get_latest_time_step()
-                model_path = adam_opt.get_model_path(time_step)
+                it_toml = adam_opt.get_task_path(time_step=iteration)
+                model_path = toml.load(it_toml)["model"]
             else:
                 it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
                     number=iteration
