@@ -873,16 +873,6 @@ class AutoInverter(object):
             task, verbose = self.assign_task_to_function(task, verbose)
 
 
-def read_information_toml(info_toml_path: str):
-    """
-    Read a toml file with inversion information into a dictionary
-
-    :param info_toml_path: Path to the toml file
-    :type info_toml_path: str
-    """
-    return toml.load(info_toml_path)
-
-
 if __name__ == "__main__":
     print(
         emoji.emojize(
@@ -890,19 +880,6 @@ if __name__ == "__main__":
             use_aliases=True,
         )
     )
-    # info_toml = input("Give me a path to your information_toml \n\n")
-    # Tired of writing it in, I'll do this quick mix for now
-    # print("Give me a path to your information_toml \n\n")
-    # time.sleep(1)
-    # print("Just kidding, I know it")
     info_toml = "inversion_info.toml"
-    if not info_toml.startswith("/"):
-        cwd = os.getcwd()
-        if info_toml.startswith("./"):
-            info_toml = os.path.join(cwd, info_toml[2:])
-        elif info_toml.startswith("."):
-            info_toml = os.path.join(cwd, info_toml[1:])
-        else:
-            info_toml = os.path.join(cwd, info_toml)
-    info = read_information_toml(info_toml)
+    info = toml.load(info_toml)
     invert = AutoInverter(info)
