@@ -49,28 +49,22 @@ class MultiMeshComponent(Component):
 
         if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
-
             if (
                 self.comm.project.when_to_validate > 1
                 and iteration != "it0000_model" and iteration != "model_00000"
             ):
-                it_number = (
-                    self.comm.salvus_opt.get_number_of_newest_iteration()
-                )
+                if self.comm.project.AdamOpt:
+                    it_number = adam_opt.get_iteration_number()
+                else:
+                    it_number = (
+                        self.comm.salvus_opt.get_number_of_newest_iteration()
+                    )
                 old_it = it_number - self.comm.project.when_to_validate + 1
                 model = (
                     self.comm.salvus_mesher.average_meshes
                     / f"it_{old_it}_to_{it_number}"
                     / "mesh.h5"
                 )
-            else:
-                if self.comm.project.AdamOpt:
-                    adam_opt = AdamOptimizer(inversion_root=
-                                             self.comm.project.
-                                             paths["inversion_root"])
-                    model = adam_opt.get_model_path()
-                else:
-                    model = os.path.join(self.physical_models, iteration + ".h5")
         return model
 
     def add_fields_for_interpolation_to_mesh(self, gradient=False):
