@@ -557,6 +557,8 @@ class StoryTellerComponent(Component):
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
                 self._update_list_of_events()
+            if self.comm.project.AdamOpt:
+                self._update_usage_of_events()
             self._backup_files()
 
 
