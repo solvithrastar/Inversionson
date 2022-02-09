@@ -80,8 +80,9 @@ A process which should get your project going:
     ```
 1. Now go back to the folder of the Inversionson project and run:
     ```bash
-    python <Path to inversionson code>/inversionson/create_dummy_info_file.py
+    python -m inversionson.autoinverter
     ```
+    This will just create a file named `inversion_info.toml` in the project root, and exit.
 1. Fill in the relevant fields in the `inversion_info.toml` file properly. The file contains comments to explain the fields but some of them will be further explained here.
     * __inversion_mode__: Can be either "mini-batch" (dynamic mini-batches) or "mono-batch" (full gradients)
     * __meshes__: Can be either "multi-mesh" (wavefield adapted meshes) or "mono-mesh" (same mesh for every simulation, defined by LASIF domain file)
@@ -108,12 +109,11 @@ A process which should get your project going:
     * __HPC.diffusion_equation__: Settings regarding the smoothing computations.
     * __HPC.interpolation__: Settings regarding remote interpolations
 
-1. As the file is configured you should be able to start running Inversionson.
-    * I would recommend running Inversionson with [tmux](https://tmuxcheatsheet.com/) as it keeps your shell running although you loose a connection with your computer or accidentally close your terminal window.
-
-1. Run Inversionson with this command:
+1. Run Inversionson again using
     ```bash
     python -m inversionson.autoinverter
     ```
+    * This time it should already start the actual inversion process.
+    * I would recommend running Inversionson with [tmux](https://tmuxcheatsheet.com/) as it keeps your shell running although you loose a connection with your computer or accidentally close your terminal window.
 
 For any questions feel free to contact soelvi.thrastarson@erdw.ethz.ch
