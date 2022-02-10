@@ -1,17 +1,18 @@
 import os
 import shutil
-
 import emoji
-from inversionson import InversionsonError
 import toml
+
 from colorama import init
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
 from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson import InversionsonError
+from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
 init()
-from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
+
 
 
 def _find_project_comm(info):
@@ -853,7 +854,6 @@ class AutoInverter(object):
         # self.initialize_inversion()
 
         if self.comm.project.AdamOpt:
-
             adam_opt = AdamOptimizer(inversion_root=
                                      self.comm.project.paths["inversion_root"])
 

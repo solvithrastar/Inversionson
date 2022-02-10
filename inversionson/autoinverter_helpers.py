@@ -861,10 +861,7 @@ class ForwardHelper(object):
         int_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
         )
-        j = 0
-        while len(int_job_listener.events_already_retrieved) != len(
-            self.events
-        ):
+        while True:
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(event, verbose)
@@ -886,17 +883,17 @@ class ForwardHelper(object):
                     f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
-            if len(int_job_listener.events_already_retrieved) + len(
-                int_job_listener.events_retrieved_now
-            ) == len(self.events):
-                j = 0
-            int_job_listener.to_repost = []
-            int_job_listener.events_retrieved_now = []
-            if j != 0:
+            if len(int_job_listener.events_already_retrieved) + \
+                    len(int_job_listener.events_retrieved_now) == len(self.events):
+                break
+
+            if not int_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
-            else:
-                j += 1
+
+            int_job_listener.to_repost = []
+            int_job_listener.events_retrieved_now = []
+
         # In case of failure:
         if not self.assert_all_simulations_dispatched():
             self.__dispatch_remaining_forwards(verbose=verbose)
@@ -1006,10 +1003,7 @@ class ForwardHelper(object):
         vint_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
         )
-        j = 0
-        while len(vint_job_listener.events_already_retrieved) != len(
-            self.events
-        ):
+        while True:
             vint_job_listener.monitor_jobs()
             for event in vint_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(event, verbose)
@@ -1033,17 +1027,15 @@ class ForwardHelper(object):
                     f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
-            if len(vint_job_listener.events_already_retrieved) + len(
-                vint_job_listener.events_retrieved_now
-            ) == len(self.events):
-                j = 0
-            vint_job_listener.to_repost = []
-            vint_job_listener.events_retrieved_now = []
-            if j != 0:
+            if len(vint_job_listener.events_already_retrieved) + \
+                    len(vint_job_listener.events_retrieved_now) == len(self.events):
+                break
+
+            if not vint_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
-            else:
-                j += 1
+            vint_job_listener.to_repost = []
+            vint_job_listener.events_retrieved_now = []
 
     def __dispatch_validation_forwards_normal(self, verbose):
         for event in self.comm.project.validation_dataset:
@@ -1201,8 +1193,8 @@ class AdjointHelper(object):
                 comm=self.comm, job_type="gradient_interp", events=events
             )
             mode = self.comm.project.interpolation_mode
-        j = 0
-        while len(adj_job_listener.events_already_retrieved) != len(events):
+
+        while True:
             adj_job_listener.monitor_jobs()
             for event in adj_job_listener.events_retrieved_now:
                 self.__cut_and_clip_gradient(event=event, verbose=verbose)
@@ -1266,17 +1258,16 @@ class AdjointHelper(object):
                 interp_job_listener.events_retrieved_now = []
                 interp_job_listener.to_repost = []
             # Making sure we don't wait if everything is retrieved already
-            if len(adj_job_listener.events_already_retrieved) + len(
-                adj_job_listener.events_retrieved_now
-            ) == len(events):
-                j = 0
-            adj_job_listener.to_repost = []
-            adj_job_listener.events_retrieved_now = []
-            if j != 0:
+            if len(adj_job_listener.events_already_retrieved) + \
+                    len(adj_job_listener.events_retrieved_now) == len(events):
+                break
+
+            if not adj_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
-            else:
-                j += 1
+
+            adj_job_listener.to_repost = []
+            adj_job_listener.events_retrieved_now = []
 
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
         """
@@ -1605,13 +1596,13 @@ class SmoothingHelper(object):
             job_type="gradient_interp",
             events=events,
         )
-        j = 0
         int_job_listener.monitor_jobs()
         for event in int_job_listener.not_submitted:
             self.__dispatch_raw_gradient_interpolation(
                 event=event, verbose=verbose
             )
-        while len(int_job_listener.events_already_retrieved) != len(events):
+
+        while True:
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
                 self.comm.project.change_attribute(
@@ -1642,14 +1633,14 @@ class SmoothingHelper(object):
             if len(int_job_listener.events_retrieved_now) + len(
                 int_job_listener.events_already_retrieved
             ) == len(events):
-                j = 0
-            int_job_listener.to_repost = []
-            int_job_listener.events_retrieved_now = []
-            if j != 0:
+                break
+
+            if not int_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
-            else:
-                j += 1
+
+            int_job_listener.to_repost = []
+            int_job_listener.events_retrieved_now = []
 
     def sum_gradients(self):
         from inversionson.utils import sum_gradients
@@ -1800,11 +1791,11 @@ class SmoothingHelper(object):
                 self.comm.project.AdamOpt:
             events = [events]
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
-        j = 0
         interpolate = False
         if self.comm.project.meshes == "multi-mesh":
             interpolate = True
-        while len(smooth_job_listener.events_already_retrieved) != len(events):
+
+        while True:
             smooth_job_listener.monitor_jobs()
             for event in smooth_job_listener.events_retrieved_now:
                 self.comm.smoother.retrieve_smooth_gradient(event_name=event)
@@ -1839,17 +1830,16 @@ class SmoothingHelper(object):
                     f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
                     "smoothing jobs"
                 )
-            if len(smooth_job_listener.events_already_retrieved) + len(
-                smooth_job_listener.events_retrieved_now
-            ) == len(events):
-                j = 0
-            smooth_job_listener.to_repost = []
-            smooth_job_listener.events_retrieved_now = []
-            if j != 0:
+            if len(smooth_job_listener.events_already_retrieved) + \
+                    len(smooth_job_listener.events_retrieved_now) == len(events):
+                break
+
+            if not smooth_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
-            else:
-                j += 1
+
+            smooth_job_listener.to_repost = []
+            smooth_job_listener.events_retrieved_now = []
 
     def assert_all_simulations_dispatched(self):
         all = True
