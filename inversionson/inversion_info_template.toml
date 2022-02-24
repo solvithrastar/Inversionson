@@ -1,0 +1,69 @@
+inversion_path = "{INVERSION_PATH}"
+lasif_root = "{INVERSION_PATH}/LASIF_PROJECT"
+inversion_id = "MY_INVERSION"
+# Pick between mini-batch and mono-batch
+inversion_mode = "mini-batch"
+# Pick between 'multi-mesh' or 'mono-mesh'
+meshes = "multi-mesh"
+# Either local or remote
+interpolation_mode = "remote"
+inversion_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO",]
+modelling_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "QMU", "ETA",]
+random_event_fraction = 0.5
+min_ctrl_group_size = 2
+max_angular_change = 30.0
+dropout_probability = 0.15
+initial_batch_size = 4
+cut_source_region_from_gradient_in_km = 100.0
+cut_receiver_region_from_gradient_in_km = 0.0
+# Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be cut
+clip_gradient = 1.0
+# You specify the length of the absorbing boundaries in the lasif config
+absorbing_boundaries = true
+
+[Meshing]
+# Only used for multi-mesh. Needs to be higher for more complex models.
+elements_per_azimuthal_quarter = 4
+ellipticity = true
+
+[Smoothing]
+# isotropic or anisotropic. Smoothing is always model dependent but can be either isotropic or anisotropic meaning that different dimensions get smoothed with different wavelengths. Density is always smoothed based on some VP model. If you don't want any smoothing, write 'none'.
+smoothing_mode = "anisotropic"
+# If smoothing_mode is isotropic, only one value is required, if smoothing_mode is anisotropic, three values in a list are used.
+smoothing_lengths = [ 0.5, 1.0, 1.0,]
+timestep = 1e-5
+
+[inversion_monitoring]
+# If you want to check misfit of validation set every few iterations you give a number N here if you want to do a validation check every N iterations. Put 0 if you do not want to perform a validation check.
+iterations_between_validation_checks = 0
+# A validation dataset is used to monitor state of inversion, it is used to tune parameters such as smoothing lengths. It is not used in the inversion in any other way. This parameter is optional. If you keep the above parameter at zero, you can still reserve sources for validation without it happening automatically.
+validation_dataset = []
+# A test dataset is not used at all in the inversion and can only be used at the end of an inversion to test how reliable the inversion actually was. The only thing Inveversionson does with these events is to make sure they are not used in inversion. This parameter is optional.
+test_dataset = []
+
+[Meshing.ocean_loading]
+use = false
+file = ""
+variable = ""
+
+[Meshing.topography]
+use = false
+file = ""
+variable = ""
+
+[HPC.wave_propagation]
+site_name = "daint"
+wall_time = 3600
+ranks = 48
+
+[HPC.diffusion_equation]
+wall_time = 1000
+ranks = 24
+# This directory can not be your home directory, because it needs multiple files and home directories often have file count limits. It is good to have this on a scratch system or similar. For Piz Daint for example, /scratch/snx3000/username/diff_models could be a nice option.
+diff_model_directory = "/scratch/snx3000/username/diff_models"
+
+[HPC.interpolation]
+site_name = "daint"
+model_wall_time = 300
+gradient_wall_time = 900
+remote_mesh_directory = "/path_to_directory_containing_meshes"

@@ -3,6 +3,7 @@ import shutil
 import emoji
 import toml
 
+from pathlib import Path
 from colorama import init
 from colorama import Fore, Style
 from salvus.flow.api import get_site
@@ -873,13 +874,43 @@ class AutoInverter(object):
             task, verbose = self.assign_task_to_function(task, verbose)
 
 
-if __name__ == "__main__":
+def read_info_toml(root):
+    """
+    Read the inversion config file inversion_info.toml into a dictionary.
+
+    If the file does not exist yet, create a new config file and exit.
+
+    :param root: the project root
+    """
+    info_toml = "inversion_info.toml"
+    root = Path(root).resolve() if root else Path.cwd()
+    if not root.is_dir(): raise NotADirectoryError("Specified project root {} is not a directory".format(root))
+    info_toml_path = root / info_toml
+    if not info_toml_path.is_file():
+        script_dir = Path(__file__).parent
+        template_toml = script_dir / "inversion_info_template.toml"
+        with open(template_toml, "r") as fh:
+            toml_string = fh.read()
+        toml_string = toml_string.format(INVERSION_PATH=str(root))
+        with open(info_toml_path, "w") as fh:
+            fh.write(toml_string)
+        print("I created a dummy configuration file " + str(info_toml_path))
+        print("Please edit this file as needed and run me again.")
+        exit()
+    else:
+        print("Using configuration file " + str(info_toml_path))
+    return toml.load(info_toml_path)
+
+def run(root=None):
     print(
         emoji.emojize(
             "\n :flag_for_Iceland: | Welcome to Inversionson | :flag_for_Iceland: \n",
             use_aliases=True,
         )
     )
-    info_toml = "inversion_info.toml"
-    info = toml.load(info_toml)
+    info = read_info_toml(root)
     invert = AutoInverter(info)
+
+if __name__ == "__main__":
+    root = sys.argv[1] if len(sys.argv) > 1 else None
+    run(root)
