@@ -20,9 +20,7 @@ SLEEP_TIME = 30
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(inspect.getfile(inspect.currentframe()))
-        )
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
     "inversionson",
     "remote_scripts",
@@ -30,9 +28,7 @@ CUT_SOURCE_SCRIPT_PATH = os.path.join(
 )
 SUM_GRADIENTS_SCRIPT_PATH = os.path.join(
     os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(inspect.getfile(inspect.currentframe()))
-        )
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
     "inversionson",
     "remote_scripts",
@@ -61,10 +57,9 @@ class RemoteJobListener(object):
         self.to_repost = []
         self.not_submitted = []
         if events is None:
-            if (
-                job_type == "smoothing"
-                and (self.comm.project.inversion_mode == "mono-batch" or
-                     self.comm.project.AdamOpt)
+            if job_type == "smoothing" and (
+                self.comm.project.inversion_mode == "mono-batch"
+                or self.comm.project.AdamOpt
             ):
                 self.events = [None]
             else:
@@ -72,7 +67,7 @@ class RemoteJobListener(object):
         else:
             self.events = events
 
-    def monitor_jobs(self):
+    def monitor_jobs(self, smooth_individual=False):
         """
         Takes the job type of the object and monitors the status of
         all the events in the object.
@@ -97,13 +92,13 @@ class RemoteJobListener(object):
         ]:
             self.__monitor_jobs(job_dict=job_dict)
         elif self.job_type == "smoothing":
-            self.__monitor_job_array(job_dict=job_dict)
+            self.__monitor_job_array(
+                job_dict=job_dict, smooth_individual=smooth_individual
+            )
         else:
             raise InversionsonError(f"Job type {self.job_type} not recognised")
 
-    def __check_status_of_job(
-        self, event: str, reposts: int, verbose: bool = False
-    ):
+    def __check_status_of_job(self, event: str, reposts: int, verbose: bool = False):
         """
         Query Salvus Flow for the status of the job
 
@@ -112,9 +107,7 @@ class RemoteJobListener(object):
         :param reposts: Number of reposts of the event for the job
         :type reposts: int
         """
-        status = self.comm.salvus_flow.get_job_status(
-            event, self.job_type
-        ).name
+        status = self.comm.salvus_flow.get_job_status(event, self.job_type).name
         if status == "pending":
             if verbose:
                 print(f"Status = {status}, event: {event}")
@@ -184,9 +177,7 @@ class RemoteJobListener(object):
                         self.to_repost.append(event)
                         reposts += 1
                         if reposts >= 3:
-                            print(
-                                "No I've actually reposted this too often \n"
-                            )
+                            print("No I've actually reposted this too often \n")
                             print("There must be something wrong.")
                             raise InversionsonError("Too many reposts")
                         if event is None:
@@ -219,9 +210,7 @@ class RemoteJobListener(object):
         if len(params) == len(status):
             return "finished"
 
-    def __monitor_jobs(
-        self, job_dict: Dict, events: List[str] = None, verbose=False
-    ):
+    def __monitor_jobs(self, job_dict: Dict, events: List[str] = None, verbose=False):
         """
         Takes the job type of the object and monitors the status of
         all the events in the object.
@@ -252,16 +241,14 @@ class RemoteJobListener(object):
                     status = "unsubmitted"
                     self.not_submitted.append(event)
                     continue
-                status = self.__check_status_of_job(
-                    event, reposts, verbose=verbose
-                )
+                status = self.__check_status_of_job(event, reposts, verbose=verbose)
             if status == "finished":
                 self.events_retrieved_now.append(event)
                 finished += 1
                 if self.job_type == "gradient_interp":
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["retrieved"]',
-                        new_value=True
+                        new_value=True,
                     )
             elif status == "pending":
                 pending += 1
@@ -277,7 +264,7 @@ class RemoteJobListener(object):
 
         self.comm.project.update_iteration_toml()
 
-    def __monitor_job_array(self, job_dict, events=None):
+    def __monitor_job_array(self, job_dict, events=None, smooth_individual=False):
         """
         Takes the job type of the object and monitors the status of
         all the events in the object.
@@ -292,7 +279,7 @@ class RemoteJobListener(object):
 
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch" or self.comm.project.AdamOpt:
+        if not smooth_individual:
             if job_dict["retrieved"]:
                 self.events_already_retrieved = events
                 finished += 1
@@ -303,9 +290,7 @@ class RemoteJobListener(object):
                     self.events_retrieved_now = events
                     finished += 1
         else:
-            events_left = list(
-                set(events) - set(self.events_already_retrieved)
-            )
+            events_left = list(set(events) - set(self.events_already_retrieved))
             finished = len(self.events) - len(events_left)
             print("Monitoring Smoothing jobs")
             for event in tqdm(events_left):
@@ -466,8 +451,8 @@ class ForwardHelper(object):
             hpc_cluster = get_site(self.comm.project.interpolation_site)
             if hpc_cluster.config["site_type"] == "local":
                 interp_folder = os.path.join(
-                    self.comm.project.remote_diff_model_dir, "..",
-                    "MODELS", event)
+                    self.comm.project.remote_diff_model_dir, "..", "MODELS", event
+                )
             else:
                 username = hpc_cluster.config["ssh_settings"]["username"]
                 interp_folder = os.path.join(
@@ -523,17 +508,11 @@ class ForwardHelper(object):
             return
         if verbose:
             print(Fore.YELLOW + "\n ============================ \n")
-            print(
-                emoji.emojize(
-                    ":rocket: | Run forward simulation", use_aliases=True
-                )
-            )
+            print(emoji.emojize(":rocket: | Run forward simulation", use_aliases=True))
             print(f"Event: {event}")
         receivers = self.comm.salvus_flow.get_receivers(event)
         source = self.comm.salvus_flow.get_source_object(event)
-        w = self.comm.salvus_flow.construct_simulation(
-            event, source, receivers
-        )
+        w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
 
         if (
             self.comm.project.remote_mesh is not None
@@ -571,16 +550,12 @@ class ForwardHelper(object):
         if verbose:
             print(Fore.RED + "\n =========================== \n")
             print(
-                emoji.emojize(
-                    ":trident: | Calculate station weights", use_aliases=True
-                )
+                emoji.emojize(":trident: | Calculate station weights", use_aliases=True)
             )
         self.comm.lasif.calculate_station_weights(event)
 
     def __retrieve_seismograms(self, event: str, verbose=False):
-        self.comm.salvus_flow.retrieve_outputs(
-            event_name=event, sim_type="forward"
-        )
+        self.comm.salvus_flow.retrieve_outputs(event_name=event, sim_type="forward")
         if verbose:
             print(f"Copied seismograms for event {event} to lasif folder")
 
@@ -634,24 +609,21 @@ class ForwardHelper(object):
 
         # If event is in control group, we look for newest window set for event
         if (
-            iteration != "it0000_model" and not self.comm.project.AdamOpt
+            iteration != "it0000_model"
+            and not self.comm.project.AdamOpt
             and event in self.comm.project.old_control_group
         ):
 
             windows = self.comm.lasif.lasif_comm.project.paths["windows"]
             window_sets = glob.glob(os.path.join(windows, "*" + event + "*"))
             latest_windows = max(window_sets, key=os.path.getctime)
-            if not os.path.exists(
-                os.path.join(windows, window_set_name + ".sqlite")
-            ):
+            if not os.path.exists(os.path.join(windows, window_set_name + ".sqlite")):
                 shutil.copy(
                     latest_windows,
                     os.path.join(windows, window_set_name + ".sqlite"),
                 )
         else:
-            self.comm.lasif.select_windows(
-                window_set_name=window_set_name, event=event
-            )
+            self.comm.lasif.select_windows(window_set_name=window_set_name, event=event)
 
     def __need_misfit_quantification(self, iteration, event, window_set):
         """
@@ -669,14 +641,8 @@ class ForwardHelper(object):
         quantify_misfit = True
         if iteration in validation_dict.keys():
             if event in validation_dict[iteration]["events"].keys():
-                if (
-                    window_set
-                    in validation_dict[iteration]["events"][event].keys()
-                ):
-                    if (
-                        validation_dict[iteration]["events"][event][window_set]
-                        != 0.0
-                    ):
+                if window_set in validation_dict[iteration]["events"][event].keys():
+                    if validation_dict[iteration]["events"][event][window_set] != 0.0:
                         quantify_misfit = False
 
         if not quantify_misfit:
@@ -753,16 +719,10 @@ class ForwardHelper(object):
 
         if verbose:
             print(Fore.YELLOW + "\n ============================ \n")
-            print(
-                emoji.emojize(
-                    ":rocket: | Run adjoint simulation", use_aliases=True
-                )
-            )
+            print(emoji.emojize(":rocket: | Run adjoint simulation", use_aliases=True))
             print(f"Event: {event}")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
-        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
-            event, adj_src
-        )
+        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
 
         if (
             self.comm.project.remote_mesh is not None
@@ -823,9 +783,7 @@ class ForwardHelper(object):
         if windows:
             if verbose:
                 print(Fore.WHITE + "\n ===================== \n")
-                print(
-                    emoji.emojize(":foggy: | Select windows", use_aliases=True)
-                )
+                print(emoji.emojize(":foggy: | Select windows", use_aliases=True))
             self.__select_windows(event)
 
         if verbose:
@@ -883,8 +841,9 @@ class ForwardHelper(object):
                     f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
-            if len(int_job_listener.events_already_retrieved) + \
-                    len(int_job_listener.events_retrieved_now) == len(self.events):
+            if len(int_job_listener.events_already_retrieved) + len(
+                int_job_listener.events_retrieved_now
+            ) == len(self.events):
                 break
 
             if not int_job_listener.events_retrieved_now:
@@ -904,9 +863,7 @@ class ForwardHelper(object):
         # Check whether all forwards have been dispatched
         events_left = []
         for event in self.events:
-            submitted, _ = self.__submitted_retrieved(
-                event, sim_type="forward"
-            )
+            submitted, _ = self.__submitted_retrieved(event, sim_type="forward")
             if not submitted:
                 m_submitted, m_retrieved = self.__submitted_retrieved(
                     event, "model_interp"
@@ -927,9 +884,7 @@ class ForwardHelper(object):
         int_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=events_left
         )
-        while len(int_job_listener.events_already_retrieved) != len(
-            events_left
-        ):
+        while len(int_job_listener.events_already_retrieved) != len(events_left):
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(event, verbose)
@@ -995,9 +950,7 @@ class ForwardHelper(object):
         for _i, event in enumerate(self.events):
             if verbose:
                 print(f"Event {_i+1}/{len(self.events)}:  {event}")
-            self.__interpolate_model(
-                event=event, mode="remote", validation=True
-            )
+            self.__interpolate_model(event=event, mode="remote", validation=True)
         print("All interpolations have been dispatched")
 
         vint_job_listener = RemoteJobListener(
@@ -1019,16 +972,15 @@ class ForwardHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
-                self.__interpolate_model(
-                    event=event, mode="remote", validation=True
-                )
+                self.__interpolate_model(event=event, mode="remote", validation=True)
             if len(vint_job_listener.events_retrieved_now) > 0:
                 print(
                     f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
-            if len(vint_job_listener.events_already_retrieved) + \
-                    len(vint_job_listener.events_retrieved_now) == len(self.events):
+            if len(vint_job_listener.events_already_retrieved) + len(
+                vint_job_listener.events_retrieved_now
+            ) == len(self.events):
                 break
 
             if not vint_job_listener.events_retrieved_now:
@@ -1051,9 +1003,7 @@ class ForwardHelper(object):
                     )
                     print(f"{event} interpolation")
 
-                self.__interpolate_model(
-                    event, validation=True, verbose=verbose
-                )
+                self.__interpolate_model(event, validation=True, verbose=verbose)
             self.__run_forward_simulation(event, verbose)
             self.__compute_station_weights(event, verbose)
 
@@ -1100,8 +1050,9 @@ class ForwardHelper(object):
                     f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                     "seismograms"
                 )
-            if len(for_job_listener.events_retrieved_now) + \
-                    len(for_job_listener.events_already_retrieved) == len(events):
+            if len(for_job_listener.events_retrieved_now) + len(
+                for_job_listener.events_already_retrieved
+            ) == len(events):
                 break
 
             if not for_job_listener.events_retrieved_now:
@@ -1129,7 +1080,9 @@ class AdjointHelper(object):
         for event in self.events:
             self.__dispatch_adjoint_simulation(event, verbose=verbose)
 
-    def process_gradients(self, events=None, interpolate=False, verbose=False):
+    def process_gradients(
+        self, events=None, interpolate=False, smooth_individual=False, verbose=False
+    ):
         """
         Wait for adjoint simulations. As soon as one is finished,
         we do the appropriate processing of the gradient.
@@ -1139,7 +1092,10 @@ class AdjointHelper(object):
         if events is None:
             events = self.events
         self.__process_gradients(
-            events=events, interpolate=interpolate, verbose=verbose
+            events=events,
+            interpolate=interpolate,
+            smooth_individual=smooth_individual,
+            verbose=verbose,
         )
 
     def assert_all_simulations_dispatched(self):
@@ -1182,7 +1138,7 @@ class AdjointHelper(object):
         return job_info["submitted"], job_info["retrieved"]
 
     def __process_gradients(
-        self, events: list, interpolate: bool, verbose: bool
+        self, events: list, interpolate: bool, smooth_individual: bool, verbose: bool
     ):
 
         adj_job_listener = RemoteJobListener(
@@ -1212,15 +1168,13 @@ class AdjointHelper(object):
                         # Here we do interpolate as false as the interpolate
                         # refers to remote interpolation in this case.
                         # It is related to where the gradient can be found.
-                        if not self.comm.project.AdamOpt:
+                        if smooth_individual:
                             self.__dispatch_smoothing(
                                 event, interpolate=False, verbose=verbose
                             )
                 else:
-                    if not self.comm.project.AdamOpt:
-                        self.__dispatch_smoothing(
-                            event, interpolate, verbose=verbose
-                        )
+                    if smooth_individual:
+                        self.__dispatch_smoothing(event, interpolate, verbose=verbose)
 
             for event in adj_job_listener.to_repost:
                 self.comm.project.change_attribute(
@@ -1228,9 +1182,7 @@ class AdjointHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
-                self.__dispatch_adjoint_simulation(
-                    event=event, verbose=verbose
-                )
+                self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
                 if len(adj_job_listener.events_retrieved_now) > 0:
                     print(
                         f"Sent {len(adj_job_listener.events_retrieved_now)} "
@@ -1244,10 +1196,8 @@ class AdjointHelper(object):
                         new_value=True,
                     )
                     self.comm.project.update_iteration_toml()
-                    if not self.comm.project.AdamOpt:
-                        self.__dispatch_smoothing(
-                            event, interpolate, verbose=verbose
-                        )
+                    if smooth_individual:
+                        self.__dispatch_smoothing(event, interpolate, verbose=verbose)
                 for event in interp_job_listener.to_repost:
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["submitted"]',
@@ -1258,8 +1208,9 @@ class AdjointHelper(object):
                 interp_job_listener.events_retrieved_now = []
                 interp_job_listener.to_repost = []
             # Making sure we don't wait if everything is retrieved already
-            if len(adj_job_listener.events_already_retrieved) + \
-                    len(adj_job_listener.events_retrieved_now) == len(events):
+            if len(adj_job_listener.events_already_retrieved) + len(
+                adj_job_listener.events_retrieved_now
+            ) == len(events):
                 break
 
             if not adj_job_listener.events_retrieved_now:
@@ -1274,20 +1225,22 @@ class AdjointHelper(object):
         Take the gradient out of the adjoint simulations and
         interpolate them to the inversion grid prior to smoothing.
         """
-        submitted, retrieved = self.__submitted_retrieved(
-            event, "gradient_interp"
-        )
+        submitted, retrieved = self.__submitted_retrieved(event, "gradient_interp")
         if submitted:
             if verbose:
                 print(
-                    f"Interpolation for gradient {event} "
-                    "has already been submitted"
+                    f"Interpolation for gradient {event} " "has already been submitted"
                 )
             return
         hpc_cluster = get_site(self.comm.project.interpolation_site)
         if hpc_cluster.config["site_type"] == "local":
-            interp_folder = os.path.join(self.comm.project.remote_diff_model_dir, "..",
-                                "INTERPOLATION_WEIGHTS", "GRADIENTS", event)
+            interp_folder = os.path.join(
+                self.comm.project.remote_diff_model_dir,
+                "..",
+                "INTERPOLATION_WEIGHTS",
+                "GRADIENTS",
+                event,
+            )
         else:
             username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
@@ -1321,9 +1274,7 @@ class AdjointHelper(object):
         if verbose:
             print(f"Event: {event}")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
-        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
-            event, adj_src
-        )
+        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
 
         if (
             self.comm.project.remote_mesh is not None
@@ -1367,9 +1318,7 @@ class AdjointHelper(object):
                     print(f"Event {event} has not been interpolated")
                 return
         if self.comm.project.inversion_mode == "mono-batch":
-            self.comm.salvus_flow.retrieve_outputs(
-                event_name=event, sim_type="adjoint"
-            )
+            self.comm.salvus_flow.retrieve_outputs(event_name=event, sim_type="adjoint")
             print(f"Gradient for event {event} has been retrieved.")
         else:
             self.comm.smoother.run_remote_smoother(event)
@@ -1384,9 +1333,7 @@ class AdjointHelper(object):
         """
         job = self.comm.salvus_flow.get_job(event, "adjoint")
         output_files = job.get_output_files()
-        gradient_path = output_files[0][
-            ("adjoint", "gradient", "output_filename")
-        ]
+        gradient_path = output_files[0][("adjoint", "gradient", "output_filename")]
         # Connect to daint
         hpc_cluster = get_site(self.comm.project.site_name)
 
@@ -1398,16 +1345,12 @@ class AdjointHelper(object):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
         # copy processing script to hpc
-        remote_script = os.path.join(
-            remote_inversionson_dir, "cut_and_clip.py"
-        )
+        remote_script = os.path.join(remote_inversionson_dir, "cut_and_clip.py")
         if not hpc_cluster.remote_exists(remote_script):
             hpc_cluster.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
 
         if self.comm.project.cut_receiver_radius > 0.0:
-            raise InversionsonError(
-                "Remote receiver cutting not implemented yet."
-            )
+            raise InversionsonError("Remote receiver cutting not implemented yet.")
 
         info = {}
         info["filename"] = str(gradient_path)
@@ -1427,11 +1370,7 @@ class AdjointHelper(object):
         os.remove(toml_filename)
 
         # Call script
-        print(
-            hpc_cluster.run_ssh_command(
-                f"python {remote_script} {remote_toml}"
-            )
-        )
+        print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
 
 
 class SmoothingHelper(object):
@@ -1459,8 +1398,9 @@ class SmoothingHelper(object):
         for event in events:
             if self.comm.project.meshes == "multi-mesh":
                 job = self.comm.salvus_flow.get_job(event, "gradient_interp")
-                gradient_path = os.path.join(str(job.stderr_path.parent),
-                                             "output/mesh.h5")
+                gradient_path = os.path.join(
+                    str(job.stderr_path.parent), "output/mesh.h5"
+                )
 
             else:
                 job = self.comm.salvus_flow.get_job(event, "adjoint")
@@ -1479,15 +1419,13 @@ class SmoothingHelper(object):
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
-        remote_output_path = os.path.join(remote_inversionson_dir,
-                                          "summed_gradient.h5")
-        remote_norms_path = os.path.join(remote_inversionson_dir,
-                                          f"{iteration}_gradient_norms.toml")
+        remote_output_path = os.path.join(remote_inversionson_dir, "summed_gradient.h5")
+        remote_norms_path = os.path.join(
+            remote_inversionson_dir, f"{iteration}_gradient_norms.toml"
+        )
 
         # copy summing script to hpc
-        remote_script = os.path.join(
-            remote_inversionson_dir, "gradient_summing.py"
-        )
+        remote_script = os.path.join(remote_inversionson_dir, "gradient_summing.py")
         if not hpc_cluster.remote_exists(remote_script):
             hpc_cluster.remote_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
 
@@ -1499,7 +1437,7 @@ class SmoothingHelper(object):
         info["gradient_norms_path"] = remote_norms_path
 
         if self.comm.project.AdamOpt:
-            info["batch_average"] = True # compute sample average
+            info["batch_average"] = True  # compute sample average
 
         toml_filename = f"gradient_sum.toml"
         with open(toml_filename, "w") as fh:
@@ -1511,13 +1449,10 @@ class SmoothingHelper(object):
         os.remove(toml_filename)
 
         # Call script
-        print(
-            hpc_cluster.run_ssh_command(
-                f"python {remote_script} {remote_toml}"
-            )
+        print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
+        doc_path = os.path.join(
+            self.comm.project.paths["inversion_root"], "DOCUMENTATION"
         )
-        doc_path = os.path.join(self.comm.project.paths["inversion_root"],
-                                "DOCUMENTATION")
         norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
 
         store_norms = True
@@ -1542,18 +1477,19 @@ class SmoothingHelper(object):
         gradient = os.path.join(
             gradients,
             f"ITERATION_{iteration}",
-            "summed_gradient.h5",)
+            "summed_gradient.h5",
+        )
         hpc_cluster.remote_get(remote_output_path, gradient)
 
         # Only sum the raw gradient in AdamOpt, not the update
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
             if "VPV" in adam_opt.parameters:
                 sum_two_parameters_h5(gradient, ["VPV", "VPH"])
 
-
-    def dispatch_smoothing_simulations(self, verbose=False):
+    def dispatch_smoothing_simulations(self, smooth_individual=False, verbose=False):
         """
         Dispatch smoothing simulations. If interpolations needed, they
         are done first.
@@ -1561,30 +1497,19 @@ class SmoothingHelper(object):
         :param verbose: Print information, defaults to False
         :type verbose: bool, optional
         """
-        if self.comm.project.inversion_mode == "mini-batch" and not self.comm.project.AdamOpt:
-            if (
-                self.comm.project.interpolation_mode == "remote"
-                and self.comm.project.meshes == "multi-mesh"
-            ):
-                interpolate = True
-                self.__put_standard_gradient_to_cluster()
-            else:
-                interpolate = False
+        interpolate = False
+        if self.comm.project.meshes == "multi-mesh":
+            interpolate = True
+            self.__put_standard_gradient_to_cluster()
+        if smooth_individual:
             for event in self.events:
                 self.__dispatch_smoothing_simulation(
-                    event, interpolate=interpolate, verbose=verbose
+                    event=event, interpolate=interpolate, verbose=verbose
                 )
         else:
-            if (
-                self.comm.project.interpolation_mode == "remote"
-                and self.comm.project.meshes == "multi-mesh"
-            ):
-                self.__put_standard_gradient_to_cluster()
-            # if adam Opt is used, we don't need to smooth the gradients, but we still need to interpolate.
-            # so we still need this standard gradient to be there:
             self.__dispatch_smoothing_simulation(event=None, verbose=verbose)
 
-    def monitor_interpolations(self, smooth_all=True, verbose=False):
+    def monitor_interpolations(self, smooth_individual=False, verbose=False):
         """
         Monitor the status of the interpolations, as soon as one is done,
         the smoothing simulation is dispatched
@@ -1598,9 +1523,7 @@ class SmoothingHelper(object):
         )
         int_job_listener.monitor_jobs()
         for event in int_job_listener.not_submitted:
-            self.__dispatch_raw_gradient_interpolation(
-                event=event, verbose=verbose
-            )
+            self.__dispatch_raw_gradient_interpolation(event=event, verbose=verbose)
 
         while True:
             int_job_listener.monitor_jobs()
@@ -1610,7 +1533,7 @@ class SmoothingHelper(object):
                     new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
-                if smooth_all:
+                if smooth_individual:
                     self.__dispatch_smoothing_simulation(
                         event=event,
                         verbose=verbose,
@@ -1623,9 +1546,7 @@ class SmoothingHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
-                self.__dispatch_raw_gradient_interpolation(
-                    event=event, verbose=verbose
-                )
+                self.__dispatch_raw_gradient_interpolation(event=event, verbose=verbose)
             print(
                 f"Dispatched {len(int_job_listener.events_retrieved_now)} "
                 "Smoothing jobs"
@@ -1650,7 +1571,10 @@ class SmoothingHelper(object):
         else:
             events = self.events
 
-        if self.comm.project.inversion_mode == "mono-batch" or self.comm.project.AdamOpt:
+        if (
+            self.comm.project.inversion_mode == "mono-batch"
+            or self.comm.project.AdamOpt
+        ):
             self.__remote_summing(events)
             return
 
@@ -1681,7 +1605,10 @@ class SmoothingHelper(object):
     def __submitted_retrieved(self, event: str, sim_type="smoothing"):
 
         if sim_type == "smoothing":
-            if self.comm.project.inversion_mode == "mini-batch" and not self.comm.project.AdamOpt:
+            if (
+                self.comm.project.inversion_mode == "mini-batch"
+                and not self.comm.project.AdamOpt
+            ):
                 job_info = self.comm.project.smoothing_job[event]
             else:
                 job_info = self.comm.project.smoothing_job
@@ -1704,16 +1631,8 @@ class SmoothingHelper(object):
             if verbose:
                 print(f"Event {event} has been {sub_ret}. Moving on.")
             return
-        if event is None: # mono-batch case, no events
-            if self.comm.project.AdamOpt:
-                self.comm.smoother.run_remote_smoother(event=None)
-            else:
-                config = self.comm.smoother.generate_smoothing_config()
-                self.comm.smoother.run_smoother(
-                    config,
-                    event=None,
-                    iteration=self.comm.project.current_iteration,
-                )
+        if event is None:
+            self.comm.smoother.run_remote_smoother(event=event)
             return
         if not interpolate:
             if verbose:
@@ -1728,8 +1647,12 @@ class SmoothingHelper(object):
                 hpc_cluster = get_site(self.comm.project.interpolation_site)
                 if hpc_cluster.config["site_type"] == "local":
                     interp_folder = os.path.join(
-                        self.comm.project.remote_diff_model_dir, "..",
-                        "INTERPOLATION_WEIGHTS", "GRADIENTS", event)
+                        self.comm.project.remote_diff_model_dir,
+                        "..",
+                        "INTERPOLATION_WEIGHTS",
+                        "GRADIENTS",
+                        event,
+                    )
                 else:
                     username = hpc_cluster.config["ssh_settings"]["username"]
                     interp_folder = os.path.join(
@@ -1748,15 +1671,12 @@ class SmoothingHelper(object):
                 )
             else:
                 if retrieved:
-                    print(
-                        f"I'm running the remote smoother now for event {event}"
-                    )
+                    print(f"I'm running the remote smoother now for event {event}")
                     self.comm.smoother.run_remote_smoother(event)
                 else:
                     if verbose:
                         print(
-                            f"Event {event} is being interpolated,"
-                            " can't smooth yet"
+                            f"Event {event} is being interpolated," " can't smooth yet"
                         )
 
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
@@ -1767,8 +1687,12 @@ class SmoothingHelper(object):
         hpc_cluster = get_site(self.comm.project.interpolation_site)
         if hpc_cluster.config["site_type"] == "local":
             interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir, "..",
-                "INTERPOLATION_WEIGHTS", "GRADIENTS", event)
+                self.comm.project.remote_diff_model_dir,
+                "..",
+                "INTERPOLATION_WEIGHTS",
+                "GRADIENTS",
+                event,
+            )
         else:
             username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
@@ -1784,11 +1708,12 @@ class SmoothingHelper(object):
             event, smooth=False, interp_folder=interp_folder
         )
 
-    def retrieve_smooth_gradients(self, events=None, verbose=False):
+    def retrieve_smooth_gradients(
+        self, events=None, smooth_individual=False, verbose=False
+    ):
         if events is None:
             events = self.events
-        if self.comm.project.inversion_mode == "mono-batch" or \
-                self.comm.project.AdamOpt:
+        if not smooth_individual:
             events = [events]
         smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
         interpolate = False
@@ -1799,8 +1724,7 @@ class SmoothingHelper(object):
             smooth_job_listener.monitor_jobs()
             for event in smooth_job_listener.events_retrieved_now:
                 self.comm.smoother.retrieve_smooth_gradient(event_name=event)
-                if self.comm.project.inversion_mode == "mono-batch" or \
-                        self.comm.project.AdamOpt:
+                if not smooth_individual:
                     attribute = 'smoothing_job["retrieved"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["retrieved"]'
@@ -1810,8 +1734,10 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
             for event in smooth_job_listener.to_repost:
-                if self.comm.project.inversion_mode == "mono-batch" or \
-                        self.comm.project.AdamOpt:
+                if (
+                    self.comm.project.inversion_mode == "mono-batch"
+                    or self.comm.project.AdamOpt
+                ):
                     attribute = 'smoothing_job["submitted"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["submitted"]'
@@ -1830,8 +1756,9 @@ class SmoothingHelper(object):
                     f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
                     "smoothing jobs"
                 )
-            if len(smooth_job_listener.events_already_retrieved) + \
-                    len(smooth_job_listener.events_retrieved_now) == len(events):
+            if len(smooth_job_listener.events_already_retrieved) + len(
+                smooth_job_listener.events_retrieved_now
+            ) == len(events):
                 break
 
             if not smooth_job_listener.events_retrieved_now:
@@ -1841,10 +1768,9 @@ class SmoothingHelper(object):
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []
 
-    def assert_all_simulations_dispatched(self):
+    def assert_all_simulations_dispatched(self, smooth_individual=False):
         all = True
-        if self.comm.project.inversion_mode == "mono-batch" or \
-                self.comm.project.AdamOpt:
+        if not smooth_individual:
             submitted, _ = self.__submitted_retrieved(None)
             if submitted:
                 return True
@@ -1857,10 +1783,9 @@ class SmoothingHelper(object):
                 break
         return all
 
-    def assert_all_simulations_retrieved(self):
+    def assert_all_simulations_retrieved(self, smooth_individual=False):
         all = True
-        if self.comm.project.inversion_mode == "mono-batch" or \
-                self.comm.project.AdamOpt:
+        if not smooth_individual:
             _, retrieved = self.__submitted_retrieved(None)
             if retrieved:
                 return True

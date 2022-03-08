@@ -156,15 +156,10 @@ class LasifComponent(Component):
                 else:
                     if validation:
                         mesh = (
-                            remote_mesh_dir
-                            / "average_models"
-                            / iteration
-                            / "mesh.h5"
+                            remote_mesh_dir / "average_models" / iteration / "mesh.h5"
                         )
                     else:
-                        mesh = (
-                            remote_mesh_dir / "models" / iteration / "mesh.h5"
-                        )
+                        mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
 
         if check_if_exists:
             if not hpc_cluster.remote_exists(mesh):
@@ -172,9 +167,7 @@ class LasifComponent(Component):
                     self._move_mesh_to_cluster(
                         event=None, gradient=gradient, hpc_cluster=hpc_cluster
                     )
-                raise InversionsonError(
-                    "Mesh for event {event} does not exist"
-                )
+                raise InversionsonError("Mesh for event {event} does not exist")
         return mesh
 
     def has_mesh(self, event: str, hpc_cluster=None) -> bool:
@@ -212,14 +205,10 @@ class LasifComponent(Component):
             return mesh
         has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
         if not has:
-            raise InversionsonError(
-                f"Mesh for event: {event} can not be found."
-            )
+            raise InversionsonError(f"Mesh for event: {event} can not be found.")
         return pathlib.Path(mesh)
 
-    def _move_mesh_to_cluster(
-        self, event: str, gradient=False, hpc_cluster=None
-    ):
+    def _move_mesh_to_cluster(self, event: str, gradient=False, hpc_cluster=None):
         """
         Move the mesh to the cluster for interpolation
 
@@ -274,9 +263,14 @@ class LasifComponent(Component):
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=self.comm.project.paths["inversion_root"])
-            iteration = adam_opt.get_iteration_name()
-            local_model = adam_opt.get_model_path()
+            adam_opt = AdamOptimizer(
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
+            iteration = adam_opt.get_iteration_name(validation=validation)
+            if validation:
+                local_model = self.comm.multi_mesh.find_model_file(iteration)
+            else:
+                local_model = adam_opt.get_model_path()
         else:
             iteration = self.comm.project.current_iteration
             local_model = self.comm.multi_mesh.find_model_file(iteration)
@@ -300,9 +294,7 @@ class LasifComponent(Component):
                 hpc_cluster.remote_mkdir(path_to_mesh.parent)
             hpc_cluster.remote_put(local_model, path_to_mesh)
 
-    def move_gradient_to_cluster(
-        self, hpc_cluster=None, overwrite: bool = False
-    ):
+    def move_gradient_to_cluster(self, hpc_cluster=None, overwrite: bool = False):
         """
         Empty gradient moved to a dedicated directory on cluster
 
@@ -325,9 +317,7 @@ class LasifComponent(Component):
             print("Empty gradient already on cluster")
             return
 
-        local_grad = (
-            self.lasif_comm.project.paths["models"] / "GRADIENT" / "mesh.h5"
-        )
+        local_grad = self.lasif_comm.project.paths["models"] / "GRADIENT" / "mesh.h5"
         if not os.path.exists(local_grad.parent):
             os.makedirs(local_grad.parent)
         inversion_grid = self.get_master_model()
@@ -338,9 +328,7 @@ class LasifComponent(Component):
             hpc_cluster.remote_mkdir(path_to_mesh.parent)
         hpc_cluster.remote_put(local_grad, path_to_mesh)
 
-    def move_mesh(
-        self, event: str, iteration: str, hpc_cluster=None, validation=False
-    ):
+    def move_mesh(self, event: str, iteration: str, hpc_cluster=None, validation=False):
         """
         Move mesh to simulation mesh path, where model will be added to it
 
@@ -355,16 +343,14 @@ class LasifComponent(Component):
         if self.comm.project.meshes == "mono-mesh":
             if self.comm.project.AdamOpt:
                 adam_opt = AdamOptimizer(
-                    inversion_root=self.comm.project.paths["inversion_root"])
+                    inversion_root=self.comm.project.paths["inversion_root"]
+                )
                 model = adam_opt.get_model_path()
                 # copy to lasif project and also move to cluster
-                simulation_mesh = self.comm.lasif.get_simulation_mesh(
-                    event_name=None
-                )
+                simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=None)
                 shutil.copy(model, simulation_mesh)
                 self._move_model_to_cluster(
-                    hpc_cluster=hpc_cluster, overwrite=False,
-                    validation=validation
+                    hpc_cluster=hpc_cluster, overwrite=False, validation=validation
                 )
             else:
                 self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
@@ -381,9 +367,7 @@ class LasifComponent(Component):
                     validation=validation,
                 )
             else:
-                self._move_mesh_to_cluster(
-                    event=event, hpc_cluster=hpc_cluster
-                )
+                self._move_mesh_to_cluster(event=event, hpc_cluster=hpc_cluster)
             return
 
         has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
@@ -424,9 +408,7 @@ class LasifComponent(Component):
         iterations = lapi.list_iterations(self.lasif_comm, output=True)
         if isinstance(iterations, list):
             if name in iterations:
-                warnings.warn(
-                    f"Iteration {name} already exists", InversionsonWarning
-                )
+                warnings.warn(f"Iteration {name} already exists", InversionsonWarning)
         event_specific = False
         if self.comm.project.meshes == "multi-mesh":
             event_specific = True
@@ -449,10 +431,7 @@ class LasifComponent(Component):
         """
         # If this is the first time ever that a batch is selected
         valid_data = list(
-            set(
-                self.comm.project.validation_dataset
-                + self.comm.project.test_dataset
-            )
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
         )
         events = self.list_events()
         if first:
@@ -483,9 +462,7 @@ class LasifComponent(Component):
         if use_these is not None:
             count -= len(use_these)
             batch = list(set(use_these + existing))
-            avail_events = list(
-                set(events) - set(blocked_events) - set(use_these)
-            )
+            avail_events = list(set(events) - set(blocked_events) - set(use_these))
             existing = list(set(existing + use_these))
             avail_events = list(set(avail_events) - set(existing))
         else:
@@ -503,9 +480,7 @@ class LasifComponent(Component):
                 batch = list(batch + rand_batch)
                 existing = batch
                 count -= len(rand_batch)
-            avail_events = list(
-                set(events) - set(blocked_events) - set(existing)
-            )
+            avail_events = list(set(events) - set(blocked_events) - set(existing))
         # TODO: existing events should only be the control group.
         # events should exclude the blocked events because that's what
         # are the options to choose from. The existing go into the poisson disc
@@ -542,9 +517,7 @@ class LasifComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        long_iter = self.lasif_comm.iterations.get_long_iteration_name(
-            iteration
-        )
+        long_iter = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         stfs = pathlib.Path(self.lasif_comm.project.paths["salvus_files"])
         stf = str(stfs / long_iter / "stf.h5")
         return stf
@@ -581,8 +554,10 @@ class LasifComponent(Component):
         :rtype: str
         """
         gradients = self.lasif_comm.project.paths["gradients"]
-        if self.comm.project.inversion_mode == "mini-batch" and not \
-                self.comm.project.AdamOpt:
+        if (
+            self.comm.project.inversion_mode == "mini-batch"
+            and not self.comm.project.AdamOpt
+        ):
             if smooth:
                 gradient = os.path.join(
                     gradients,
@@ -601,8 +576,10 @@ class LasifComponent(Component):
                         event,
                         "smooth_grad_master.h5",
                     )
-        elif self.comm.project.inversion_mode == "mono-batch" or \
-                self.comm.project.AdamOpt:
+        elif (
+            self.comm.project.inversion_mode == "mono-batch"
+            or self.comm.project.AdamOpt
+        ):
             if summed:
                 if smooth:
                     gradient = os.path.join(
@@ -624,14 +601,15 @@ class LasifComponent(Component):
                     "gradient.h5",
                 )
 
-        if not smooth and self.comm.project.inversion_mode == "mini-batch" \
-                and not self.comm.project.AdamOpt:
+        if (
+            not smooth
+            and self.comm.project.inversion_mode == "mini-batch"
+            and not self.comm.project.AdamOpt
+        ):
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)
             ):
-                os.makedirs(
-                    os.path.join(gradients, f"ITERATION_{iteration}", event)
-                )
+                os.makedirs(os.path.join(gradients, f"ITERATION_{iteration}", event))
 
             gradient = os.path.join(
                 gradients, f"ITERATION_{iteration}", event, "gradient.h5"
@@ -666,9 +644,7 @@ class LasifComponent(Component):
         )
         return filename
 
-    def plot_event_misfits(
-        self, event: str, iteration: str = "current"
-    ) -> str:
+    def plot_event_misfits(self, event: str, iteration: str = "current") -> str:
         """
         Make a plot where stations are color coded by their respective misfits
 
@@ -728,9 +704,7 @@ class LasifComponent(Component):
         :rtype: str
         """
         # We assume the lasif domain is the inversion grid
-        path = self.lasif_comm.project.lasif_config["domain_settings"][
-            "domain_file"
-        ]
+        path = self.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
 
         return path
 
@@ -793,23 +767,21 @@ class LasifComponent(Component):
             # ]
             if "validation" in iteration and "it0000" and "00000" not in iteration:
                 if self.comm.project.AdamOpt:
-                    adam_opt = AdamOptimizer(inversion_root=
-                                             self.comm.project.paths[
-                                                 "inversion_root"])
+                    adam_opt = AdamOptimizer(
+                        inversion_root=self.comm.project.paths["inversion_root"]
+                    )
                     new_it_num = adam_opt.get_iteration_number()
                 else:
-                    new_it_num = (
-                        self.comm.salvus_opt.get_number_of_newest_iteration()
-                    )
-                old_it_num = (
-                    new_it_num - self.comm.project.when_to_validate + 1
-                )
+                    new_it_num = self.comm.salvus_opt.get_number_of_newest_iteration()
+                old_it_num = new_it_num - self.comm.project.when_to_validate + 1
                 return os.path.join(
                     self.comm.salvus_mesher.average_meshes,
                     f"it_{old_it_num}_to_{new_it_num}",
                     "mesh.h5",
                 )
-            elif "validation" in iteration and ("it0000" in iteration or "00000" in iteration):
+            elif "validation" in iteration and (
+                "it0000" in iteration or "00000" in iteration
+            ):
                 iteration = iteration[11:]
             return os.path.join(
                 self.comm.project.lasif_root,
@@ -832,9 +804,7 @@ class LasifComponent(Component):
             print(f"Weight set already exists for event {event}")
             return
 
-        lapi.compute_station_weights(
-            self.lasif_comm, weight_set=event, events=[event]
-        )
+        lapi.compute_station_weights(self.lasif_comm, weight_set=event, events=[event])
 
     def misfit_quantification(
         self, event: str, mpi=False, n=4, validation=False, window_set=None
@@ -1002,9 +972,7 @@ class LasifComponent(Component):
             + str(int(high_period))
             + "s.h5"
         )
-        processed_data_folder = self.lasif_comm.project.paths[
-            "preproc_eq_data"
-        ]
+        processed_data_folder = self.lasif_comm.project.paths["preproc_eq_data"]
 
         return os.path.exists(
             os.path.join(processed_data_folder, event, processed_filename)

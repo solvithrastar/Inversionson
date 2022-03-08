@@ -15,7 +15,6 @@ from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 init()
 
 
-
 def _find_project_comm(info):
     """
     Get Inversionson communicator.
@@ -63,9 +62,7 @@ class AutoInverter(object):
         to_whatsapp = f"whatsapp:{os.environ['MY_NUMBER']}"
         iteration = self.comm.project.current_iteration
         string = f"Your Inversionson code is DONE_WITH_{iteration}"
-        client.messages.create(
-            body=string, from_=from_whatsapp, to=to_whatsapp
-        )
+        client.messages.create(body=string, from_=from_whatsapp, to=to_whatsapp)
 
     def prepare_iteration(self, first=False, validation=False):
         """
@@ -79,7 +76,8 @@ class AutoInverter(object):
         """
         if self.comm.project.AdamOpt:
             adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"])
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
             it_name = adam_opt.get_iteration_name()
         else:
             it_name = self.comm.salvus_opt.get_newest_iteration_name()
@@ -119,9 +117,7 @@ class AutoInverter(object):
                             self.comm.salvus_mesher.create_mesh(
                                 event=event,
                             )
-                            self.comm.salvus_mesher.add_region_of_interest(
-                                event=event
-                            )
+                            self.comm.salvus_mesher.add_region_of_interest(event=event)
                             self.comm.lasif.move_mesh(event, it_name)
                         else:
                             self.comm.lasif.move_mesh(event, it_name)
@@ -143,14 +139,14 @@ class AutoInverter(object):
                     n_events = self.comm.project.initial_batch_size
                     # choose random events
                     doc_path = os.path.join(
-                        self.comm.project.paths["inversion_root"],
-                        "DOCUMENTATION")
-                    all_norms_path = os.path.join(doc_path,
-                                                  "all_norms.toml")
+                        self.comm.project.paths["inversion_root"], "DOCUMENTATION"
+                    )
+                    all_norms_path = os.path.join(doc_path, "all_norms.toml")
                     if os.path.exists(all_norms_path):
                         norm_dict = toml.load(all_norms_path)
                         unused_events = list(
-                            set(all_events).difference(set(norm_dict.keys())))
+                            set(all_events).difference(set(norm_dict.keys()))
+                        )
                         max_norm = max(norm_dict.values())
 
                         # Assign high norm values to unused events, to give them
@@ -158,12 +154,12 @@ class AutoInverter(object):
                         for event in unused_events:
                             norm_dict[event] = max_norm
                         events = get_random_mitchell_subset(
-                            self.comm.lasif.lasif_comm, n_events,
-                            all_events, norm_dict)
+                            self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
+                        )
                     else:
                         events = get_random_mitchell_subset(
-                            self.comm.lasif.lasif_comm, n_events,
-                            all_events)
+                            self.comm.lasif.lasif_comm, n_events, all_events
+                        )
                 else:
                     events = self.comm.lasif.get_minibatch(first)
             else:
@@ -171,9 +167,7 @@ class AutoInverter(object):
         elif validation:
             events = self.comm.project.validation_dataset
         else:
-            prev_try = self.comm.salvus_opt.get_previous_iteration_name(
-                tr_region=True
-            )
+            prev_try = self.comm.salvus_opt.get_previous_iteration_name(tr_region=True)
             events = self.comm.lasif.list_events(iteration=prev_try)
         self.comm.project.change_attribute("current_iteration", it_name)
         self.comm.lasif.set_up_iteration(it_name, events)
@@ -189,22 +183,19 @@ class AutoInverter(object):
                 event=None, iteration=it_name, hpc_cluster=interp_site
             )
             for event in events:
-                if not self.comm.lasif.has_mesh(
-                        event, hpc_cluster=interp_site
-                ):
+                if not self.comm.lasif.has_mesh(event, hpc_cluster=interp_site):
                     self.comm.salvus_mesher.create_mesh(event=event)
-                    self.comm.lasif.move_mesh(
-                        event, it_name, hpc_cluster=interp_site
-                    )
+                    self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
                 else:
-                    self.comm.lasif.move_mesh(
-                        event, it_name, hpc_cluster=interp_site
-                    )
+                    self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
         elif self.comm.project.meshes == "mono-mesh" and move_meshes:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
-        if not validation and not self.comm.project.AdamOpt and \
-                self.comm.project.inversion_mode == "mini-batch":
+        if (
+            not validation
+            and not self.comm.project.AdamOpt
+            and self.comm.project.inversion_mode == "mini-batch"
+        ):
             self.comm.project.update_control_group_toml(first=first)
         # self.comm.project.create_iteration_toml(it_name)
         # self.comm.project.get_iteration_attributes(validation)
@@ -215,16 +206,17 @@ class AutoInverter(object):
         """
         run_function = False
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
             iteration_number = adam_opt.get_iteration_number()
-            if iteration_number == 0 or \
-                    (iteration_number + 1) % self.comm.project.when_to_validate == 0:
+            if (
+                iteration_number == 0
+                or (iteration_number + 1) % self.comm.project.when_to_validate == 0
+            ):
                 run_function = True
         else:
-            iteration_number = (
-                self.comm.salvus_opt.get_number_of_newest_iteration()
-            )
+            iteration_number = self.comm.salvus_opt.get_number_of_newest_iteration()
 
         # We execute the validation check if iteration is either:
         # a) The initial iteration or
@@ -251,13 +243,12 @@ class AutoInverter(object):
             print("Not time for a validation")
             return
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
             iteration_number = adam_opt.get_iteration_number()
         else:
-            iteration_number = (
-                self.comm.salvus_opt.get_number_of_newest_iteration()
-            )
+            iteration_number = self.comm.salvus_opt.get_number_of_newest_iteration()
         print(Fore.GREEN + "\n ================== \n")
         print(
             emoji.emojize(
@@ -275,22 +266,16 @@ class AutoInverter(object):
         # I need something to monitor them.
         # There are definitely complications there
         print(Fore.YELLOW + "\n ============================ \n")
-        print(
-            emoji.emojize(
-                ":rocket: | Run forward simulations", use_aliases=True
-            )
-        )
+        print(emoji.emojize(":rocket: | Run forward simulations", use_aliases=True))
         if (
-                self.comm.project.when_to_validate > 0
-                and "it0000_model" not in self.comm.project.current_iteration
-                and "00000" not in self.comm.project.current_iteration
+            self.comm.project.when_to_validate > 0
+            and "it0000_model" not in self.comm.project.current_iteration
+            and "00000" not in self.comm.project.current_iteration
         ):
             # Find iteration range
             to_it = iteration_number
             from_it = iteration_number - self.comm.project.when_to_validate + 1
-            self.comm.salvus_mesher.get_average_model(
-                iteration_range=(from_it, to_it)
-            )
+            self.comm.salvus_mesher.get_average_model(iteration_range=(from_it, to_it))
             self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
             if self.comm.project.interpolation_mode == "remote":
                 self.comm.lasif.move_mesh(
@@ -336,9 +321,7 @@ class AutoInverter(object):
 
         self.prepare_iteration(first=True)
 
-        print(
-            emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True)
-        )
+        print(emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True))
 
         print(f"Current Iteration: {self.comm.project.current_iteration}")
 
@@ -381,12 +364,8 @@ class AutoInverter(object):
             smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             if self.comm.project.meshes == "multi-mesh":
                 if self.comm.project.interpolation_mode == "remote":
-                    smoothing_helper.monitor_interpolations(
-                        verbose=True
-                    )
-                    smoothing_helper.dispatch_smoothing_simulations(
-                        verbose=True
-                    )
+                    smoothing_helper.monitor_interpolations(verbose=True)
+                    smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:
@@ -450,9 +429,7 @@ class AutoInverter(object):
 
         self.prepare_iteration(first=True)
 
-        print(
-            emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True)
-        )
+        print(emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True))
 
         print(f"Current Iteration: {self.comm.project.current_iteration}")
 
@@ -496,18 +473,22 @@ class AutoInverter(object):
         gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
         iteration = self.comm.project.current_iteration
         gradient = os.path.join(
-            gradients,
-            f"ITERATION_{iteration}",
-            "summed_gradient.h5")
+            gradients, f"ITERATION_{iteration}", "summed_gradient.h5"
+        )
 
-        smoothing_helper = helpers.SmoothingHelper(self.comm, events=self.comm.project.events_in_iteration)
+        smoothing_helper = helpers.SmoothingHelper(
+            self.comm, events=self.comm.project.events_in_iteration
+        )
         if not os.path.exists(gradient):
             if self.comm.project.meshes == "multi-mesh":
-                smoothing_helper.monitor_interpolations(verbose=True, smooth_all=False)
+                smoothing_helper.monitor_interpolations(
+                    verbose=True, smooth_individual=False
+                )
             smoothing_helper.sum_gradients()
 
-        adam_opt = AdamOptimizer(inversion_root=
-                                 self.comm.project.paths["inversion_root"])
+        adam_opt = AdamOptimizer(
+            inversion_root=self.comm.project.paths["inversion_root"]
+        )
         adam_grad = adam_opt.get_gradient_path()
         shutil.copy(gradient, adam_grad)
         adam_opt.set_gradient_task_to_finished()
@@ -544,8 +525,9 @@ class AutoInverter(object):
         self.comm.project.update_iteration_toml()
         self.comm.storyteller.document_task(task)
         # Here we mainly call this to
-        task, verbose = self.finalize_iteration(task="finalize_iteration",
-                                                verbose=verbose)
+        task, verbose = self.finalize_iteration(
+            task="finalize_iteration", verbose=verbose
+        )
 
         print(Fore.RED + "\n =================== \n")
         print(
@@ -571,9 +553,7 @@ class AutoInverter(object):
         print("Will prepare iteration")
         self.prepare_iteration()
 
-        print(
-            emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True)
-        )
+        print(emoji.emojize("Iteration prepared | :thumbsup:", use_aliases=True))
 
         print(Fore.RED + "\n =================== \n")
         print(f"Current Iteration: {self.comm.project.current_iteration}")
@@ -582,8 +562,8 @@ class AutoInverter(object):
         adjoint = True
 
         if (
-                "compute misfit for" in verbose
-                and self.comm.project.inversion_mode == "mini-batch"
+            "compute misfit for" in verbose
+            and self.comm.project.inversion_mode == "mini-batch"
         ):
             events_to_use = self.comm.project.old_control_group
             adjoint = False
@@ -599,9 +579,7 @@ class AutoInverter(object):
         forward_helper = helpers.ForwardHelper(self.comm, events_to_use)
         forward_helper.dispatch_forward_simulations(verbose=True)
         assert forward_helper.assert_all_simulations_dispatched()
-        forward_helper.retrieve_forward_simulations(
-            adjoint=adjoint, verbose=True
-        )
+        forward_helper.retrieve_forward_simulations(adjoint=adjoint, verbose=True)
 
         print(Fore.BLUE + "\n ========================= \n")
         print(
@@ -672,12 +650,8 @@ class AutoInverter(object):
             smoothing_helper.dispatch_smoothing_simulations()
             if self.comm.project.meshes == "multi-mesh":
                 if self.comm.project.interpolation_mode == "remote":
-                    smoothing_helper.monitor_interpolations(
-                        verbose=True
-                    )
-                    smoothing_helper.dispatch_smoothing_simulations(
-                        verbose=True
-                    )
+                    smoothing_helper.monitor_interpolations(verbose=True)
+                    smoothing_helper.dispatch_smoothing_simulations(verbose=True)
             assert smoothing_helper.assert_all_simulations_dispatched()
             smoothing_helper.retrieve_smooth_gradients()
         else:
@@ -773,7 +747,8 @@ class AutoInverter(object):
         print(f"Current Task: {task}")
         if self.comm.project.AdamOpt:
             adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"])
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
             # adam already went for the next iter, so query the previous one.
             iteration = adam_opt.get_iteration_name()
         else:
@@ -787,12 +762,8 @@ class AutoInverter(object):
 
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
-        self.comm.salvus_flow.delete_stored_wavefields(
-            iteration, "model_interp"
-        )
-        self.comm.salvus_flow.delete_stored_wavefields(
-            iteration, "gradient_interp"
-        )
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "model_interp")
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "gradient_interp")
         try:
             self._send_whatsapp_announcement()
         except:
@@ -855,13 +826,13 @@ class AutoInverter(object):
         # self.initialize_inversion()
 
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.paths["inversion_root"])
+            adam_opt = AdamOptimizer(
+                inversion_root=self.comm.project.paths["inversion_root"]
+            )
 
             adam_config = toml.load(adam_opt.config_file)
             if adam_config["initial_model"] == "":
-                raise Exception("Set adam config file and provide initial"
-                                " model.")
+                raise Exception("Set adam config file and provide initial" " model.")
 
             task = adam_opt.get_inversionson_task()
             self.task = task
@@ -884,7 +855,10 @@ def read_info_toml(root):
     """
     info_toml = "inversion_info.toml"
     root = Path(root).resolve() if root else Path.cwd()
-    if not root.is_dir(): raise NotADirectoryError("Specified project root {} is not a directory".format(root))
+    if not root.is_dir():
+        raise NotADirectoryError(
+            "Specified project root {} is not a directory".format(root)
+        )
     info_toml_path = root / info_toml
     if not info_toml_path.is_file():
         script_dir = Path(__file__).parent
@@ -901,6 +875,7 @@ def read_info_toml(root):
         print("Using configuration file " + str(info_toml_path))
     return toml.load(info_toml_path)
 
+
 def run(root=None):
     print(
         emoji.emojize(
@@ -910,6 +885,7 @@ def run(root=None):
     )
     info = read_info_toml(root)
     invert = AutoInverter(info)
+
 
 if __name__ == "__main__":
     root = sys.argv[1] if len(sys.argv) > 1 else None
