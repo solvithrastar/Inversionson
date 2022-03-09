@@ -1473,11 +1473,10 @@ class SmoothingHelper(object):
             with open(all_norms_path, "w") as fh:
                 toml.dump(norm_dict, fh)
         # copy summed gradient over to lasif project
-        gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
-        gradient = os.path.join(
-            gradients,
-            f"ITERATION_{iteration}",
-            "summed_gradient.h5",
+        gradient = (
+            self.comm.lasif.lasif_comm.project.paths["gradients"]
+            / f"ITERATION_{iteration}"
+            / "summed_gradient.h5"
         )
         hpc_cluster.remote_get(remote_output_path, gradient)
 
@@ -1563,7 +1562,7 @@ class SmoothingHelper(object):
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
 
-    def sum_gradients(self):
+    def sum_gradients(self, remote_summing=True):
         from inversionson.utils import sum_gradients
 
         if self.events is None:
@@ -1571,10 +1570,7 @@ class SmoothingHelper(object):
         else:
             events = self.events
 
-        if (
-            self.comm.project.inversion_mode == "mono-batch"
-            or self.comm.project.AdamOpt
-        ):
+        if remote_summing:
             self.__remote_summing(events)
             return
 

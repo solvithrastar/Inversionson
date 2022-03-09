@@ -1,6 +1,6 @@
 from lasif.components.component import Component
 from inversionson import InversionsonError
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 
 import os
 from salvus.opt import smoothing
@@ -14,9 +14,7 @@ class SalvusSmoothComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        super(SalvusSmoothComponent, self).__init__(
-            communicator, component_name
-        )
+        super(SalvusSmoothComponent, self).__init__(communicator, component_name)
         # self.smoother_path = self.comm.project.paths["salvus_smoother"]
 
     def generate_smoothing_config(self, event: str = None) -> dict:
@@ -93,8 +91,10 @@ class SalvusSmoothComponent(Component):
             job_array_name=job_name,
         )
 
-        if self.comm.project.inversion_mode == "mono-batch" or \
-                self.comm.project.AdamOpt:
+        if (
+            self.comm.project.inversion_mode == "mono-batch"
+            or self.comm.project.AdamOpt
+        ):
             smooth_grad = self.comm.lasif.find_gradient(
                 iteration=iteration,
                 event=None,
@@ -128,17 +128,17 @@ class SalvusSmoothComponent(Component):
         )
         smooth_gradient.write_h5(smooth_grad)
         # Only sum the raw gradient in AdamOpt, not the update
-        if "VPV" in list(smooth_gradient.element_nodal_fields.keys()) and \
-                not self.comm.project.AdamOpt:
+        if (
+            "VPV" in list(smooth_gradient.element_nodal_fields.keys())
+            and not self.comm.project.AdamOpt
+        ):
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
                 mesh=smooth_grad,
                 fieldname_1="VPV",
                 fieldname_2="VPH",
             )
 
-    def run_smoother(
-        self, smoothing_config: dict, event: str, iteration: str = None
-    ):
+    def run_smoother(self, smoothing_config: dict, event: str, iteration: str = None):
         """
         Run the Smoother, the settings are specified in inversion toml. Make
         sure that the smoothing config has already been generated
@@ -162,18 +162,16 @@ class SalvusSmoothComponent(Component):
             grad = output_files[0][("adjoint", "gradient", "output_filename")]
             mesh = UnstructuredMesh.from_h5(str(grad))
         else:
-            if self.comm.project.inversion_mode == "mini-batch" and not \
-                    self.comm.project.AdamOpt:
+            if (
+                self.comm.project.inversion_mode == "mini-batch"
+                and not self.comm.project.AdamOpt
+            ):
                 mesh = UnstructuredMesh.from_h5(
-                    self.comm.lasif.find_gradient(
-                        iteration=iteration, event=event
-                    )
+                    self.comm.lasif.find_gradient(iteration=iteration, event=event)
                 )
             elif self.comm.project.AdamOpt:
-                adam_opt = AdamOptimizer(
-                    inversion_root=self.comm.project.paths["inversion_root"])
-                mesh = UnstructuredMesh.\
-                    from_h5(adam_opt.get_raw_update_path())
+                adam_opt = AdamOpt()
+                mesh = UnstructuredMesh.from_h5(adam_opt.raw_update_path)
             else:
                 # mono-batch case
                 mesh = UnstructuredMesh.from_h5(
@@ -184,9 +182,7 @@ class SalvusSmoothComponent(Component):
                         event=None,
                     )
                 )
-            mesh.attach_global_variable(
-                name="reference_frame", data="spherical"
-            )
+            mesh.attach_global_variable(name="reference_frame", data="spherical")
 
         job = smoothing.run_async(
             model=mesh,
@@ -196,8 +192,10 @@ class SalvusSmoothComponent(Component):
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-        if self.comm.project.inversion_mode == "mini-batch" and not \
-                self.comm.project.AdamOpt:
+        if (
+            self.comm.project.inversion_mode == "mini-batch"
+            and not self.comm.project.AdamOpt
+        ):
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
             )
@@ -208,9 +206,7 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["name"]', job.job_array_name
             )
-            self.comm.project.change_attribute(
-                'smoothing_job["submitted"]', True
-            )
+            self.comm.project.change_attribute('smoothing_job["submitted"]', True)
         self.comm.project.update_iteration_toml()
 
     def run_remote_smoother(
@@ -257,14 +253,17 @@ class SalvusSmoothComponent(Component):
             hpc_cluster.remote_mkdir(remote_diff_dir)
 
         # get remote gradient filename
-        if int_mode == "remote" and self.comm.project.meshes == "multi-mesh" and not self.comm.project.AdamOpt:
+        if (
+            int_mode == "remote"
+            and self.comm.project.meshes == "multi-mesh"
+            and not self.comm.project.AdamOpt
+        ):
             # The gradient we want has been interpolated
             job = self.comm.salvus_flow.get_job(event, "gradient_interp")
             remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")
         elif self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.paths["inversion_root"])
-            local_update = adam_opt.get_raw_update_path()
+            adam_opt = AdamOpt()
+            local_update = adam_opt.raw_update_path
             file_name = local_update.split("/")[-1]
             remote_grad = os.path.join(remote_diff_dir, file_name)
             hpc_cluster.remote_put(local_update, remote_grad)
@@ -297,9 +296,7 @@ class SalvusSmoothComponent(Component):
 
             remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
 
-            diff_model_file = os.path.join(
-                local_diff_model_dir, diff_model_file
-            )
+            diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
 
             if not os.path.exists(diff_model_file):
                 smooth = smoothing.AnisotropicModelDependent(
@@ -329,9 +326,7 @@ class SalvusSmoothComponent(Component):
             )
             sim.physics.diffusion_equation.initial_values.format = "hdf5"
             sim.physics.diffusion_equation.initial_values.field = f"{param}"
-            sim.physics.diffusion_equation.final_values.filename = (
-                f"{param}.h5"
-            )
+            sim.physics.diffusion_equation.final_values.filename = f"{param}.h5"
 
             sim.domain.mesh.filename = "REMOTE:" + remote_diff_model
             sim.domain.model.filename = "REMOTE:" + remote_diff_model
@@ -348,8 +343,10 @@ class SalvusSmoothComponent(Component):
             ranks_per_job=self.comm.project.smoothing_ranks,
             wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
         )
-        if self.comm.project.inversion_mode == "mini-batch" and not \
-                self.comm.project.AdamOpt:
+        if (
+            self.comm.project.inversion_mode == "mini-batch"
+            and not self.comm.project.AdamOpt
+        ):
             print(f"Submitted smoothing for event {event}")
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
@@ -361,7 +358,5 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute(
                 'smoothing_job["name"]', job.job_array_name
             )
-            self.comm.project.change_attribute(
-                'smoothing_job["submitted"]', True
-            )
+            self.comm.project.change_attribute('smoothing_job["submitted"]', True)
         self.comm.project.update_iteration_toml()

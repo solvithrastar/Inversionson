@@ -12,7 +12,9 @@ import glob
 import shutil
 import h5py
 from inversionson import InversionsonError, autoinverter_helpers as helpers
+from inversionson.optimizers import optimizer
 from inversionson.optimizers.optimizer import Optimize
+from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
 
 class AdamOpt(Optimize):
@@ -33,12 +35,10 @@ class AdamOpt(Optimize):
     """
 
     def __init__(self, comm):
-        self.current_task = self.read_current_task()
         self.available_tasks = [
             "prepare_iteration",
             "compute_gradient",
             "update_model",
-            "documentation",
         ]
         self.comm = comm
         self.opt_folder = (
@@ -77,7 +77,7 @@ class AdamOpt(Optimize):
             return
 
         # Initialize folders if needed
-        if not os.path.exists(self.get_model_path(iteration_number=0)):
+        if not os.path.exists(self._get_path_for_iteration(0, self.model_path)):
             if self.initial_model is None:
                 raise Exception(
                     "AdamOptimizer needs to be initialized with a "
@@ -99,6 +99,30 @@ class AdamOpt(Optimize):
             self.task_dir
             / f"task_{self.iteration_number:05d}_{int(task_nums[-1]):02d}.toml"
         )
+
+    @property
+    def model_path(self):
+        return self.model_dir / f"model_{self.iteration_number:05d}.h5"
+
+    @property
+    def raw_gradient_path(self):
+        return self.raw_gradient_dir / f"gradient_{self.iteration_number:05d}.h5"
+
+    @property
+    def first_moment_path(self):
+        return self.first_moment_dir / f"first_moment_{self.iteration_number:05d}.h5"
+
+    @property
+    def second_moment_path(self):
+        return self.second_moment_dir / f"second_moment_{self.iteration_number:05d}.h5"
+
+    @property
+    def raw_update_path(self):
+        return self.raw_update_dir / f"raw_update_{self.iteration_number:05d}.h5"
+
+    @property
+    def smooth_update_path(self):
+        return self.smooth_update_dir / f"smooth_update_{self.iteration_number:05d}.h5"
 
     @property
     def model_path(self):
@@ -188,6 +212,14 @@ class AdamOpt(Optimize):
         with open(self.task_path, "w+") as fh:
             toml.dump(task_dict, fh)
 
+    def _get_path_for_iteration(self, iteration_number, path):
+        filename = path.stem
+        iteration = int(filename.split("_")[-1])
+        reconstructed_filename = (
+            filename.split("_")[:-1].join("_") + f"_{iteration:05d}" + path.suffix
+        )
+        return path.parent / reconstructed_filename
+
     def _read_task_file(self):
         self.task_dict = toml.load(self.task_path)
 
@@ -213,7 +245,8 @@ class AdamOpt(Optimize):
             task_dict = {
                 "task": "compute_gradient",
                 "model": self.model_path,
-                "raw_gradient_path": self.raw_gradient_path,
+                "forward_submitted": False,
+                "misfit_completed": False,
                 "gradient_completed": False,
                 "iteration_number": self.iteration_number,
                 "finished": False,
@@ -224,16 +257,18 @@ class AdamOpt(Optimize):
                 "task": "update_model",
                 "model": self.model_path,
                 "raw_update_path": self.raw_update_path,
-                "smooth_update_path": self.smooth_path,
+                "raw_gradient_path": self.raw_gradient_path,
+                "smooth_update_path": self.smooth_update_path,
+                "summing_completed": False,
+                "raw_update_completed": False,
                 "smoothing_completed": False,
+                "smooth_update_completed": False,
                 "iteration_finalized": False,
                 "iteration_number": self.iteration_number,
                 "finished": False,
             }
             task_file_path = self._increase_task_number()
-        elif (
-            current_task["task"] == "update_model"
-        ):  # Here I'm assuming that there will already be created a newer model
+        elif current_task["task"] == "update_model":
             task_dict = {
                 "task": "prepare_iteration",
                 "model": self._model_for_iteration(self.iteration_number + 1),
@@ -244,37 +279,387 @@ class AdamOpt(Optimize):
 
         with open(task_file_path, "w+") as fh:
             toml.dump(task_dict, fh)
+        self.task_dict = task_dict
 
     def _update_task_file(self):
         with open(self.task_path, "w+") as fh:
             toml.dump(self.task_dict, fh)
 
-    def read_and_write_task(self):
-        """
-        Checks task status and writes new task if task is already completed.
-        """
-        if self.iteration_number is None:
-            task_path = self.get_latest_task()
+    def _pick_data_for_iteration(self, validation=False):
+        if validation:
+            events = self.comm.project.validation_dataset
         else:
-            task_path = self.get_task_path(self.iteration_number)
+            all_events = self.comm.lasif.listevents()
+            blocked_data = list(
+                set(
+                    self.comm.project.validation_dataset
+                    + self.comm.project.test_dataset
+                )
+            )
+            all_events = list(set(all_events) - set(blocked_data))
+            n_events = self.comm.project.initial_batch_size
+            doc_path = self.comm.project.paths["inversion_root"] / "DOCUMENTATION"
+            all_norms_path = doc_path / "all_norms.toml"
+            if os.path.exists(all_norms_path):
+                norm_dict = toml.load(all_norms_path)
+                unused_events = list(set(all_events).difference(set(norm_dict.keys())))
+                max_norm = max(norm_dict.values())
+                # Assign high norm values to unused events to make them
+                # more likely to be chosen
+                for event in unused_events:
+                    norm_dict[event] = max_norm
+                events = get_random_mitchell_subset(
+                    self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
+                )
+            else:
+                events = get_random_mitchell_subset(
+                    self.comm.lasif.lasif_comm, n_events, all_events
+                )
 
-        # If task exists, read it and see if model needs updating
-        if os.path.exists(task_path):
-            task_info = toml.load(task_path)
-            if not task_info["iteration_finalized"]:
-                print("Please complete task first")
-        else:  # write task
-            task_dict = {
-                "task": "compute_gradient_for_adam",
-                "model": self.get_model_path(),
-                "raw_gradient_path": self.get_gradient_path(),
-                "raw_update_path": self.get_raw_update_path(),
-                "smooth_update_path": self.get_smooth_path(),
-                "gradient_completed": False,
-                "smoothing_completed": False,
-                "iteration_finalized": False,
-                "time_step": self.iteration_number,
-            }
+        return events
 
-            with open(task_path, "w+") as fh:
-                toml.dump(task_dict, fh)
+    def _compute_raw_update(self):
+        """Computes the raw update"""
+
+        print("Adam: Computing raw update...")
+        # Read task toml
+
+        iteration_number = self.task_dict["iteration_number"] + 1
+
+        indices = self.get_parameter_indices(self.raw_gradient_path)
+        # scale the gradients, because they can be tiny and this leads to issues
+        g_t = self.get_h5_data(self.raw_gradient_path) * self.grad_scaling_fac
+
+        if np.sum(np.isnan(g_t)) > 1:
+            raise Exception(
+                "NaNs were found in the raw gradient." "Something must be wrong."
+            )
+
+        if iteration_number == 1:  # Initialize moments if needed
+            shutil.copy(self.raw_gradient_path, self.first_moment_path)
+
+            with h5py.File(self.first_moment_path, "r+") as h5:
+                data = h5["MODEL/data"]
+
+                # initialize with zeros
+                for i in indices:
+                    data[:, i, :] = np.zeros_like(data[:, i, :])
+
+            # Also initialize second moments with zeros
+            shutil.copy(self.first_moment_path, self.second_moment_path)
+
+        m_t = (
+            self.beta_1 * self.get_h5_data(self.first_moment_path)
+            + (1 - self.beta_1) * g_t
+        )
+
+        # Store first moment
+        shutil.copy(
+            self.first_moment_path,
+            self._get_path_for_iteration(
+                self.iteration_number + 1, self.first_moment_path
+            ),
+        )
+        self.set_h5_data(
+            self._get_path_for_iteration(
+                self.iteration_number + 1, self.first_moment_path
+            ),
+            m_t,
+        )
+
+        # v_t was sometimes becoming too small, so enforce double precision
+        v_t = self.beta_2 * self.get_h5_data(self.second_moment_path) + (
+            1 - self.beta_2
+        ) * (g_t**2)
+
+        # Store second moment
+        shutil.copy(
+            self.get_second_moment_path,
+            self._get_path_for_iteration(
+                self.iteration_number + 1, self.second_moment_path
+            ),
+        )
+        self.set_h5_data(
+            self._get_path_for_iteration(
+                self.iteration_number + 1, self.second_moment_path
+            ),
+            v_t,
+        )
+
+        # Correct bias
+        m_t = m_t / (1 - self.beta_1 ** (self.iteration_number + 1))
+        v_t = v_t / (1 - self.beta_2 ** (self.iteration_number + 1))
+
+        # ensure e is sufficiently small, even for the small gradient values
+        # that we typically have.
+        e = self.e * np.mean(np.sqrt(v_t))
+
+        update = self.alpha * m_t / (np.sqrt(v_t) + e)
+
+        max_upd = np.max(np.abs(update))
+        print(f"Max raw model update: {max_upd}")
+        if max_upd > 3.0 * self.alpha:
+            raise Exception("Raw update seems a bit large")
+        if np.sum(np.isnan(update)) > 1:
+            raise Exception(
+                "NaNs were found in the raw update."
+                "Check if the gradient is not excessively small"
+            )
+
+        # Write raw update to file for smoothing
+        shutil.copy(self.raw_gradient_path, self.raw_update_path)
+        self.set_h5_data(self.raw_update_path, update)
+
+    def apply_smooth_update(self):
+        """
+        Apply the smoothed update.
+        """
+        print("Adam: Applying smooth update...")
+
+        time_step = task_info["time_step"] + 1
+        max_raw_update = np.max(np.abs(self.get_h5_data(self.raw_update_path)))
+        update = self.get_h5_data(self.smooth_update_path)
+
+        if np.sum(np.isnan(update)) > 1:
+            raise Exception(
+                "NaNs were found in the smoothed update."
+                "Check the raw update and smoothing process."
+            )
+
+        max_upd = np.max(np.abs(update))
+        print(f"Max smooth model update: {max_upd}")
+        if max_upd > 3.0 * self.alpha:
+            raise Exception(
+                "Check smooth gradient, the update is larger" "than expected."
+            )
+
+        print("Rescaling maximum smooth update to max raw update:", max_raw_update)
+        update_scaling_fac = max_raw_update / max_upd
+        update *= update_scaling_fac
+
+        # Update parameters
+        theta_prev = self.get_h5_data(self.model_path)
+
+        # normalise theta and apply update
+        theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
+
+        # Normalize the model and prevent division by zero in the outer core.
+        theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+
+        # only add weight_decay at this stage
+        theta_new = theta_prev - update - self.weight_decay * theta_prev
+
+        # remove normalization from updated model and write physical model
+        theta_physical = (theta_new + 1) * theta_0
+        shutil.copy(
+            self.model_path,
+            self._get_path_for_iteration(self.iteration_number + 1, self.model_path),
+        )
+        self.set_h5_data(
+            self._get_path_for_iteration(self.iteration_number + 1, self.model_path),
+            theta_physical,
+        )
+
+    def _finalize_iteration(self, verbose: bool):
+        """
+        Here we can do some documentation. Maybe just call a base function for that
+        """
+        pass
+
+    def _update_model(self, verbose: bool, raw=True, smooth=False):
+        """
+        Apply an Adam style update to the model
+        """
+        if (raw and smooth) or (not raw and not smooth):
+            raise InversionsonError("Adam updates can be raw or smooth, not both")
+        if raw:
+            gradient = (
+                self.comm.lasif.lasif_comm.project.paths["gradients"]
+                / f"ITERATION_{self.iteration_name}"
+                / "summed_gradient.h5"
+            )
+            if not os.path.exists(self.raw_gradient_path):
+                shutil.copy(gradient, self.raw_gradient_path)
+            if not os.path.exists(self.raw_update_path):
+                self._compute_raw_update()
+        if smooth:
+            smooth_update = self.comm.lasif.find_gradient(
+                iteration=self.iteration_name,
+                event=None,
+                smooth=True,
+                summed=True,
+            )
+            shutil.copy(smooth_update, self.smooth_update_path)
+            self._apply_smooth_update()
+
+    def prepare_iteration(self, validation=False):
+        if validation:
+            it_name = f"validation_{self.iteration_name}"
+        else:
+            it_name = self.iteration_name
+
+        move_meshes = "00000" in it_name if validation else True
+        self.comm.project.change_attribute("current_iteration", it_name)
+        it_toml = os.path.join(
+            self.comm.project.paths["iteration_tomls"], it_name + ".toml"
+        )
+        if self.comm.lasif.has_iteration(it_name):
+            raise InversionsonError(f"Iteration {it_name} already exists")
+
+        print("Picking data for iteration")
+        events = self._pick_data_for_iteration(validation=validation)
+
+        super().prepare_iteration(
+            it_name=it_name, move_meshes=move_meshes, events=events
+        )
+        self.task_dict["finished"] = True
+        self._update_task_file()
+
+    def compute_gradient(self, verbose):
+        """
+        This task does forward simulations and then gradient computations straight
+        afterwards
+        """
+        if not self.task_dict["forward_completed"]:
+            self.run_forward(verbose=verbose)
+            self.task_dict["forward_completed"] = True
+            self._update_task_file()
+        else:
+            print("Forwards already submitted")
+
+        if not self.task_dict["misfit_completed"]:
+            self.compute_misfit(adjoint=True, window_selection=True, verbose=verbose)
+            self.task_dict["misfit_completed"] = True
+            self._update_task_file()
+        else:
+            print("Misfit already computed")
+
+        if not self.task_dict["gradient_completed"]:
+            super().compute_gradient(verbose=verbose)
+            self.task_dict["gradient_completed"] = True
+            self._update_task_file()
+        else:
+            print("Gradients already computed")
+        self.task_dict["finished"] = True
+        self._update_task_file()
+
+    def update_model(self, verbose):
+        """
+        This task takes the raw gradient and does all the regularisation and everything
+        to update the model.
+        """
+        if not self.task_dict["summing_completed"]:
+            # This only interpolates and sums gradients
+            self.regularization(
+                smooth_individual=False,
+                sum_gradients=True,
+                smooth_update=True,
+                verbose=verbose,
+            )
+            self.task_dict["summing_completed"] = True
+            self._update_task_file()
+        else:
+            print("Summing already done")
+
+        if not self.task_dict["raw_update_completed"]:
+            self._update_model(verbose=verbose)
+            self.task_dict["raw_update_completed"] = True
+            self._update_task_file()
+        else:
+            print("Raw updating already completed")
+
+        if not self.task_dict["smoothing_completed"]:
+            # This only smooths the update
+            self.regularization(
+                smooth_individual=False,
+                sum_gradients=False,
+                smooth_update=True,
+                verbose=verbose,
+            )
+            self.task_dict["smoothing_completed"] = True
+            self._update_task_file()
+        else:
+            print("Smoothing already done")
+
+        if not self.task_dict["smooth_update_completed"]:
+            self._update_model(verbose=verbose)
+            self.task_dict["smooth_update_completed"] = True
+            self._update_task_file()
+        else:
+            print("Smooth updating already completed")
+
+        if not self.task_dict["iteration_finalized"]:
+            self._finalize_iteration(verbose=verbose)
+            self.task_dict["iteration_finalized"] = True
+            self._update_task_file()
+        else:
+            print("Iteration already finalized")
+
+        self.task_dict["finished"] = True
+        self._update_task_file()
+
+    def perform_task(self, validation=False, verbose=False):
+        """
+        Look at which task is the current one and call the function which does it.
+        """
+        task_name = self.task_dict["task"]
+
+        if task_name == "prepare_iteration":
+            if not self.task_dict["finished"]:
+                if validation:
+                    it_name = f"validation_{self.iteration_name}"
+                else:
+                    it_name = self.iteration_name
+                if self.comm.lasif.has_iteration(it_name):
+                    print(f"Iteration {it_name} exists. Will load its attributes")
+                    self.comm.project.get_iteration_attributes(validation=validation)
+                self.prepare_iteration(validation=validation)
+            else:
+                print("Iteration already prepared")
+        elif task_name == "compute_gradient":
+            if not self.task_dict["finished"]:
+                self.compute_gradient(verbose=verbose)
+            else:
+                print("Gradient already computed")
+        elif task_name == "update_model":
+            if not self.task_dict["finished"]:
+                self.update_model(verbose=verbose)
+            else:
+                print("Model already updated")
+        else:
+            raise InversionsonError(f"Task {task_name} is not recognized by AdamOpt")
+
+    def get_new_task(self):
+        if self.task_dict["finished"]:
+            self._write_new_task()
+            print(f"New task is: {self.task_dict['task']}")
+        else:
+            raise InversionsonError(f"Task: {self.task_dict['task']} is not finished.")
+
+    def finish_task(self):
+        paths = ["raw_update_path", "model", "smooth_update_path", "raw_gradient_path"]
+        complete_checks = [
+            "smoothing_completed",
+            "gradient_completed",
+            "iteration_finalized",
+            "forward_completed",
+            "raw_update_completed",
+            "smooth_update_completed",
+            "misfit_completed",
+            "summing_completed",
+        ]
+        for path in paths:
+            if path in self.task_dict.keys():
+                if not os.path.exists(self.task_dict[path]):
+                    raise InversionsonError(
+                        f"Trying to finish task but it can't find {path}"
+                    )
+
+        for complete_check in complete_checks:
+            if complete_check in self.task_dict.keys():
+                if not self.task_dict[complete_check]:
+                    raise InversionsonError(
+                        f"Trying to finish task but {complete_check} is not completed"
+                    )
+        self.task_dict["finished"] = True
+        self._update_task_file()

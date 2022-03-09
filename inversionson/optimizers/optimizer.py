@@ -9,7 +9,9 @@ import os
 import glob
 import h5py
 import toml
-from inversionson import autoinverter_helpers as helpers
+from typing import List, Tuple
+from salvus.flow.api import get_site
+from inversionson import InversionsonError, autoinverter_helpers as helpers
 
 
 class Optimize(object):
@@ -94,6 +96,10 @@ class Optimize(object):
         "Returns the number of the newest iteration"
         return self.find_iteration_numbers()[0]
 
+    @property
+    def iteration_name(self):
+        return f"model_{self.iteration_number:05d}"
+
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.models_dir}/*.h5")
         if len(models) == 0:
@@ -103,6 +109,71 @@ class Optimize(object):
             iteration_numbers.append(int(model.split(".")[0].split("_")[-1]))
         iteration_numbers.sort(reverse=False)
         return iteration_numbers
+
+    def prepare_iteration(
+        self,
+        it_name: str = None,
+        move_meshes: bool = False,
+        first_try: bool = True,
+        events: List[str] = None,
+    ):
+        """
+        A base function for preparing iterations
+
+        :param it_name: Name of iteration, will use autoname if None is passed, defaults to None
+        :type it_name: "str", optional
+        :param move_meshes: Do meshes need to be moved to remote, defaults to False
+        :type move_meshes: bool, optional
+        :param first_try: Only change in trust region methods if region is being reduced, defaults to True
+        :type first_try: bool, optional
+        :param events: Pass a list of events if you want them to be predefined, defaults to None
+        :type events: List[str], optional
+        """
+        it_name = self.iteration_name if it_name is None else it_name
+        self.comm.project.change_attribute("current_iteration", it_name)
+        it_toml = os.path.join(
+            self.comm.project.paths["iteration_tomls"], it_name + ".toml"
+        )
+        validation = "validation" in it_name
+
+        if self.comm.lasif.has_iteration(it_name):
+            raise InversionsonError(f"Iteration {it_name} already exists")
+
+        if events is None and not validation:
+            if self.comm.project.inversion_mode == "mini-batch":
+                print("Getting minibatch")
+                if it_name == "model_00000":
+                    first = True
+                else:
+                    first = False
+                events = self.comm.lasif.get_minibatch(first=first)
+            else:
+                events = self.comm.lasif.list_events()
+        elif events is None and validation:
+            events = self.comm.project.validation_dataset
+        self.comm.lasif.set_up_iteration(it_name, events)
+        self.comm.project.create_iteration_toml(it_name)
+        self.comm.project.get_iteration_attributes(validation)
+
+        if self.comm.project.meshes == "multi-mesh" and move_meshes:
+            if self.comm.project.interpolation_mode == "remote":
+                interp_site = get_site(self.comm.project.interpolation_site)
+            else:
+                interp_site = None
+            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
+            self.comm.lasif.move_mesh(
+                event=None, iteration=it_name, hpc_cluster=interp_site
+            )
+            for event in events:
+                if not self.comm.lasif.has_mesh(event, hpc_cluster=interp_site):
+                    self.comm.salvus_mesher.create_mesh(event=event)
+                    self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
+                else:
+                    self.comm.move_mesh(event, it_name, hpc_cluster=interp_site)
+        elif self.comm.project.meshes == "mono-mesh" and move_meshes:
+            self.comm.lasif.move_mesh(event=None, iteration=it_name)
+
+        # Control group complications (update_control_group) should be done inside specific optimizer.
 
     def run_forward(self, verbose: bool = False):
         """
@@ -165,15 +236,21 @@ class Optimize(object):
         assert self.adjoint_helper.assert_all_simulations_dispatched()
 
     def regularization(
-        self, smooth_individual: bool = False, sum_gradients: bool = True, verbose=False
+        self,
+        smooth_individual: bool = False,
+        sum_gradients: bool = True,
+        smooth_update: bool = False,
+        verbose=False,
     ):
         """
         This smooths, sums and interpolates gradients based on what is needed.
 
         :param smooth_individual: Smooth individual gradients?, defaults to False
         :type smooth_individual: bool, optional
-        :param sum_gradients: Sum gradients before smoothing?, defaults to True
+        :param sum_gradients: Sum before smoothing?, defaults to True
         :type sum_gradients: bool, optional
+        :param smooth_update: Smooth update rather than gradient?, defaults to False
+        :type smooth_update: bool, optional
         :param verbose: Do you want to print the details?, defaults to False
         :type verbose: bool, optional
         """
@@ -192,18 +269,21 @@ class Optimize(object):
             comm=self.comm, events=self.comm.project.events_in_iteration
         )
         if sum_gradients:
-            gradients = self.comm.lasif.lasif_comm.project.paths["gradients"]
-            gradient = os.path.join(
-                gradients,
-                f"ITERATION_{self.comm.project.current_iteration}",
-                "summed_gradient.h5",
+            gradient = (
+                self.comm.lasif.lasif_comm.project.paths["gradients"]
+                / f"ITERATION_{self.iteration_name}"
+                / "summed_gradient.h5"
             )
+
             if not os.path.exists(gradient):
                 if interpolate:
                     self.smoothing_helper.monitor_interpolations(
                         smooth_individual=smooth_individual, verbose=verbose
                     )
                 self.smoothing_helper.sum_gradients()
+            if smooth_update:
+                return
+
         self.smoothing_helper.dispatch_smoothing_simulations(
             smooth_individual=smooth_individual, verbose=verbose
         )
@@ -238,3 +318,32 @@ class Optimize(object):
             for param in self.parameters:
                 indices.append(dim_labels.index(param))
         return indices
+
+    def get_h5_data(self, filename):
+        """
+        Returns the relevant data in the form of ND_array with all the data.
+        """
+        indices = self.get_parameter_indices(filename)
+
+        with h5py.File(filename, "r") as h5:
+            data = h5["MODEL/data"][:, :, :].copy()
+            return data[:, indices, :]
+
+    def set_h5_data(self, filename, data):
+        """Writes the data with shape [:, indices :]. Requires existing file."""
+        if not os.path.exists(filename):
+            raise Exception("only works on existing files.")
+
+        indices = self.get_parameter_indices(filename)
+
+        with h5py.File(filename, "r+") as h5:
+            dat = h5["MODEL/data"]
+            data_copy = dat[:, :, :].copy()
+            # avoid writing the file many times. work on array in memory
+            for i in range(len(indices)):
+                data_copy[:, indices[i], :] = data[:, i, :]
+
+            # writing only works in sorted order. This sort can only happen after
+            # the above executed to preserve the ordering that data came in
+            indices.sort()
+            dat[:, indices, :] = data_copy[:, indices, :]
