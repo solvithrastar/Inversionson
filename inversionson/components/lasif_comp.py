@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import shutil
 
 from lasif.components.component import Component
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 import lasif.api as lapi
 import os
 from inversionson import InversionsonError, InversionsonWarning
@@ -263,9 +263,7 @@ class LasifComponent(Component):
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
             iteration = adam_opt.get_iteration_name(validation=validation)
             if validation:
                 local_model = self.comm.multi_mesh.find_model_file(iteration)
@@ -342,9 +340,7 @@ class LasifComponent(Component):
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
             if self.comm.project.AdamOpt:
-                adam_opt = AdamOptimizer(
-                    inversion_root=self.comm.project.paths["inversion_root"]
-                )
+                adam_opt = AdamOpt()
                 model = adam_opt.get_model_path()
                 # copy to lasif project and also move to cluster
                 simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=None)
@@ -767,9 +763,7 @@ class LasifComponent(Component):
             # ]
             if "validation" in iteration and "it0000" and "00000" not in iteration:
                 if self.comm.project.AdamOpt:
-                    adam_opt = AdamOptimizer(
-                        inversion_root=self.comm.project.paths["inversion_root"]
-                    )
+                    adam_opt = AdamOpt()
                     new_it_num = adam_opt.get_iteration_number()
                 else:
                     new_it_num = self.comm.salvus_opt.get_number_of_newest_iteration()

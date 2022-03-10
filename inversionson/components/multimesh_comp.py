@@ -10,7 +10,7 @@ import lasif.api as lapi
 from salvus.flow.api import get_site
 import pathlib
 from typing import Union
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -40,9 +40,7 @@ class MultiMeshComponent(Component):
         :type iteration: str
         """
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.
-                                     paths["inversion_root"])
+            adam_opt = AdamOpt()
             model = adam_opt.get_model_path()
         else:
             model = os.path.join(self.physical_models, iteration + ".h5")

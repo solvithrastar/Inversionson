@@ -6,11 +6,10 @@ import os
 from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 import toml
 
 from lasif.components.component import Component
-
 
 
 class SalvusMeshComponent(Component):
@@ -48,26 +47,18 @@ class SalvusMeshComponent(Component):
         sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = self.comm.project.min_period
         sm.basic.elements_per_wavelength = 1.7
-        sm.basic.number_of_lateral_elements = (
-            self.comm.project.elem_per_quarter
-        )
+        sm.basic.number_of_lateral_elements = self.comm.project.elem_per_quarter
         sm.advanced.tensor_order = 4
         if self.comm.project.ellipticity:
             sm.spherical.ellipticity = 0.0033528106647474805
         if self.comm.project.ocean_loading["use"]:
             sm.ocean.bathymetry_file = self.comm.project.ocean_loading["file"]
-            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading[
-                "variable"
-            ]
+            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading["variable"]
             sm.ocean.ocean_layer_style = "loading"
             sm.ocean.ocean_layer_density = 1025.0
         if self.comm.project.topography["use"]:
-            sm.topography.topography_file = self.comm.project.topography[
-                "file"
-            ]
-            sm.topography.topography_varname = self.comm.project.topography[
-                "variable"
-            ]
+            sm.topography.topography_file = self.comm.project.topography["file"]
+            sm.topography.topography_varname = self.comm.project.topography["variable"]
         sm.source.latitude = source_info["latitude"]
         sm.source.longitude = source_info["longitude"]
         sm.refinement.lateral_refinements.append(
@@ -113,9 +104,7 @@ class SalvusMeshComponent(Component):
                     elemental_fields = mesh["MODEL/element_data"].attrs.get(
                         "DIMENSION_LABELS"
                     )[1]
-                    elemental_fields = (
-                        elemental_fields[2:-2]
-                    )
+                    elemental_fields = elemental_fields[2:-2]
                     if not type(elemental_fields) == str:
                         elemental_fields = elemental_fields.decode()
                     elemental_fields = elemental_fields.replace(" ", "").split("|")
@@ -132,9 +121,7 @@ class SalvusMeshComponent(Component):
                     return False
             else:
                 # Here we assume it's an element_nodal_field
-                nodal_fields = mesh["MODEL/data"].attrs.get(
-                    "DIMENSION_LABELS"
-                )[1]
+                nodal_fields = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
                 nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
                 if field_name in nodal_fields:
                     return True
@@ -316,9 +303,7 @@ class SalvusMeshComponent(Component):
             new_fields[field] = np.zeros_like(fields[field])
         # m.element_nodal_fields = {}
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(inversion_root=
-                                     self.comm.project.paths[
-                                         "inversion_root"])
+            adam_opt = AdamOpt()
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
             if self.comm.project.AdamOpt:
                 it_toml = adam_opt.get_task_path(time_step=iteration)
@@ -356,9 +341,7 @@ class SalvusMeshComponent(Component):
 
         mesh = self.comm.lasif.find_event_mesh(event)
         m = UnstructuredMesh.from_h5(mesh)
-        mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[
-            ::-1
-        ].astype(int)
+        mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[::-1].astype(int)
         layers = m.elemental_fields["layer"]
         o_core_idx = layers[np.where(m.elemental_fields["fluid"] == 1)[0][0]]
         o_core_idx = np.where(mesh_layers == o_core_idx)[0][0]
@@ -378,8 +361,7 @@ class SalvusMeshComponent(Component):
         """
         if self.comm.project.meshes == "multi-mesh":
             raise InversionsonError(
-                "Multi-mesh inversion should not use this function. Only "
-                "Mono-mesh."
+                "Multi-mesh inversion should not use this function. Only " "Mono-mesh."
             )
         print("Writing new fields to simulation mesh")
         iteration = self.comm.project.current_iteration
@@ -387,9 +369,7 @@ class SalvusMeshComponent(Component):
             iteration = iteration[11:]  # We don't need a special mesh
             if "it0000" not in iteration:
                 return  # No need to write opt fields
-        opt_model = os.path.join(
-            self.comm.salvus_opt.models, f"{iteration}.h5"
-        )
+        opt_model = os.path.join(self.comm.salvus_opt.models, f"{iteration}.h5")
         simulation_mesh = self.comm.lasif.get_simulation_mesh(
             event_name=None, iteration=iteration
         )
@@ -402,9 +382,9 @@ class SalvusMeshComponent(Component):
             return
         else:
             shutil.copy(
-                self.comm.lasif.lasif_comm.project.lasif_config[
-                    "domain_settings"
-                ]["domain_file"],
+                self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"][
+                    "domain_file"
+                ],
                 simulation_mesh,
             )
 

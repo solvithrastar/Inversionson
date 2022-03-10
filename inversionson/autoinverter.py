@@ -8,7 +8,7 @@ from colorama import init
 from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson import autoinverter_helpers as helpers
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson import InversionsonError
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
@@ -75,9 +75,7 @@ class AutoInverter(object):
         Update information in iteration dictionary.
         """
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
             it_name = adam_opt.get_iteration_name()
         else:
             it_name = self.comm.salvus_opt.get_newest_iteration_name()
@@ -206,9 +204,7 @@ class AutoInverter(object):
         """
         run_function = False
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
             iteration_number = adam_opt.get_iteration_number()
             if (
                 iteration_number == 0
@@ -243,9 +239,7 @@ class AutoInverter(object):
             print("Not time for a validation")
             return
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
             iteration_number = adam_opt.get_iteration_number()
         else:
             iteration_number = self.comm.salvus_opt.get_number_of_newest_iteration()
@@ -486,9 +480,7 @@ class AutoInverter(object):
                 )
             smoothing_helper.sum_gradients()
 
-        adam_opt = AdamOptimizer(
-            inversion_root=self.comm.project.paths["inversion_root"]
-        )
+        adam_opt = AdamOpt()
         adam_grad = adam_opt.get_gradient_path()
         shutil.copy(gradient, adam_grad)
         adam_opt.set_gradient_task_to_finished()
@@ -746,9 +738,7 @@ class AutoInverter(object):
         print(f"Current Iteration: {self.comm.project.current_iteration}")
         print(f"Current Task: {task}")
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
             # adam already went for the next iter, so query the previous one.
             iteration = adam_opt.get_iteration_name()
         else:
@@ -826,9 +816,7 @@ class AutoInverter(object):
         # self.initialize_inversion()
 
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
 
             adam_config = toml.load(adam_opt.config_file)
             if adam_config["initial_model"] == "":

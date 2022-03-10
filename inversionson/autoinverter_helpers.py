@@ -13,7 +13,7 @@ from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
 SLEEP_TIME = 30
@@ -1482,9 +1482,7 @@ class SmoothingHelper(object):
 
         # Only sum the raw gradient in AdamOpt, not the update
         if self.comm.project.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"]
-            )
+            adam_opt = AdamOpt()
             if "VPV" in adam_opt.parameters:
                 sum_two_parameters_h5(gradient, ["VPV", "VPH"])
 

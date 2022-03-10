@@ -9,7 +9,7 @@ import toml
 import shutil
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
-from inversionson.optimizers.adam_optimizer import AdamOptimizer
+from inversionson.optimizers.adam_opt import AdamOpt
 
 from lasif.components.communicator import Communicator
 from lasif.components.component import Component
@@ -40,7 +40,6 @@ class ProjectComponent(Component):
         self._validate_inversion_project()
         self.remote_gradient_processing = True
 
-
     def _read_config_file(self) -> dict:
         """
         Parse the Lasif config file to use it in the inversion.
@@ -59,10 +58,7 @@ class ProjectComponent(Component):
         simulation_info["start_time"] = solver_settings["start_time_in_s"]
         simulation_info["number_of_time_steps"] = int(
             round(
-                (
-                    solver_settings["end_time_in_s"]
-                    - simulation_info["start_time"]
-                )
+                (solver_settings["end_time_in_s"] - simulation_info["start_time"])
                 / solver_settings["time_step_in_s"]
             )
         )
@@ -70,15 +66,13 @@ class ProjectComponent(Component):
         simulation_info["time_step"] = solver_settings["time_step_in_s"]
         simulation_info["min_period"] = solver_settings["minimum_period_in_s"]
         simulation_info["max_period"] = solver_settings["maximum_period_in_s"]
-        simulation_info["attenuation"] = config_dict["salvus_settings"][
-            "attenuation"
-        ]
+        simulation_info["attenuation"] = config_dict["salvus_settings"]["attenuation"]
         simulation_info["ocean_loading"] = config_dict["salvus_settings"][
             "ocean_loading"
         ]
-        simulation_info["absorbing_boundaries_length"] = config_dict[
-            "salvus_settings"
-        ]["absorbing_boundaries_in_km"]
+        simulation_info["absorbing_boundaries_length"] = config_dict["salvus_settings"][
+            "absorbing_boundaries_in_km"
+        ]
         simulation_info["domain_file"] = config_dict["lasif_project"][
             "domain_settings"
         ]["domain_file"]
@@ -154,27 +148,18 @@ class ProjectComponent(Component):
                     "We need to know some info on your remote interpolations"
                 )
 
-            if (
-                "model_wall_time"
-                not in self.info["HPC"]["interpolation"].keys()
-            ):
+            if "model_wall_time" not in self.info["HPC"]["interpolation"].keys():
                 raise InversionsonError(
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.model_wall_time"
                 )
 
-            if (
-                "gradient_wall_time"
-                not in self.info["HPC"]["interpolation"].keys()
-            ):
+            if "gradient_wall_time" not in self.info["HPC"]["interpolation"].keys():
                 raise InversionsonError(
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.gradient_wall_time"
                 )
-            if (
-                "remote_mesh_directory"
-                not in self.info["HPC"]["interpolation"].keys()
-            ):
+            if "remote_mesh_directory" not in self.info["HPC"]["interpolation"].keys():
                 raise InversionsonError(
                     "We need to know the location where the meshes are stored"
                     ". Key: HPC.interpolation.remote_mesh_directory"
@@ -217,10 +202,7 @@ class ProjectComponent(Component):
                 "run your simulations. Key: HPC.diffusion_equation.ranks"
             )
 
-        if (
-            "diff_model_directory"
-            not in self.info["HPC"]["diffusion_equation"].keys()
-        ):
+        if "diff_model_directory" not in self.info["HPC"]["diffusion_equation"].keys():
             raise InversionsonError(
                 "We need information on where diffusion models will be stored"
                 " in order to be reused. "
@@ -252,8 +234,7 @@ class ProjectComponent(Component):
             or not isinstance(self.info["random_event_fraction"], float)
         ):
             raise InversionsonError(
-                "random_event_fraction should be a float"
-                "and lie between 0.0 and 1.0"
+                "random_event_fraction should be a float" "and lie between 0.0 and 1.0"
             )
 
         if "min_ctrl_group_size" not in self.info.keys():
@@ -281,15 +262,12 @@ class ProjectComponent(Component):
             )
 
         if self.info["meshes"] not in ["mono-mesh", "multi-mesh"]:
-            raise InversionsonError(
-                "We only accept 'mono-mesh' or 'multi-mesh'"
-            )
+            raise InversionsonError("We only accept 'mono-mesh' or 'multi-mesh'")
 
         # Smoothing
         if "Smoothing" not in self.info.keys():
             raise InversionsonError(
-                "Please specify smoothing parameters in info file. "
-                "Key: Smoothing"
+                "Please specify smoothing parameters in info file. " "Key: Smoothing"
             )
 
         if "smoothing_mode" not in self.info["Smoothing"].keys():
@@ -326,9 +304,7 @@ class ProjectComponent(Component):
                 )
 
         if self.info["Smoothing"]["smoothing_mode"] == "anisotropic":
-            if not isinstance(
-                self.info["Smoothing"]["smoothing_lengths"], list
-            ):
+            if not isinstance(self.info["Smoothing"]["smoothing_lengths"], list):
                 raise InversionsonError(
                     "Make sure you input a list as smoothing_lengths if you "
                     "want to smooth anisotropically. List of length 3. "
@@ -353,20 +329,14 @@ class ProjectComponent(Component):
                         "be smoothed with equally many wavelengths. You can "
                         "also just give a number."
                     )
-        if (
-            "Meshing" not in self.info.keys()
-            and self.info["meshes"] == "multi-mesh"
-        ):
+        if "Meshing" not in self.info.keys() and self.info["meshes"] == "multi-mesh":
             raise InversionsonError(
                 "We need some information regarding your meshes. "
                 "We need to know how many elements you want per azimuthal "
                 "quarter. Key: Meshing"
             )
         if self.info["meshes"] == "multi-mesh":
-            if (
-                "elements_per_azimuthal_quarter"
-                not in self.info["Meshing"].keys()
-            ):
+            if "elements_per_azimuthal_quarter" not in self.info["Meshing"].keys():
                 raise InversionsonError(
                     "We need to know how many elements you need per azimuthal "
                     "quarter. Key: Meshing.elements_per_azimuthal_quarter"
@@ -387,8 +357,7 @@ class ProjectComponent(Component):
                 )
             if "topography" not in self.info["Meshing"].keys():
                 raise InversionsonError(
-                    "We need information on whether you use topography "
-                    "in your mesh."
+                    "We need information on whether you use topography " "in your mesh."
                 )
             else:
                 if "use" not in self.info["Meshing"]["topography"].keys():
@@ -403,10 +372,7 @@ class ProjectComponent(Component):
                             "Please specify path to your topography file.\n"
                             "Key: Meshing.topography.file"
                         )
-                    if (
-                        len(self.info["Meshing"]["topography"]["variable"])
-                        == 0
-                    ):
+                    if len(self.info["Meshing"]["topography"]["variable"]) == 0:
                         raise InversionsonError(
                             "Please specify path to your topography variable "
                             "name. You can find it by opening the file in "
@@ -467,15 +433,10 @@ class ProjectComponent(Component):
                 "Information regarding inversion monitoring is missing"
             )
         if (
-            self.info["inversion_monitoring"][
-                "iterations_between_validation_checks"
-            ]
+            self.info["inversion_monitoring"]["iterations_between_validation_checks"]
             != 0
         ):
-            if (
-                len(self.info["inversion_monitoring"]["validation_dataset"])
-                == 0
-            ):
+            if len(self.info["inversion_monitoring"]["validation_dataset"]) == 0:
                 raise InversionsonError(
                     "You need to specify a validation dataset if you want"
                     " to check it regularly."
@@ -489,19 +450,11 @@ class ProjectComponent(Component):
         LasifComponent(communicator=self.comm, component_name="lasif")
         SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
         MultiMeshComponent(communicator=self.comm, component_name="multi_mesh")
-        SalvusFlowComponent(
-            communicator=self.comm, component_name="salvus_flow"
-        )
-        SalvusMeshComponent(
-            communicator=self.comm, component_name="salvus_mesher"
-        )
-        StoryTellerComponent(
-            communicator=self.comm, component_name="storyteller"
-        )
+        SalvusFlowComponent(communicator=self.comm, component_name="salvus_flow")
+        SalvusMeshComponent(communicator=self.comm, component_name="salvus_mesher")
+        StoryTellerComponent(communicator=self.comm, component_name="storyteller")
         BatchComponent(communicator=self.comm, component_name="minibatch")
-        SalvusSmoothComponent(
-            communicator=self.comm, component_name="smoother"
-        )
+        SalvusSmoothComponent(communicator=self.comm, component_name="smoother")
 
     def arrange_params(self, parameters: list) -> list:
         """
@@ -515,9 +468,7 @@ class ProjectComponent(Component):
         :type parameters: list
         """
         case_tti_inv = set(["VSV", "VSH", "VPV", "VPH", "RHO"])
-        case_tti_mod = set(
-            ["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"]
-        )
+        case_tti_mod = set(["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
         case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
         case_iso_inv = set(["VP", "VS"])
         case_iso_inv_dens = set(["VP", "VS", "RHO"])
@@ -546,8 +497,7 @@ class ProjectComponent(Component):
             parameters = ["QKAPPA", "QMU", "RHO", "VP", "VS"]
         else:
             raise InversionsonError(
-                f"Parameter list {parameters} not "
-                f"a recognized set of parameters"
+                f"Parameter list {parameters} not " f"a recognized set of parameters"
             )
         return parameters
 
@@ -565,9 +515,7 @@ class ProjectComponent(Component):
         self.min_period = self.simulation_dict["min_period"]
         self.max_period = self.simulation_dict["max_period"]
         self.attenuation = self.simulation_dict["attenuation"]
-        self.abs_bound_length = self.simulation_dict[
-            "absorbing_boundaries_length"
-        ]
+        self.abs_bound_length = self.simulation_dict["absorbing_boundaries_length"]
         self.absorbing_boundaries = self.info["absorbing_boundaries"]
         self.domain_file = self.simulation_dict["domain_file"]
 
@@ -585,12 +533,8 @@ class ProjectComponent(Component):
             self.ellipticity = self.info["Meshing"]["ellipticity"]
         self.ocean_loading = self.info["Meshing"]["ocean_loading"]
         self.interpolation_mode = self.info["interpolation_mode"]
-        self.cut_source_radius = self.info[
-            "cut_source_region_from_gradient_in_km"
-        ]
-        self.cut_receiver_radius = self.info[
-            "cut_receiver_region_from_gradient_in_km"
-        ]
+        self.cut_source_radius = self.info["cut_source_region_from_gradient_in_km"]
+        self.cut_receiver_radius = self.info["cut_receiver_region_from_gradient_in_km"]
         self.clip_gradient = self.info["clip_gradient"]
         self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
@@ -602,9 +546,7 @@ class ProjectComponent(Component):
             self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
                 "gradient_wall_time"
             ]
-            self.interpolation_site = self.info["HPC"]["interpolation"][
-                "site_name"
-            ]
+            self.interpolation_site = self.info["HPC"]["interpolation"]["site_name"]
             self.remote_mesh_dir = self.info["HPC"]["interpolation"][
                 "remote_mesh_directory"
             ]
@@ -614,9 +556,7 @@ class ProjectComponent(Component):
         # We currently assume smoothing site to be simulation site.
         self.smoothing_site_name = self.site_name
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
-        self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"][
-            "wall_time"
-        ]
+        self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
         self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
         self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
@@ -638,40 +578,28 @@ class ProjectComponent(Component):
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
             if self.AdamOpt:
-                adam_opt = AdamOptimizer(inversion_root=
-                                         self.comm.project.
-                                         paths["inversion_root"])
+                adam_opt = AdamOpt()
                 self.current_iteration = adam_opt.get_iteration_name()
             else:
                 self.current_iteration = (
                     self.comm.salvus_opt.get_newest_iteration_name()
                 )
             print(f"Current Iteration: {self.current_iteration}")
-            self.event_quality = toml.load(
-                self.comm.storyteller.events_quality_toml
-            )
-        self.inversion_params = self.arrange_params(
-            self.info["inversion_parameters"]
-        )
-        self.modelling_params = self.arrange_params(
-            self.info["modelling_parameters"]
-        )
+            self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
+        self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
+        self.modelling_params = self.arrange_params(self.info["modelling_parameters"])
 
         # Some useful paths
         self.paths = {}
         self.paths["inversion_root"] = self.inversion_root
         self.paths["lasif_root"] = self.lasif_root
-        self.paths["salvus_opt"] = os.path.join(
-            self.inversion_root, "SALVUS_OPT"
-        )
+        self.paths["salvus_opt"] = os.path.join(self.inversion_root, "SALVUS_OPT")
         if not os.path.exists(self.paths["salvus_opt"]):
             raise InversionsonError(
                 "Please make a folder for Salvus opt and initialize it in there"
             )
 
-        self.paths["documentation"] = os.path.join(
-            self.inversion_root, "DOCUMENTATION"
-        )
+        self.paths["documentation"] = os.path.join(self.inversion_root, "DOCUMENTATION")
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
             os.mkdir(os.path.join(self.paths["documentation"], "BACKUP"))
@@ -726,12 +654,11 @@ class ProjectComponent(Component):
         last_control_group = []
         if (
             iteration != "it0000_model"
-            and not validation and not self.AdamOpt
+            and not validation
+            and not self.AdamOpt
             and self.inversion_mode == "mini-batch"
         ):
-            ctrl_grps = toml.load(
-                self.comm.project.paths["control_group_toml"]
-            )
+            ctrl_grps = toml.load(self.comm.project.paths["control_group_toml"])
             prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
             last_control_group = ctrl_grps[prev_iter]["new"]
 
@@ -771,9 +698,7 @@ class ProjectComponent(Component):
             if not validation:
                 a_job_dict["interpolated"] = False
 
-        for _i, event in enumerate(
-            self.comm.lasif.list_events(iteration=iteration)
-        ):
+        for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             if validation:
                 jobs = {"forward": f_job_dict}
                 if remote_interp:
@@ -840,9 +765,7 @@ class ProjectComponent(Component):
         elif isinstance(new_value, int):
             command = f"self.{attribute} = {new_value}"
         else:
-            raise InversionsonError(
-                f"Method not implemented for type {new_value.type}"
-            )
+            raise InversionsonError(f"Method not implemented for type {new_value.type}")
         exec(command)
 
     def update_control_group_toml(self, new=False, first=False):
@@ -919,9 +842,7 @@ class ProjectComponent(Component):
         if not (validation or self.AdamOpt) and self.inversion_mode == "mini-batch":
             it_dict["last_control_group"] = control_group_dict["old"]
             it_dict["new_control_group"] = control_group_dict["new"]
-        for _i, event in enumerate(
-            self.comm.lasif.list_events(iteration=iteration)
-        ):
+        for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             jobs = {"forward": self.forward_job[event]}
             if not validation:
                 jobs["adjoint"] = self.adjoint_job[event]
@@ -942,9 +863,7 @@ class ProjectComponent(Component):
                 }
             if not validation:
                 it_dict["events"][str(_i)]["misfit"] = self.misfits[event]
-                it_dict["events"][str(_i)]["usage_updated"] = self.updated[
-                    event
-                ]
+                it_dict["events"][str(_i)]["usage_updated"] = self.updated[event]
         if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
             it_dict["smoothing"] = self.smoothing_job
 
@@ -959,9 +878,8 @@ class ProjectComponent(Component):
         :type iteration: str
         """
         if self.AdamOpt:
-            adam_opt = AdamOptimizer(
-                inversion_root=self.comm.project.paths["inversion_root"])
-            iteration = adam_opt.get_iteration_name()
+            adam_opt = AdamOpt(self.comm)
+            iteration = adam_opt.iteration_name()
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
         if validation:
@@ -973,17 +891,13 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml"
         )
         if not os.path.exists(iteration_toml):
-            raise InversionsonError(
-                f"No toml file exists for iteration: {iteration}"
-            )
+            raise InversionsonError(f"No toml file exists for iteration: {iteration}")
 
         it_dict = toml.load(iteration_toml)
 
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
-        self.events_in_iteration = self.comm.lasif.list_events(
-            iteration=iteration
-        )
+        self.events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
         if not validation:
             if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                 self.old_control_group = it_dict["last_control_group"]
@@ -1008,29 +922,25 @@ class ProjectComponent(Component):
         # Not sure if it's worth it to include station misfits
         for _i, event in enumerate(self.events_in_iteration):
             if not validation:
-                self.updated[event] = it_dict["events"][str(_i)][
-                    "usage_updated"
-                ]
+                self.updated[event] = it_dict["events"][str(_i)]["usage_updated"]
                 self.misfits[event] = it_dict["events"][str(_i)]["misfit"]
 
-                self.adjoint_job[event] = it_dict["events"][str(_i)][
-                    "job_info"
-                ]["adjoint"]
+                self.adjoint_job[event] = it_dict["events"][str(_i)]["job_info"][
+                    "adjoint"
+                ]
                 if self.inversion_mode == "mini-batch" and not self.AdamOpt:
-                    self.smoothing_job[event] = it_dict["events"][str(_i)][
-                        "job_info"
-                    ]["smoothing"]
-            self.forward_job[event] = it_dict["events"][str(_i)]["job_info"][
-                "forward"
-            ]
+                    self.smoothing_job[event] = it_dict["events"][str(_i)]["job_info"][
+                        "smoothing"
+                    ]
+            self.forward_job[event] = it_dict["events"][str(_i)]["job_info"]["forward"]
             if remote_interp:
-                self.model_interp_job[event] = it_dict["events"][str(_i)][
-                    "job_info"
-                ]["model_interp"]
+                self.model_interp_job[event] = it_dict["events"][str(_i)]["job_info"][
+                    "model_interp"
+                ]
                 if not validation:
-                    self.gradient_interp_job[event] = it_dict["events"][
-                        str(_i)
-                    ]["job_info"]["gradient_interp"]
+                    self.gradient_interp_job[event] = it_dict["events"][str(_i)][
+                        "job_info"
+                    ]["gradient_interp"]
         if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
             self.smoothing_job = it_dict["smoothing"]
 
@@ -1047,17 +957,13 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml"
         )
         if not os.path.exists(iteration_toml):
-            raise InversionsonError(
-                f"No toml file exists for iteration: {iteration}"
-            )
+            raise InversionsonError(f"No toml file exists for iteration: {iteration}")
 
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)
         return it_dict
 
-    def get_key_number_for_event(
-        self, event: str, iteration: str = "current"
-    ) -> str:
+    def get_key_number_for_event(self, event: str, iteration: str = "current") -> str:
         """
         Due to an annoying problem with toml. We can not use event names
         as keys in the iteration dictionaries. This is a function to find

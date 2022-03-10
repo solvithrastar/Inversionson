@@ -196,6 +196,34 @@ class Optimize(object):
         """
         return True
 
+    def compute_validation_misfit(self, verbose: bool = False):
+        """
+        Compute misfits for validation dataset
+        """
+        if verbose:
+            print("Creating average mesh for validation")
+        if self.iteration_number != 0:
+            to_it = self.iteration_number
+            from_it = self.iteration_number - self.comm.project.when_to_validate + 1
+            self.comm.salvus_mesher.get_average_model(iteration_range=(from_it, to_it))
+            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
+            if self.comm.project.interapolation_mode == "remote":
+                self.comm.lasif.move_mesh(
+                    event=None,
+                    iteration=None,
+                    validation=True,
+                )
+        val_forward_helper = helpers.ForwardHelper(
+            self.comm, self.comm.project.validation_dataset
+        )
+        assert "validation_" in self.comm.project.current_iteration
+        val_forward_helper.dispatch_forward_simulations(verbose=verbose)
+        assert val_forward_helper.assert_all_simulations_dispatched()
+        val_forward_helper.retrieve_forward_simulations(
+            adjoint=False, verbose=verbose, validation=True
+        )
+        val_forward_helper.report_total_validation_misfit()
+
     def compute_misfit(
         self,
         adjoint: bool = True,

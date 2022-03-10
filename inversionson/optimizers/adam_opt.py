@@ -248,6 +248,7 @@ class AdamOpt(Optimize):
                 "forward_submitted": False,
                 "misfit_completed": False,
                 "gradient_completed": False,
+                "validated": False,
                 "iteration_number": self.iteration_number,
                 "finished": False,
             }
@@ -492,6 +493,9 @@ class AdamOpt(Optimize):
             shutil.copy(smooth_update, self.smooth_update_path)
             self._apply_smooth_update()
 
+    def ready_for_validation(self) -> bool:
+        return "validated" in self.task_dict.keys() and not self.task_dict["validated"]
+
     def prepare_iteration(self, validation=False):
         if validation:
             it_name = f"validation_{self.iteration_name}"
@@ -500,9 +504,7 @@ class AdamOpt(Optimize):
 
         move_meshes = "00000" in it_name if validation else True
         self.comm.project.change_attribute("current_iteration", it_name)
-        it_toml = os.path.join(
-            self.comm.project.paths["iteration_tomls"], it_name + ".toml"
-        )
+
         if self.comm.lasif.has_iteration(it_name):
             raise InversionsonError(f"Iteration {it_name} already exists")
 
@@ -512,8 +514,7 @@ class AdamOpt(Optimize):
         super().prepare_iteration(
             it_name=it_name, move_meshes=move_meshes, events=events
         )
-        self.task_dict["finished"] = True
-        self._update_task_file()
+        self.finish_task()
 
     def compute_gradient(self, verbose):
         """
@@ -540,8 +541,7 @@ class AdamOpt(Optimize):
             self._update_task_file()
         else:
             print("Gradients already computed")
-        self.task_dict["finished"] = True
-        self._update_task_file()
+        self.finish_task()
 
     def update_model(self, verbose):
         """
@@ -595,10 +595,23 @@ class AdamOpt(Optimize):
         else:
             print("Iteration already finalized")
 
-        self.task_dict["finished"] = True
-        self._update_task_file()
+        self.finish_task()
 
-    def perform_task(self, validation=False, verbose=False):
+    def do_validation_iteration(self, verbose=False):
+        it_name = f"validation_{self.iteration_name}"
+        if not self.comm.lasif.has_iteration(it_name):
+            self.prepare_iteration(validation=True)
+        else:
+            self.comm.project.get_iteration_attributes(validation=True)
+        super().compute_validation_misfit(verbose=verbose)
+        iteration = self.comm.project.current_iteration
+        iteration = iteration[11:]
+        self.comm.project.change_attribute(
+            attribute="current_iteration", new_value=iteration
+        )
+        self.comm.project.get_iteration_attributes()
+
+    def perform_task(self, verbose=False):
         """
         Look at which task is the current one and call the function which does it.
         """
@@ -606,14 +619,13 @@ class AdamOpt(Optimize):
 
         if task_name == "prepare_iteration":
             if not self.task_dict["finished"]:
-                if validation:
-                    it_name = f"validation_{self.iteration_name}"
+                if self.comm.lasif.has_iteration(self.iteration_name):
+                    print(
+                        f"Iteration {self.iteration_name} exists. Will load its attributes"
+                    )
+                    self.comm.project.get_iteration_attributes(validation=False)
                 else:
-                    it_name = self.iteration_name
-                if self.comm.lasif.has_iteration(it_name):
-                    print(f"Iteration {it_name} exists. Will load its attributes")
-                    self.comm.project.get_iteration_attributes(validation=validation)
-                self.prepare_iteration(validation=validation)
+                    self.prepare_iteration(validation=False)
             else:
                 print("Iteration already prepared")
         elif task_name == "compute_gradient":
