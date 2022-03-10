@@ -18,7 +18,7 @@ class TaskManager(object):
         This creates an instance of the optimization class which is
         picked by the user.
         """
-        if optimization_method == "Adam":
+        if optimization_method.lower() == "adam":
             return AdamOpt(comm=comm)
         else:
             raise InversionsonError(

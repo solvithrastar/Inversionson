@@ -32,17 +32,13 @@ class StoryTellerComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        super(StoryTellerComponent, self).__init__(
-            communicator, component_name
-        )
+        super(StoryTellerComponent, self).__init__(communicator, component_name)
         self.root, self.backup = self._create_root_folder()
         self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
-        self.events_quality_toml = os.path.join(
-            self.root, "events_quality.toml"
-        )
+        self.events_quality_toml = os.path.join(self.root, "events_quality.toml")
         self.validation_toml = os.path.join(self.root, "validation.toml")
         if os.path.exists(self.validation_toml):
             self.validation_dict = toml.load(self.validation_toml)
@@ -144,7 +140,7 @@ class StoryTellerComponent(Component):
 
     def _update_list_of_events(self):
         """
-        In order to be able to add events to inversion we 
+        In order to be able to add events to inversion we
         need to update the list of used events.
         """
         all_events = self.comm.lasif.list_events()
@@ -199,15 +195,13 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            if self.comm.project.AdamOpt:
+            if self.comm.project.optimizer == "adam":
                 iteration_number = int(
-                    self.comm.project.current_iteration.split("_")[-1].lstrip(
-                        "0"))
+                    self.comm.project.current_iteration.split("_")[-1].lstrip("0")
+                )
             else:
                 iteration_number = int(iteration.split("_")[0][2:].lstrip("0"))
-        self.markdown.add_header(
-            header_style=2, text=f"Iteration: {iteration_number}"
-        )
+        self.markdown.add_header(header_style=2, text=f"Iteration: {iteration_number}")
         text = "Here you can read all about what happened in iteration "
         text += f"{iteration_number}."
 
@@ -246,7 +240,8 @@ class StoryTellerComponent(Component):
         iteration = self.comm.project.current_iteration
         for event in self.comm.project.events_in_iteration:
             im_file = self.comm.lasif.plot_event_misfits(
-                event=event, iteration=iteration,
+                event=event,
+                iteration=iteration,
             )
             self.markdown.add_paragraph(text=f"Misfits for {event}")
             self.markdown.add_image(
@@ -299,19 +294,13 @@ class StoryTellerComponent(Component):
 
         prev_total_misfit = 0.0
         prev_cg_misfit = 0.0
-        for _i, event in enumerate(
-            self.comm.lasif.list_events(iteration=prev_iter)
-        ):
-            prev_total_misfit += float(
-                prev_it_dict["events"][str(_i)]["misfit"]
-            )
+        for _i, event in enumerate(self.comm.lasif.list_events(iteration=prev_iter)):
+            prev_total_misfit += float(prev_it_dict["events"][str(_i)]["misfit"])
             if event in prev_it_dict["new_control_group"]:
                 event_index = self.comm.project.get_key_number_for_event(
                     event=event, iteration=prev_iter
                 )
-                prev_cg_misfit += float(
-                    prev_it_dict["events"][event_index]["misfit"]
-                )
+                prev_cg_misfit += float(prev_it_dict["events"][event_index]["misfit"])
 
         current_total_misfit = 0.0
         current_cg_misfit = 0.0
@@ -320,9 +309,7 @@ class StoryTellerComponent(Component):
             if key in self.comm.project.old_control_group:
                 current_cg_misfit += float(value)
 
-        tot_red = (
-            prev_total_misfit - current_total_misfit
-        ) / prev_total_misfit
+        tot_red = (prev_total_misfit - current_total_misfit) / prev_total_misfit
         cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
 
         return tot_red, cg_red
@@ -374,9 +361,7 @@ class StoryTellerComponent(Component):
             text += "Misfit for the old control group: "
             text += f"{old_control_group_misfit}"
             cg_red *= 100.0  # Get percentages
-            text += (
-                f"\n Misfit reduction between the iterations: {cg_red:.3f} %"
-            )
+            text += f"\n Misfit reduction between the iterations: {cg_red:.3f} %"
 
         if verbose and "additional" not in verbose:
             old_control_group_misfit = 0.0
@@ -400,9 +385,7 @@ class StoryTellerComponent(Component):
         """
         Report what the new control group is and what the current misfit is.
         """
-        self.markdown.add_header(
-            header_style=4, text="Selection of New Control Group"
-        )
+        self.markdown.add_header(header_style=4, text="Selection of New Control Group")
         text = "The events which will continue on to the next iteration are "
         text += "listed below."
 
@@ -431,9 +414,7 @@ class StoryTellerComponent(Component):
         At the end of each iteration we report how many events have been
         uses in inversion.
         """
-        num_events = len(
-            [x for x in list(self.events_used.values()) if x != 0]
-        )
+        num_events = len([x for x in list(self.events_used.values()) if x != 0])
 
         text = f"We have now used {num_events} events during the inversion."
 
@@ -450,11 +431,14 @@ class StoryTellerComponent(Component):
         self.markdown.add_paragraph(text=text)
 
     def report_validation_misfit(
-        self, iteration: str, event: str, total_sum: bool = False,
+        self,
+        iteration: str,
+        event: str,
+        total_sum: bool = False,
     ):
         """
         We write misfit of validation dataset for a specific window_set
-        
+
         :param iteration: Name of validation iteration
         :type iteration: str
         :param window_set: Name of window set
@@ -557,7 +541,7 @@ class StoryTellerComponent(Component):
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
                 self._update_list_of_events()
-            if self.comm.project.AdamOpt:
+            if self.comm.project.optimizer == "adam":
                 self._update_usage_of_events()
             self._backup_files()
 

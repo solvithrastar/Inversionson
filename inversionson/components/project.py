@@ -264,6 +264,16 @@ class ProjectComponent(Component):
         if self.info["meshes"] not in ["mono-mesh", "multi-mesh"]:
             raise InversionsonError("We only accept 'mono-mesh' or 'multi-mesh'")
 
+        if "optimizer" not in self.info.keys():
+            raise InversionsonError(
+                "We need to know what type of optimization you want. "
+                "The available ones are 'Adam'"
+                "Key: optimizer"
+            )
+
+        if self.info["meshes"].lower() not in ["adam"]:
+            raise InversionsonError("We only accept 'adam'")
+
         # Smoothing
         if "Smoothing" not in self.info.keys():
             raise InversionsonError(
@@ -525,6 +535,7 @@ class ProjectComponent(Component):
         self.inversion_id = self.info["inversion_id"]
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
+        self.optimizer = self.info["optimizer"].lower()
         if self.meshes == "multi-mesh":
             self.elem_per_quarter = self.info["Meshing"][
                 "elements_per_azimuthal_quarter"
@@ -578,8 +589,8 @@ class ProjectComponent(Component):
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
             if self.AdamOpt:
-                adam_opt = AdamOpt()
-                self.current_iteration = adam_opt.get_iteration_name()
+                adam_opt = AdamOpt(self.comm)
+                self.current_iteration = adam_opt.iteration_name
             else:
                 self.current_iteration = (
                     self.comm.salvus_opt.get_newest_iteration_name()

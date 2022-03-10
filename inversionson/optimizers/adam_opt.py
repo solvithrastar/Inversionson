@@ -214,9 +214,10 @@ class AdamOpt(Optimize):
 
     def _get_path_for_iteration(self, iteration_number, path):
         filename = path.stem
-        iteration = int(filename.split("_")[-1])
         reconstructed_filename = (
-            filename.split("_")[:-1].join("_") + f"_{iteration:05d}" + path.suffix
+            filename.split("_")[:-1].join("_")
+            + f"_{iteration_number:05d}"
+            + path.suffix
         )
         return path.parent / reconstructed_filename
 
@@ -411,13 +412,15 @@ class AdamOpt(Optimize):
         shutil.copy(self.raw_gradient_path, self.raw_update_path)
         self.set_h5_data(self.raw_update_path, update)
 
+    def get_path_for_iteration(self, iteration_number, path):
+        return self._get_path_for_iteration(iteration_number, path)
+
     def apply_smooth_update(self):
         """
         Apply the smoothed update.
         """
         print("Adam: Applying smooth update...")
 
-        time_step = task_info["time_step"] + 1
         max_raw_update = np.max(np.abs(self.get_h5_data(self.raw_update_path)))
         update = self.get_h5_data(self.smooth_update_path)
 

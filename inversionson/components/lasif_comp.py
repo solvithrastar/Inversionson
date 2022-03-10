@@ -262,13 +262,14 @@ class LasifComponent(Component):
         """
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-        if self.comm.project.AdamOpt:
-            adam_opt = AdamOpt()
-            iteration = adam_opt.get_iteration_name(validation=validation)
+        if self.comm.project.optimizer == "adam":
+            adam_opt = AdamOpt(self.comm)
+            iteration = adam_opt.iteration_name
             if validation:
+                iteration = f"validation_{iteration}"
                 local_model = self.comm.multi_mesh.find_model_file(iteration)
             else:
-                local_model = adam_opt.get_model_path()
+                local_model = adam_opt.model_path
         else:
             iteration = self.comm.project.current_iteration
             local_model = self.comm.multi_mesh.find_model_file(iteration)
@@ -339,9 +340,9 @@ class LasifComponent(Component):
 
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
-            if self.comm.project.AdamOpt:
-                adam_opt = AdamOpt()
-                model = adam_opt.get_model_path()
+            if self.comm.project.optimizer == "adam":
+                adam_opt = AdamOpt(self.comm)
+                model = adam_opt.model_path
                 # copy to lasif project and also move to cluster
                 simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=None)
                 shutil.copy(model, simulation_mesh)
@@ -762,9 +763,9 @@ class LasifComponent(Component):
             #     "domain_file"
             # ]
             if "validation" in iteration and "it0000" and "00000" not in iteration:
-                if self.comm.project.AdamOpt:
-                    adam_opt = AdamOpt()
-                    new_it_num = adam_opt.get_iteration_number()
+                if self.comm.project.optimizer == "adam":
+                    adam_opt = AdamOpt(self.comm)
+                    new_it_num = adam_opt.iteration_number
                 else:
                     new_it_num = self.comm.salvus_opt.get_number_of_newest_iteration()
                 old_it_num = new_it_num - self.comm.project.when_to_validate + 1

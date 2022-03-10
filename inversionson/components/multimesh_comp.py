@@ -14,9 +14,7 @@ from inversionson.optimizers.adam_opt import AdamOpt
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
-        os.path.dirname(
-            os.path.abspath(inspect.getfile(inspect.currentframe()))
-        )
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
     "remote_scripts",
     "move_fields.py",
@@ -39,9 +37,9 @@ class MultiMeshComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        if self.comm.project.AdamOpt:
-            adam_opt = AdamOpt()
-            model = adam_opt.get_model_path()
+        if self.comm.project.optimizer == "adam":
+            adam_opt = AdamOpt(self.comm)
+            model = adam_opt.model_path
         else:
             model = os.path.join(self.physical_models, iteration + ".h5")
 
@@ -49,14 +47,13 @@ class MultiMeshComponent(Component):
             iteration = iteration.replace("validation_", "")
             if (
                 self.comm.project.when_to_validate > 1
-                and iteration != "it0000_model" and iteration != "model_00000"
+                and iteration != "it0000_model"
+                and iteration != "model_00000"
             ):
-                if self.comm.project.AdamOpt:
-                    it_number = adam_opt.get_iteration_number()
+                if self.comm.project.optimizer == "adam":
+                    it_number = adam_opt.iteration_number
                 else:
-                    it_number = (
-                        self.comm.salvus_opt.get_number_of_newest_iteration()
-                    )
+                    it_number = self.comm.salvus_opt.get_number_of_newest_iteration()
                 old_it = it_number - self.comm.project.when_to_validate + 1
                 model = (
                     self.comm.salvus_mesher.average_meshes
@@ -102,7 +99,9 @@ class MultiMeshComponent(Component):
             )
 
     def interpolate_to_simulation_mesh(
-        self, event: str, interp_folder=None,
+        self,
+        event: str,
+        interp_folder=None,
     ):
         """
         Interpolate current master model to a simulation mesh.
@@ -114,7 +113,9 @@ class MultiMeshComponent(Component):
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
-                event=event, gradient=False, interp_folder=interp_folder,
+                event=event,
+                gradient=False,
+                interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',
@@ -180,12 +181,8 @@ class MultiMeshComponent(Component):
             print(f"Interpolation job for event {event} submitted")
             self.comm.project.update_iteration_toml()
         else:
-            gradient = self.comm.lasif.find_gradient(
-                iteration, event, smooth=smooth
-            )
-            simulation_mesh = self.comm.lasif.get_simulation_mesh(
-                event_name=event
-            )
+            gradient = self.comm.lasif.find_gradient(iteration, event, smooth=smooth)
+            simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=event)
 
             master_model = self.comm.lasif.get_master_model()
 
@@ -293,7 +290,9 @@ class MultiMeshComponent(Component):
         weights_exists = hpc_cluster.remote_exists(interp_info_file)
 
         mesh_to_interpolate_to = self.comm.lasif.find_remote_mesh(
-            event=event, gradient=gradient, interpolate_to=True,
+            event=event,
+            gradient=gradient,
+            interpolate_to=True,
         )
         mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
             event=event,
@@ -390,8 +389,11 @@ class MultiMeshComponent(Component):
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         if hpc_cluster.config["site_type"] == "local":
             remote_script_path = os.path.join(
-                self.comm.project.remote_diff_model_dir, "..",
-                "scripts", "interpolation.py")
+                self.comm.project.remote_diff_model_dir,
+                "..",
+                "scripts",
+                "interpolation.py",
+            )
         else:
             username = hpc_cluster.config["ssh_settings"]["username"]
             remote_script_path = os.path.join(
@@ -405,17 +407,13 @@ class MultiMeshComponent(Component):
         site = get_site(self.comm.project.interpolation_site)
         username = site.config["ssh_settings"]["username"]
 
-        remote_inversionson_scripts = os.path.join(
-            "/users", username, "scripts"
-        )
+        remote_inversionson_scripts = os.path.join("/users", username, "scripts")
 
         if not site.remote_exists(remote_inversionson_scripts):
             site.remote_mkdir(remote_inversionson_scripts)
 
         # copy processing script to daint
-        remote_script = os.path.join(
-            remote_inversionson_scripts, "move_fields.py"
-        )
+        remote_script = os.path.join(remote_inversionson_scripts, "move_fields.py")
         if not site.remote_exists(remote_script):
             site.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
         return remote_script
@@ -430,8 +428,8 @@ class MultiMeshComponent(Component):
         # get_remote
         if hpc_cluster.config["site_type"] == "local":
             remote_script_dir = os.path.join(
-                self.comm.project.remote_diff_model_dir, "..",
-                "scripts")
+                self.comm.project.remote_diff_model_dir, "..", "scripts"
+            )
         else:
             username = hpc_cluster.config["ssh_settings"]["username"]
             remote_script_dir = os.path.join("/users", username, "scripts")
@@ -459,8 +457,6 @@ multi_mesh.api.gll_2_gll_layered_multi(
             with open(local_script, "w+") as fh:
                 fh.write(interp_script)
 
-        remote_interp_script = os.path.join(
-            remote_script_dir, "interpolation.py"
-        )
+        remote_interp_script = os.path.join(remote_script_dir, "interpolation.py")
         if not hpc_cluster.remote_exists(remote_interp_script):
             hpc_cluster.remote_put(local_script, remote_interp_script)

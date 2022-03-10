@@ -1436,7 +1436,7 @@ class SmoothingHelper(object):
         info["event_list"] = events
         info["gradient_norms_path"] = remote_norms_path
 
-        if self.comm.project.AdamOpt:
+        if self.comm.project.optimizer == "adam":
             info["batch_average"] = True  # compute sample average
 
         toml_filename = f"gradient_sum.toml"
@@ -1481,8 +1481,8 @@ class SmoothingHelper(object):
         hpc_cluster.remote_get(remote_output_path, gradient)
 
         # Only sum the raw gradient in AdamOpt, not the update
-        if self.comm.project.AdamOpt:
-            adam_opt = AdamOpt()
+        if self.comm.project.optimizer == "adam":
+            adam_opt = AdamOpt(self.comm)
             if "VPV" in adam_opt.parameters:
                 sum_two_parameters_h5(gradient, ["VPV", "VPH"])
 

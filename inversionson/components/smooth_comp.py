@@ -169,8 +169,8 @@ class SalvusSmoothComponent(Component):
                 mesh = UnstructuredMesh.from_h5(
                     self.comm.lasif.find_gradient(iteration=iteration, event=event)
                 )
-            elif self.comm.project.AdamOpt:
-                adam_opt = AdamOpt()
+            elif self.comm.project.optimizer == "adam":
+                adam_opt = AdamOpt(self.comm)
                 mesh = UnstructuredMesh.from_h5(adam_opt.raw_update_path)
             else:
                 # mono-batch case
@@ -229,7 +229,7 @@ class SalvusSmoothComponent(Component):
         from salvus.flow.api import get_site
         from salvus.flow import api as sapi
 
-        if self.comm.project.AdamOpt:
+        if self.comm.project.optimizer == "adam":
             event = None
         if not self.comm.project.inversion_mode == "mini-batch":
             raise Exception("Not yet implemented.")
@@ -261,8 +261,8 @@ class SalvusSmoothComponent(Component):
             # The gradient we want has been interpolated
             job = self.comm.salvus_flow.get_job(event, "gradient_interp")
             remote_grad = str(job.stdout_path.parent / "output" / "mesh.h5")
-        elif self.comm.project.AdamOpt:
-            adam_opt = AdamOpt()
+        elif self.comm.project.optimizer == "adam":
+            adam_opt = AdamOpt(self.comm)
             local_update = adam_opt.raw_update_path
             file_name = local_update.split("/")[-1]
             remote_grad = os.path.join(remote_diff_dir, file_name)
