@@ -3,7 +3,7 @@ A class with a collection of tasks that need to be done as a part of an inversio
 Created to have an easily accessible collection of methods which different optimizers have in common.
 """
 from typing import List, Dict
-import autoinverter_helpers as helper
+import inversionson.autoinverter_helpers as helper
 from inversionson import InversionsonError
 from inversionson.optimizers.adam_opt import AdamOpt
 
@@ -27,6 +27,8 @@ class TaskManager(object):
 
     def _time_for_validation(self) -> bool:
         validation = False
+        if self.comm.project.when_to_validate == 0:
+            return False
         if self.optimization.iteration_number == 0:
             validation = True
         if (
@@ -49,6 +51,9 @@ class TaskManager(object):
 
     def get_new_task(self):
         self.optimization.get_new_task()
+
+    def get_n_tasks(self):
+        return len(self.optimization.available_tasks)
 
 
 """

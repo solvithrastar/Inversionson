@@ -2,6 +2,7 @@ import os
 import shutil
 import emoji
 import toml
+import sys
 
 from pathlib import Path
 from colorama import init
@@ -36,7 +37,9 @@ class AutoInverter(object):
         taskmanager = TaskManager(
             optimization_method=self.comm.project.optimizer, comm=self.comm
         )
-        for i in range(n_iterations):
+        n_tasks = taskmanager.get_n_tasks()
+        n_tasks *= n_iterations
+        for i in range(n_tasks):
             taskmanager.perform_task(verbose=verbose)
             taskmanager.get_new_task()
 
@@ -80,7 +83,7 @@ def run(root=None):
         )
     )
     info = read_info_toml(root)
-    invert = AutoInverterNew(info)
+    invert = AutoInverter(info)
 
 
 if __name__ == "__main__":

@@ -33,7 +33,7 @@ class Optimize(object):
         )
         if not os.path.exists(self.opt_folder):
             os.mkdir(self.opt_folder)
-        self.models_dir = self.opt_folder / "MODELS"
+        self.model_dir = self.opt_folder / "MODELS"
         self.task_dir = self.opt_folder / "TASKS"
         self.config_file = self.opt_folder / "opt_config.toml"
         if not os.path.exists(self.config_file):
@@ -94,20 +94,19 @@ class Optimize(object):
     @property
     def iteration_number(self):
         "Returns the number of the newest iteration"
-        return self.find_iteration_numbers()[0]
+        return max(self.find_iteration_numbers())
 
     @property
     def iteration_name(self):
         return f"model_{self.iteration_number:05d}"
 
     def find_iteration_numbers(self):
-        models = glob.glob(f"{self.models_dir}/*.h5")
+        models = glob.glob(f"{self.model_dir}/*.h5")
         if len(models) == 0:
             return [0]
         iteration_numbers = []
         for model in models:
             iteration_numbers.append(int(model.split(".")[0].split("_")[-1]))
-        iteration_numbers.sort(reverse=False)
         return iteration_numbers
 
     def prepare_iteration(
@@ -169,7 +168,7 @@ class Optimize(object):
                     self.comm.salvus_mesher.create_mesh(event=event)
                     self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
                 else:
-                    self.comm.move_mesh(event, it_name, hpc_cluster=interp_site)
+                    self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
         elif self.comm.project.meshes == "mono-mesh" and move_meshes:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
@@ -244,6 +243,9 @@ class Optimize(object):
         """
         if window_selection is None:
             window_selection = self.select_new_windows()
+        self.forward_helper = helpers.ForwardHelper(
+            comm=self.comm, events=self.comm.project.events_in_iteration
+        )
         self.forward_helper.retrieve_forward_simulations(
             adjoint=adjoint, windows=window_selection, verbose=verbose
         )
@@ -286,6 +288,9 @@ class Optimize(object):
         if self.comm.project.meshes == "multi-mesh":
             interpolate = True
             self.comm.lasif.move_gradient_to_cluster()
+        self.adjoint_helper = helpers.AdjointHelper(
+            comm=self.comm, events=self.comm.project.events_in_iteration
+        )
         self.adjoint_helper.process_gradients(
             interpolate=interpolate,
             smooth_individual=smooth_individual,

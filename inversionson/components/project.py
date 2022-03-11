@@ -7,6 +7,7 @@ the inversion itself.
 import os
 import toml
 import shutil
+import pathlib
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
 from inversionson.optimizers.adam_opt import AdamOpt
@@ -271,7 +272,7 @@ class ProjectComponent(Component):
                 "Key: optimizer"
             )
 
-        if self.info["meshes"].lower() not in ["adam"]:
+        if self.info["optimizer"].lower() not in ["adam"]:
             raise InversionsonError("We only accept 'adam'")
 
         # Smoothing
@@ -530,8 +531,8 @@ class ProjectComponent(Component):
         self.domain_file = self.simulation_dict["domain_file"]
 
         # Inversion attributes
-        self.inversion_root = self.info["inversion_path"]
-        self.lasif_root = self.info["lasif_root"]
+        self.inversion_root = pathlib.Path(self.info["inversion_path"])
+        self.lasif_root = pathlib.Path(self.info["lasif_root"])
         self.inversion_id = self.info["inversion_id"]
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
@@ -588,7 +589,7 @@ class ProjectComponent(Component):
         ]
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
-            if self.AdamOpt:
+            if self.optimizer == "adam":
                 adam_opt = AdamOpt(self.comm)
                 self.current_iteration = adam_opt.iteration_name
             else:
@@ -602,22 +603,21 @@ class ProjectComponent(Component):
 
         # Some useful paths
         self.paths = {}
-        self.paths["inversion_root"] = self.inversion_root
-        self.paths["lasif_root"] = self.lasif_root
-        self.paths["salvus_opt"] = os.path.join(self.inversion_root, "SALVUS_OPT")
-        if not os.path.exists(self.paths["salvus_opt"]):
-            raise InversionsonError(
-                "Please make a folder for Salvus opt and initialize it in there"
-            )
+        self.paths["inversion_root"] = pathlib.Path(self.inversion_root)
+        self.paths["lasif_root"] = pathlib.Path(self.lasif_root)
+        # self.paths["salvus_opt"] = os.path.join(self.inversion_root, "SALVUS_OPT")
+        # if not os.path.exists(self.paths["salvus_opt"]):
+        #     raise InversionsonError(
+        #         "Please make a folder for Salvus opt and initialize it in there"
+        #     )
 
-        self.paths["documentation"] = os.path.join(self.inversion_root, "DOCUMENTATION")
+        self.paths["documentation"] = self.inversion_root / "DOCUMENTATION"
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
-            os.mkdir(os.path.join(self.paths["documentation"], "BACKUP"))
+            os.mkdir(self.paths["documentation"] / "BACKUP")
 
-        self.paths["iteration_tomls"] = os.path.join(
-            self.paths["documentation"], "ITERATIONS"
-        )
+        self.paths["iteration_tomls"] = self.paths["documentation"] / "ITERATIONS"
+
         if not os.path.exists(self.paths["iteration_tomls"]):
             os.makedirs(self.paths["iteration_tomls"])
         # self.paths["salvus_smoother"] = self.info["salvus_smoother"]
@@ -888,9 +888,9 @@ class ProjectComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        if self.AdamOpt:
+        if self.optimizer == "adam":
             adam_opt = AdamOpt(self.comm)
-            iteration = adam_opt.iteration_name()
+            iteration = adam_opt.iteration_name
         else:
             iteration = self.comm.salvus_opt.get_newest_iteration_name()
         if validation:

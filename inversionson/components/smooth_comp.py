@@ -93,7 +93,7 @@ class SalvusSmoothComponent(Component):
 
         if (
             self.comm.project.inversion_mode == "mono-batch"
-            or self.comm.project.AdamOpt
+            or self.comm.project.optimizer == "adam"
         ):
             smooth_grad = self.comm.lasif.find_gradient(
                 iteration=iteration,
@@ -130,7 +130,7 @@ class SalvusSmoothComponent(Component):
         # Only sum the raw gradient in AdamOpt, not the update
         if (
             "VPV" in list(smooth_gradient.element_nodal_fields.keys())
-            and not self.comm.project.AdamOpt
+            and self.comm.project.optimization != "adam"
         ):
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
                 mesh=smooth_grad,
@@ -164,7 +164,7 @@ class SalvusSmoothComponent(Component):
         else:
             if (
                 self.comm.project.inversion_mode == "mini-batch"
-                and not self.comm.project.AdamOpt
+                and not self.comm.project.optimizer == "adam"
             ):
                 mesh = UnstructuredMesh.from_h5(
                     self.comm.lasif.find_gradient(iteration=iteration, event=event)
@@ -194,7 +194,7 @@ class SalvusSmoothComponent(Component):
         )
         if (
             self.comm.project.inversion_mode == "mini-batch"
-            and not self.comm.project.AdamOpt
+            and not self.comm.project.optimizer == "adam"
         ):
             self.comm.project.change_attribute(
                 f'smoothing_job["{event}"]["name"]', job.job_array_name
@@ -256,7 +256,7 @@ class SalvusSmoothComponent(Component):
         if (
             int_mode == "remote"
             and self.comm.project.meshes == "multi-mesh"
-            and not self.comm.project.AdamOpt
+            and not self.comm.project.optimizer == "adam"
         ):
             # The gradient we want has been interpolated
             job = self.comm.salvus_flow.get_job(event, "gradient_interp")
@@ -264,7 +264,7 @@ class SalvusSmoothComponent(Component):
         elif self.comm.project.optimizer == "adam":
             adam_opt = AdamOpt(self.comm)
             local_update = adam_opt.raw_update_path
-            file_name = local_update.split("/")[-1]
+            file_name = local_update.name
             remote_grad = os.path.join(remote_diff_dir, file_name)
             hpc_cluster.remote_put(local_update, remote_grad)
         else:
@@ -345,7 +345,7 @@ class SalvusSmoothComponent(Component):
         )
         if (
             self.comm.project.inversion_mode == "mini-batch"
-            and not self.comm.project.AdamOpt
+            and not self.comm.project.optimizer == "adam"
         ):
             print(f"Submitted smoothing for event {event}")
             self.comm.project.change_attribute(

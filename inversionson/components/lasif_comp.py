@@ -553,7 +553,7 @@ class LasifComponent(Component):
         gradients = self.lasif_comm.project.paths["gradients"]
         if (
             self.comm.project.inversion_mode == "mini-batch"
-            and not self.comm.project.AdamOpt
+            and not self.comm.project.optimizer == "adam"
         ):
             if smooth:
                 gradient = os.path.join(
@@ -575,7 +575,7 @@ class LasifComponent(Component):
                     )
         elif (
             self.comm.project.inversion_mode == "mono-batch"
-            or self.comm.project.AdamOpt
+            or self.comm.project.optimizer == "adam"
         ):
             if summed:
                 if smooth:
@@ -601,7 +601,7 @@ class LasifComponent(Component):
         if (
             not smooth
             and self.comm.project.inversion_mode == "mini-batch"
-            and not self.comm.project.AdamOpt
+            and not self.comm.project.optimizer == "adam"
         ):
             if not os.path.exists(
                 os.path.join(gradients, f"ITERATION_{iteration}", event)

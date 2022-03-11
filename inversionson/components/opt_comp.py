@@ -20,7 +20,8 @@ class SalvusOptComponent(Component):
 
     def __init__(self, communicator, component_name):
         super(SalvusOptComponent, self).__init__(communicator, component_name)
-        self.path = self.comm.project.paths["salvus_opt"]
+        # self.path = self.comm.project.paths["salvus_opt"]
+        self.path = self.comm.project.paths["inversion_root"]
         self.task_toml = os.path.join(self.path, "task.toml")
         self.models = os.path.join(self.path, "PHYSICAL_MODELS")
         self.inv_models = os.path.join(self.path, "INVERSION_MODELS")
@@ -32,8 +33,7 @@ class SalvusOptComponent(Component):
         run_script = os.path.join(self.path, "run_salvus_opt.sh")
         if not os.path.exists(run_script):
             raise InversionsonError(
-                "Please create a shell script to run "
-                "Salvus opt in your opt folder."
+                "Please create a shell script to run " "Salvus opt in your opt folder."
             )
         os.chdir(self.path)
         run_script = f"sh {run_script}"
@@ -188,15 +188,9 @@ class SalvusOptComponent(Component):
         opt to work its magic.
         """
         for event in self.comm.project.events_in_iteration:
-            if os.path.exists(
-                os.path.join(self.inv_models, f"gradient_{event}.h5")
-            ):
-                os.remove(
-                    os.path.join(self.inv_models, f"gradient_{event}.h5")
-                )
-                os.remove(
-                    os.path.join(self.inv_models, f"gradient_{event}.xdmf")
-                )
+            if os.path.exists(os.path.join(self.inv_models, f"gradient_{event}.h5")):
+                os.remove(os.path.join(self.inv_models, f"gradient_{event}.h5"))
+                os.remove(os.path.join(self.inv_models, f"gradient_{event}.xdmf"))
 
     def write_gradient_to_task_toml(self):
         """
@@ -337,9 +331,7 @@ class SalvusOptComponent(Component):
 
         new_it_number = max(iterations)
         if len(iterations[new_it_number]) > 4:
-            raise InversionsonError(
-                "Looks like model has been rejected too often"
-            )
+            raise InversionsonError("Looks like model has been rejected too often")
         new_it_tr_region = min(iterations[new_it_number])
 
         return self._create_iteration_name(new_it_number, new_it_tr_region)
@@ -392,9 +384,7 @@ class SalvusOptComponent(Component):
         models = self._get_all_model_names()
         iterations = self._parse_model_files(models)
         if not number in iterations.keys():
-            raise InversionsonError(
-                f"Iteration number {number} does " "not exist."
-            )
+            raise InversionsonError(f"Iteration number {number} does " "not exist.")
         tr_region = min(iterations[number])
         return self._create_iteration_name(number, tr_region)
 
@@ -441,10 +431,7 @@ class SalvusOptComponent(Component):
         if events is None:
             events = self.comm.lasif.list_events()
         validation_events = list(
-            set(
-                self.comm.project.validation_dataset
-                + self.comm.project.test_dataset
-            )
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
         )
         block_prev_it_events = True
         blocked_events = []
@@ -453,9 +440,9 @@ class SalvusOptComponent(Component):
         for key, val in events_used.items():
             if val != 0:
                 blocked_events.append(key)
-        if abs(
-            len(blocked_events) - len(events_used.keys())
-        ) >= needed_events + len(validation_events):
+        if abs(len(blocked_events) - len(events_used.keys())) >= needed_events + len(
+            validation_events
+        ):
             # We still have plenty of events to choose from.
             print("We think there are enough events")
             use_these = None
@@ -464,17 +451,13 @@ class SalvusOptComponent(Component):
             )
             return blocked_events, use_these
 
-        if len(blocked_events) == len(events_used.keys()) - len(
-            validation_events
-        ):
+        if len(blocked_events) == len(events_used.keys()) - len(validation_events):
             print("We have used all events")
             use_these = None
         else:
             print("There are a limited events left unused")
             use_these = list(
-                set(events_used.keys())
-                - set(blocked_events)
-                - set(validation_events)
+                set(events_used.keys()) - set(blocked_events) - set(validation_events)
             )
 
         # Now the only constraint on event selection is that we don't want
@@ -482,21 +465,14 @@ class SalvusOptComponent(Component):
         # iteration and we don't want to use the test and validation set.
         # Se we find these events and add them to the blocked events
         blocked_events = list(
-            set(
-                self.comm.project.validation_dataset
-                + self.comm.project.test_dataset
-            )
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
         )
         prev_iter = self.get_previous_iteration_name()
-        prev_it_dict = self.comm.project.get_old_iteration_info(
-            iteration=prev_iter
-        )
+        prev_it_dict = self.comm.project.get_old_iteration_info(iteration=prev_iter)
         for event in self.comm.lasif.list_events(iteration=prev_iter):
             if event not in prev_it_dict["new_control_group"]:
                 blocked_events.append(event)
-        if needed_events > (
-            len(events) - len(blocked_events) + len(validation_events)
-        ):
+        if needed_events > (len(events) - len(blocked_events) + len(validation_events)):
             blocked_events = validation_events
         return blocked_events, use_these
 
@@ -515,9 +491,7 @@ class SalvusOptComponent(Component):
                         models.append(file[:-3])
 
         if len(models) == 0:
-            raise InversionsonOptError(
-                "Please initialize inversion in Salvus Opt"
-            )
+            raise InversionsonOptError("Please initialize inversion in Salvus Opt")
         return models
 
     def _parse_model_files(self, models: list) -> dict:

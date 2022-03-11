@@ -59,18 +59,8 @@ class SalvusFlowComponent(Component):
         if new:
             import random
 
-            unique_id = "".join(
-                random.choice("0123456789ABCDEF") for i in range(8)
-            )
-            job = (
-                iteration
-                + "_"
-                + inversion_id
-                + "_"
-                + sim_type
-                + "_"
-                + unique_id
-            )
+            unique_id = "".join(random.choice("0123456789ABCDEF") for i in range(8))
+            job = iteration + "_" + inversion_id + "_" + sim_type + "_" + unique_id
             if sim_type == "forward":
                 self.comm.project.forward_job[event]["name"] = job
             elif sim_type == "adjoint":
@@ -80,22 +70,19 @@ class SalvusFlowComponent(Component):
         # Here we just want to return a previously defined job name
         else:
             if old_iter:
-                iteration_info = self.comm.project.get_old_iteration_info(
-                    iteration
-                )
+                iteration_info = self.comm.project.get_old_iteration_info(iteration)
                 event_index = self.comm.project.get_key_number_for_event(
                     event, iteration
                 )
                 if (
-                    (self.comm.project.inversion_mode == "mono-batch" or
-                     self.comm.project.AdamOpt)
-                    and sim_type == "smoothing"
-                ):
+                    self.comm.project.inversion_mode == "mono-batch"
+                    or self.comm.project.optimizer == "adam"
+                ) and sim_type == "smoothing":
                     job = iteration_info[sim_type]["name"]
                 else:
-                    job = iteration_info["events"][event_index]["job_info"][
-                        sim_type
-                    ]["name"]
+                    job = iteration_info["events"][event_index]["job_info"][sim_type][
+                        "name"
+                    ]
             else:
                 if sim_type == "forward":
                     job = self.comm.project.forward_job[event]["name"]
@@ -106,8 +93,10 @@ class SalvusFlowComponent(Component):
                 elif sim_type == "gradient_interp":
                     job = self.comm.project.gradient_interp_job[event]["name"]
                 else:
-                    if self.comm.project.inversion_mode == "mono-batch" or \
-                            self.comm.project.AdamOpt:
+                    if (
+                        self.comm.project.inversion_mode == "mono-batch"
+                        or self.comm.project.optimizer == "adam"
+                    ):
                         job = self.comm.project.smoothing_job["name"]
                     else:
                         job = self.comm.project.smoothing_job[event]["name"]
@@ -119,9 +108,7 @@ class SalvusFlowComponent(Component):
             event=event, sim_type=sim_type, new=False, iteration=iteration
         )
 
-    def get_job(
-        self, event: str, sim_type: str, iteration="current"
-    ) -> object:
+    def get_job(self, event: str, sim_type: str, iteration="current") -> object:
         """
         Get Salvus.Flow Job Object, or JobArray Object
 
@@ -132,10 +119,7 @@ class SalvusFlowComponent(Component):
         :param iteration: name of iteration, defaults to "current"
         :type iteration: str, optional
         """
-        if (
-            iteration == "current"
-            or iteration == self.comm.project.current_iteration
-        ):
+        if iteration == "current" or iteration == self.comm.project.current_iteration:
             if "interp" in sim_type:
                 return self.__get_custom_job(event=event, sim_type=sim_type)
             if sim_type == "forward":
@@ -143,20 +127,20 @@ class SalvusFlowComponent(Component):
                     job_name = self.comm.project.forward_job[event]["name"]
                 else:
                     raise InversionsonError(
-                        f"Forward job for event: {event} has not been "
-                        "submitted"
+                        f"Forward job for event: {event} has not been " "submitted"
                     )
             elif sim_type == "adjoint":
                 if self.comm.project.adjoint_job[event]["submitted"]:
                     job_name = self.comm.project.adjoint_job[event]["name"]
                 else:
                     raise InversionsonError(
-                        f"Adjoint job for event: {event} has not been "
-                        "submitted"
+                        f"Adjoint job for event: {event} has not been " "submitted"
                     )
             elif sim_type == "smoothing":
-                if self.comm.project.inversion_mode == "mono-batch" or \
-                        self.comm.project.AdamOpt:
+                if (
+                    self.comm.project.inversion_mode == "mono-batch"
+                    or self.comm.project.optimizer == "adam"
+                ):
                     smoothing_job = self.comm.project.smoothing_job
                 else:
                     smoothing_job = self.comm.project.smoothing_job[event]
@@ -165,29 +149,24 @@ class SalvusFlowComponent(Component):
                     job_name = smoothing_job["name"]
                 else:
                     raise InversionsonError(
-                        f"Smoothing job for event: {event} has not been "
-                        "submitted"
+                        f"Smoothing job for event: {event} has not been " "submitted"
                     )
         else:
             it_dict = self.comm.project.get_old_iteration_info(iteration)
             if (
                 sim_type == "smoothing"
                 and self.comm.project.inversion_mode == "mono-batch"
-                    or self.comm.project.AdamOpt
+                or self.comm.project.optimizer == "adam"
             ):
                 job_name = it_dict["smoothing"]["name"]
             else:
                 event_index = self.comm.project.get_key_number_for_event(
                     event=event, iteration=iteration
                 )
-                job_name = it_dict["events"][event_index]["job_info"][
-                    sim_type
-                ]["name"]
+                job_name = it_dict["events"][event_index]["job_info"][sim_type]["name"]
         if sim_type == "smoothing":
             site_name = self.comm.project.smoothing_site_name
-            job = sapi.get_job_array(
-                job_array_name=job_name, site_name=site_name
-            )
+            job = sapi.get_job_array(job_array_name=job_name, site_name=site_name)
         else:
             site_name = self.comm.project.site_name
             job = sapi.get_job(job_name=job_name, site_name=site_name)
@@ -209,8 +188,8 @@ class SalvusFlowComponent(Component):
 
         if hpc_cluster.config["site_type"] == "local":
             interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir, "..",
-                "INTERPOLATION_WEIGHTS")
+                self.comm.project.remote_diff_model_dir, "..", "INTERPOLATION_WEIGHTS"
+            )
         else:
             username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
@@ -279,9 +258,7 @@ class SalvusFlowComponent(Component):
         :type sim_type: str
         """
 
-        job_name = self._get_job_name(
-            event=event_name, sim_type=sim_type, new=False
-        )
+        job_name = self._get_job_name(event=event_name, sim_type=sim_type, new=False)
         salvus_job = sapi.get_job(
             site_name=self.comm.project.site_name, job_name=job_name
         )
@@ -445,9 +422,7 @@ class SalvusFlowComponent(Component):
 
         with open(meta_json_filename) as json_file:
             data = json.load(json_file)
-        meta_recs = data["forward_run_input"]["output"]["point_data"][
-            "receiver"
-        ]
+        meta_recs = data["forward_run_input"]["output"]["point_data"]["receiver"]
         meta_info_dict = {}
         for rec in meta_recs:
             if rec["network_code"] + "_" + rec["station_code"] in adjoint_recs:
@@ -456,32 +431,27 @@ class SalvusFlowComponent(Component):
                 # this is the rotation from XYZ to ZNE,
                 # we still need to transpose to get ZNE -> XYZ
                 meta_info_dict[rec_name]["rotation_on_input"] = {
-                    "matrix": np.array(
-                        rec["rotation_on_output"]["matrix"]
-                    ).T.tolist()
+                    "matrix": np.array(rec["rotation_on_output"]["matrix"]).T.tolist()
                 }
                 meta_info_dict[rec_name]["location"] = rec["location"]
 
         adj_src = [
             source.cartesian.VectorPoint3D(
-                x=meta_info_dict[
-                    rec["network-code"] + "_" + rec["station-code"]
-                ]["location"][0],
-                y=meta_info_dict[
-                    rec["network-code"] + "_" + rec["station-code"]
-                ]["location"][1],
-                z=meta_info_dict[
-                    rec["network-code"] + "_" + rec["station-code"]
-                ]["location"][2],
+                x=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][0],
+                y=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][1],
+                z=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][2],
                 fx=1.0,
                 fy=1.0,
                 fz=1.0,
                 source_time_function=stf.Custom(
                     filename=adjoint_filename,
-                    dataset_name="/"
-                    + rec["network-code"]
-                    + "_"
-                    + rec["station-code"],
+                    dataset_name="/" + rec["network-code"] + "_" + rec["station-code"],
                 ),
                 rotation_on_input=meta_info_dict[
                     rec["network-code"] + "_" + rec["station-code"]
@@ -535,9 +505,7 @@ class SalvusFlowComponent(Component):
             ]
         return receivers
 
-    def construct_simulation(
-        self, event: str, sources: object, receivers: object
-    ):
+    def construct_simulation(self, event: str, sources: object, receivers: object):
         """
         Generate the simulation object which salvus flow loves
 
@@ -557,19 +525,11 @@ class SalvusFlowComponent(Component):
             mesh = self.comm.lasif.find_event_mesh(event=event)
         else:
             mesh = self.comm.lasif.get_simulation_mesh(event)
-        w = sc.simulation.Waveform(
-            mesh=mesh, sources=sources, receivers=receivers
-        )
+        w = sc.simulation.Waveform(mesh=mesh, sources=sources, receivers=receivers)
 
-        w.physics.wave_equation.end_time_in_seconds = (
-            self.comm.project.end_time
-        )
-        w.physics.wave_equation.time_step_in_seconds = (
-            self.comm.project.time_step
-        )
-        w.physics.wave_equation.start_time_in_seconds = (
-            self.comm.project.start_time
-        )
+        w.physics.wave_equation.end_time_in_seconds = self.comm.project.end_time
+        w.physics.wave_equation.time_step_in_seconds = self.comm.project.time_step
+        w.physics.wave_equation.start_time_in_seconds = self.comm.project.start_time
         w.physics.wave_equation.attenuation = self.comm.project.attenuation
         bound = False
         boundaries = []
@@ -614,9 +574,7 @@ class SalvusFlowComponent(Component):
         w.output.volume_data.format = "hdf5"
         w.output.volume_data.filename = "output.h5"
         w.output.volume_data.fields = ["adjoint-checkpoint"]
-        w.output.volume_data.sampling_interval_in_time_steps = (
-            "auto-for-checkpointing"
-        )
+        w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing"
         if self.comm.project.meshes == "multi-mesh":
             w.set_mesh(use_mesh)
 
@@ -624,9 +582,7 @@ class SalvusFlowComponent(Component):
 
         return w
 
-    def construct_adjoint_simulation(
-        self, event: str, adj_src: object
-    ) -> object:
+    def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
         """
         Create the adjoint simulation object that salvus flow needs
 
@@ -771,9 +727,7 @@ class SalvusFlowComponent(Component):
         end = time.time()
         print(f"Submitting took {end - start} seconds")
 
-    def get_job_status(
-        self, event: str, sim_type: str, iteration="current"
-    ) -> str:
+    def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
         """
         Check the status of a salvus opt job
 
@@ -810,9 +764,7 @@ class SalvusFlowComponent(Component):
         else:
             raise InversionsonError(f"Don't recognize sim_type {sim_type}")
 
-        job = sapi.get_job(
-            job_name=job_name, site_name=self.comm.project.site_name
-        )
+        job = sapi.get_job(job_name=job_name, site_name=self.comm.project.site_name)
 
         return job.get_output_files()
 

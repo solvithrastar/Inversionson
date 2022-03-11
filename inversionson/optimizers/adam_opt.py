@@ -69,35 +69,37 @@ class AdamOpt(Optimize):
         self._read_config()
 
         if self.initial_model == "":
-            print(
+            raise InversionsonError(
                 f"Please set config and provide initial model to "
                 f"Adam optimizer in {self.config_file} \n"
                 f"Then reinitialize the Adam Optimizer."
             )
-            return
 
         # Initialize folders if needed
         if not os.path.exists(self._get_path_for_iteration(0, self.model_path)):
             if self.initial_model is None:
-                raise Exception(
+                raise InversionsonError(
                     "AdamOptimizer needs to be initialized with a "
                     "path to an initial model."
                 )
             print("Initializing Adam...")
             self._init_directories()
             self._issue_first_task()
-            self._read_task()
+        self.tmp_model_path = self.opt_folder / "tmp_model.h5"
+        self._read_task_file()
 
     @property
     def task_path(self):
         task_nums = glob.glob(f"{self.task_dir}/task_{self.iteration_number:05d}_*")
-        if len(task_nums) == 0:
+        if len(task_nums) <= 1:
             task_nums = [0]
         else:
-            task_nums = task_nums.split("_")[-1].split(".")[0].sort()
+            task_nums = [int(Path(x).stem[-2:]) for x in task_nums]
+        if max(task_nums) >= len(self.available_tasks):
+            raise InversionsonError("The task number is too high for Adam")
         return (
             self.task_dir
-            / f"task_{self.iteration_number:05d}_{int(task_nums[-1]):02d}.toml"
+            / f"task_{self.iteration_number:05d}_{max(task_nums):02d}.toml"
         )
 
     @property
@@ -194,7 +196,7 @@ class AdamOpt(Optimize):
             if not os.path.exists(folder):
                 os.mkdir(folder)
 
-        shutil.copy(self.initial_model, self.model_path())
+        shutil.copy(self.initial_model, self.model_path)
 
     def _issue_first_task(self):
         """
@@ -203,7 +205,7 @@ class AdamOpt(Optimize):
 
         task_dict = {
             "task": "prepare_iteration",
-            "model": self.model_path,
+            "model": str(self.model_path),
             "iteration_number": self.iteration_number,
             "iteration_name": f"model_{self.iteration_number:05d}",
             "finished": False,
@@ -214,14 +216,17 @@ class AdamOpt(Optimize):
 
     def _get_path_for_iteration(self, iteration_number, path):
         filename = path.stem
+        separator = "_"
         reconstructed_filename = (
-            filename.split("_")[:-1].join("_")
+            separator.join(filename.split("_")[:-1])
             + f"_{iteration_number:05d}"
             + path.suffix
         )
         return path.parent / reconstructed_filename
 
     def _read_task_file(self):
+        if not os.path.exists(self.task_path):
+            self._issue_first_task()
         self.task_dict = toml.load(self.task_path)
 
     def _increase_task_number(self):
@@ -237,15 +242,15 @@ class AdamOpt(Optimize):
         return self.task_dir / f"task_{iteration_number:05d}_{0:02d}.toml"
 
     def _write_new_task(self):
-        current_task = self._read_task_file()
-        if not current_task["finished"]:
+        self._read_task_file()
+        if not self.task_dict["finished"]:
             raise InversionsonError(
-                f"Task {current_task['task']} does not appear to be finished"
+                f"Task {self.task_dict['task']} does not appear to be finished"
             )
-        if current_task["task"] == "prepare_iteration":
+        if self.task_dict["task"] == "prepare_iteration":
             task_dict = {
                 "task": "compute_gradient",
-                "model": self.model_path,
+                "model": str(self.model_path),
                 "forward_submitted": False,
                 "misfit_completed": False,
                 "gradient_completed": False,
@@ -254,13 +259,13 @@ class AdamOpt(Optimize):
                 "finished": False,
             }
             task_file_path = self._increase_task_number()
-        elif current_task["task"] == "compute_gradient":
+        elif self.task_dict["task"] == "compute_gradient":
             task_dict = {
                 "task": "update_model",
-                "model": self.model_path,
-                "raw_update_path": self.raw_update_path,
-                "raw_gradient_path": self.raw_gradient_path,
-                "smooth_update_path": self.smooth_update_path,
+                "model": str(self.model_path),
+                "raw_update_path": str(self.raw_update_path),
+                "raw_gradient_path": str(self.raw_gradient_path),
+                "smooth_update_path": str(self.smooth_update_path),
                 "summing_completed": False,
                 "raw_update_completed": False,
                 "smoothing_completed": False,
@@ -270,14 +275,14 @@ class AdamOpt(Optimize):
                 "finished": False,
             }
             task_file_path = self._increase_task_number()
-        elif current_task["task"] == "update_model":
+        elif self.task_dict["task"] == "update_model":
             task_dict = {
                 "task": "prepare_iteration",
-                "model": self._model_for_iteration(self.iteration_number + 1),
-                "iteration_number": self.iteration_number + 1,
+                "model": str(self._model_for_iteration(self.iteration_number)),
+                "iteration_number": self.iteration_number,
                 "finished": False,
             }
-            task_file_path = self._increase_iteration_number()
+            task_file_path = self.task_path
 
         with open(task_file_path, "w+") as fh:
             toml.dump(task_dict, fh)
@@ -291,7 +296,7 @@ class AdamOpt(Optimize):
         if validation:
             events = self.comm.project.validation_dataset
         else:
-            all_events = self.comm.lasif.listevents()
+            all_events = self.comm.lasif.list_events()
             blocked_data = list(
                 set(
                     self.comm.project.validation_dataset
@@ -376,7 +381,7 @@ class AdamOpt(Optimize):
 
         # Store second moment
         shutil.copy(
-            self.get_second_moment_path,
+            self.second_moment_path,
             self._get_path_for_iteration(
                 self.iteration_number + 1, self.second_moment_path
             ),
@@ -415,7 +420,7 @@ class AdamOpt(Optimize):
     def get_path_for_iteration(self, iteration_number, path):
         return self._get_path_for_iteration(iteration_number, path)
 
-    def apply_smooth_update(self):
+    def _apply_smooth_update(self):
         """
         Apply the smoothed update.
         """
@@ -457,10 +462,10 @@ class AdamOpt(Optimize):
         theta_physical = (theta_new + 1) * theta_0
         shutil.copy(
             self.model_path,
-            self._get_path_for_iteration(self.iteration_number + 1, self.model_path),
+            self.tmp_model_path,
         )
         self.set_h5_data(
-            self._get_path_for_iteration(self.iteration_number + 1, self.model_path),
+            self.tmp_model_path,
             theta_physical,
         )
 
@@ -524,9 +529,9 @@ class AdamOpt(Optimize):
         This task does forward simulations and then gradient computations straight
         afterwards
         """
-        if not self.task_dict["forward_completed"]:
+        if not self.task_dict["forward_submitted"]:
             self.run_forward(verbose=verbose)
-            self.task_dict["forward_completed"] = True
+            self.task_dict["forward_submitted"] = True
             self._update_task_file()
         else:
             print("Forwards already submitted")
@@ -565,7 +570,7 @@ class AdamOpt(Optimize):
             print("Summing already done")
 
         if not self.task_dict["raw_update_completed"]:
-            self._update_model(verbose=verbose)
+            self._update_model(raw=True, smooth=False, verbose=verbose)
             self.task_dict["raw_update_completed"] = True
             self._update_task_file()
         else:
@@ -585,7 +590,7 @@ class AdamOpt(Optimize):
             print("Smoothing already done")
 
         if not self.task_dict["smooth_update_completed"]:
-            self._update_model(verbose=verbose)
+            self._update_model(raw=False, smooth=True, verbose=verbose)
             self.task_dict["smooth_update_completed"] = True
             self._update_task_file()
         else:
@@ -627,16 +632,19 @@ class AdamOpt(Optimize):
                         f"Iteration {self.iteration_name} exists. Will load its attributes"
                     )
                     self.comm.project.get_iteration_attributes(validation=False)
+                    self.finish_task()
                 else:
                     self.prepare_iteration(validation=False)
             else:
                 print("Iteration already prepared")
         elif task_name == "compute_gradient":
+            self.comm.project.get_iteration_attributes(validation=False)
             if not self.task_dict["finished"]:
                 self.compute_gradient(verbose=verbose)
             else:
                 print("Gradient already computed")
         elif task_name == "update_model":
+            self.comm.project.get_iteration_attributes(validation=False)
             if not self.task_dict["finished"]:
                 self.update_model(verbose=verbose)
             else:
@@ -657,7 +665,7 @@ class AdamOpt(Optimize):
             "smoothing_completed",
             "gradient_completed",
             "iteration_finalized",
-            "forward_completed",
+            "forward_submitted",
             "raw_update_completed",
             "smooth_update_completed",
             "misfit_completed",
@@ -667,7 +675,7 @@ class AdamOpt(Optimize):
             if path in self.task_dict.keys():
                 if not os.path.exists(self.task_dict[path]):
                     raise InversionsonError(
-                        f"Trying to finish task but it can't find {path}"
+                        f"Trying to finish task but it can't find {self.task_dict[path]}"
                     )
 
         for complete_check in complete_checks:
@@ -677,4 +685,14 @@ class AdamOpt(Optimize):
                         f"Trying to finish task but {complete_check} is not completed"
                     )
         self.task_dict["finished"] = True
-        self._update_task_file()
+        if self.task_dict["task"] == "update_model":
+            self._update_task_file()
+            # Moving the new model into its place, moves the iteration property to the next one.
+            shutil.move(
+                self.tmp_model_path,
+                self._get_path_for_iteration(
+                    self.iteration_number + 1, self.model_path
+                ),
+            )
+        else:
+            self._update_task_file()
