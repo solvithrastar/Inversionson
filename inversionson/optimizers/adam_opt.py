@@ -90,16 +90,24 @@ class AdamOpt(Optimize):
 
     @property
     def task_path(self):
-        task_nums = glob.glob(f"{self.task_dir}/task_{self.iteration_number:05d}_*")
+        # task_nums = glob.glob(f"{self.task_dir}/task_{self.iteration_number:05d}_*")
+        task_files = glob.glob(f"{self.task_dir}/task_*_*")
+        if len(task_files) == 1:
+            return self.task_dir / f"task_00000_00.toml"
+        iteration_numbers = [int(Path(x).stem.split("_")[-2]) for x in task_files]
+        task_nums = glob.glob(f"{self.task_dir}/task_{max(iteration_numbers):05d}_*")
         if len(task_nums) <= 1:
             task_nums = [0]
         else:
             task_nums = [int(Path(x).stem[-2:]) for x in task_nums]
         if max(task_nums) >= len(self.available_tasks):
+            raise InversionsonError(
+                f"{task_nums}, but also... {max(iteration_numbers)}"
+            )
             raise InversionsonError("The task number is too high for Adam")
         return (
             self.task_dir
-            / f"task_{self.iteration_number:05d}_{max(task_nums):02d}.toml"
+            / f"task_{max(iteration_numbers):05d}_{max(task_nums):02d}.toml"
         )
 
     @property
@@ -282,7 +290,7 @@ class AdamOpt(Optimize):
                 "iteration_number": self.iteration_number,
                 "finished": False,
             }
-            task_file_path = self.task_path
+            task_file_path = self._increase_iteration_number()
 
         with open(task_file_path, "w+") as fh:
             toml.dump(task_dict, fh)
@@ -473,7 +481,8 @@ class AdamOpt(Optimize):
         """
         Here we can do some documentation. Maybe just call a base function for that
         """
-        pass
+        super().delete_remote_files()
+        self.comm.storyteller.document_task(task="adam_documentation")
 
     def _update_model(self, verbose: bool, raw=True, smooth=False):
         """
@@ -624,6 +633,7 @@ class AdamOpt(Optimize):
         Look at which task is the current one and call the function which does it.
         """
         task_name = self.task_dict["task"]
+        print(f"Current task is: {task_name}")
 
         if task_name == "prepare_iteration":
             if not self.task_dict["finished"]:
@@ -638,14 +648,14 @@ class AdamOpt(Optimize):
             else:
                 print("Iteration already prepared")
         elif task_name == "compute_gradient":
-            self.comm.project.get_iteration_attributes(validation=False)
             if not self.task_dict["finished"]:
+                self.comm.project.get_iteration_attributes(validation=False)
                 self.compute_gradient(verbose=verbose)
             else:
                 print("Gradient already computed")
         elif task_name == "update_model":
-            self.comm.project.get_iteration_attributes(validation=False)
             if not self.task_dict["finished"]:
+                self.comm.project.get_iteration_attributes(validation=False)
                 self.update_model(verbose=verbose)
             else:
                 print("Model already updated")

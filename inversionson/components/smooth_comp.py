@@ -130,7 +130,7 @@ class SalvusSmoothComponent(Component):
         # Only sum the raw gradient in AdamOpt, not the update
         if (
             "VPV" in list(smooth_gradient.element_nodal_fields.keys())
-            and self.comm.project.optimization != "adam"
+            and self.comm.project.optimizer != "adam"
         ):
             self.comm.salvus_mesher.sum_two_fields_on_a_mesh(
                 mesh=smooth_grad,

@@ -545,6 +545,10 @@ class StoryTellerComponent(Component):
                 self._update_usage_of_events()
             self._backup_files()
 
+        if task == "adam_documentation":
+            self._update_usage_of_events()
+            self._update_list_of_events()
+
 
 class MarkDown(StoryTellerComponent):
     """

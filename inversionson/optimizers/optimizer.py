@@ -109,6 +109,16 @@ class Optimize(object):
             iteration_numbers.append(int(model.split(".")[0].split("_")[-1]))
         return iteration_numbers
 
+    def delete_remote_files(self):
+        self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
+        self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
+        self.comm.salvus_flow.delete_stored_wavefields(
+            self.iteration_name, "model_interp"
+        )
+        self.comm.salvus_flow.delete_stored_wavefields(
+            self.iteration_name, "gradient_interp"
+        )
+
     def prepare_iteration(
         self,
         it_name: str = None,
