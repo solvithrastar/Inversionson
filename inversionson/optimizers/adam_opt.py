@@ -111,10 +111,6 @@ class AdamOpt(Optimize):
         )
 
     @property
-    def model_path(self):
-        return self.model_dir / f"model_{self.iteration_number:05d}.h5"
-
-    @property
     def raw_gradient_path(self):
         return self.raw_gradient_dir / f"gradient_{self.iteration_number:05d}.h5"
 
@@ -133,10 +129,6 @@ class AdamOpt(Optimize):
     @property
     def smooth_update_path(self):
         return self.smooth_update_dir / f"smooth_update_{self.iteration_number:05d}.h5"
-
-    @property
-    def model_path(self):
-        return self.model_dir / f"model_{self.iteration_number:05d}.h5"
 
     def _model_for_iteration(self, iteration_number):
         return self.model_dir / f"model_{iteration_number:05d}.h5"

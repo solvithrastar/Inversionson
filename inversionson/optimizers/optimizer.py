@@ -100,6 +100,10 @@ class Optimize(object):
     def iteration_name(self):
         return f"model_{self.iteration_number:05d}"
 
+    @property
+    def model_path(self):
+        return self.model_dir / f"model_{self.iteration_number:05d}.h5"
+
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
         if len(models) == 0:
