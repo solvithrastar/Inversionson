@@ -27,6 +27,7 @@ absorbing_boundaries = true
 # Only used for multi-mesh. Needs to be higher for more complex models.
 elements_per_azimuthal_quarter = 4
 ellipticity = true
+elements_per_quarter = 4
 
 [Smoothing]
 # isotropic or anisotropic. Smoothing is always model dependent but can be either isotropic or anisotropic meaning that different dimensions get smoothed with different wavelengths. Density is always smoothed based on some VP model. If you don't want any smoothing, write 'none'.
@@ -46,12 +47,20 @@ test_dataset = []
 [Meshing.ocean_loading]
 use = false
 file = ""
+remote_path = ""
 variable = ""
 
 [Meshing.topography]
 use = false
 file = ""
+remote_path = ""
 variable = ""
+
+[HPC]
+# Fast directory where inversionson can keep files that need to be used often. Same place as where your jobs are run
+inversionson_fast_dir = "/scratch/snx3000/username/INVERSIONSON"
+# It's possible to upload meshes to this directory and then they will always be used rather than creating one
+remote_mesh_directory = "/path_to_directory_containing_meshes"
 
 [HPC.wave_propagation]
 site_name = "daint"
@@ -61,11 +70,9 @@ ranks = 48
 [HPC.diffusion_equation]
 wall_time = 1000
 ranks = 24
-# This directory can not be your home directory, because it needs multiple files and home directories often have file count limits. It is good to have this on a scratch system or similar. For Piz Daint for example, /scratch/snx3000/username/diff_models could be a nice option.
-diff_model_directory = "/scratch/snx3000/username/diff_models"
 
 [HPC.interpolation]
 site_name = "daint"
 model_wall_time = 300
 gradient_wall_time = 900
-remote_mesh_directory = "/path_to_directory_containing_meshes"
+

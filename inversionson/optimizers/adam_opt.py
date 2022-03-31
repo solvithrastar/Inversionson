@@ -1,9 +1,3 @@
-"""
-Base optimization class. It covers all the basic things that most optimizers
-have in common. The class serves the purpose of making it easy to add
-a custom optimizer to Inversionson. Whenever the custom optimizer has a 
-task which works the same as in the base class. It should aim to use that one.
-"""
 from pathlib import Path
 import os
 import toml
@@ -11,8 +5,7 @@ import numpy as np
 import glob
 import shutil
 import h5py
-from inversionson import InversionsonError, autoinverter_helpers as helpers
-from inversionson.optimizers import optimizer
+from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
@@ -90,9 +83,8 @@ class AdamOpt(Optimize):
 
     @property
     def task_path(self):
-        # task_nums = glob.glob(f"{self.task_dir}/task_{self.iteration_number:05d}_*")
         task_files = glob.glob(f"{self.task_dir}/task_*_*")
-        if len(task_files) == 1:
+        if len(task_files) <= 1:
             return self.task_dir / f"task_00000_00.toml"
         iteration_numbers = [int(Path(x).stem.split("_")[-2]) for x in task_files]
         task_nums = glob.glob(f"{self.task_dir}/task_{max(iteration_numbers):05d}_*")
@@ -104,7 +96,6 @@ class AdamOpt(Optimize):
             raise InversionsonError(
                 f"{task_nums}, but also... {max(iteration_numbers)}"
             )
-            raise InversionsonError("The task number is too high for Adam")
         return (
             self.task_dir
             / f"task_{max(iteration_numbers):05d}_{max(task_nums):02d}.toml"

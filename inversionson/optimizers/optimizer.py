@@ -186,6 +186,7 @@ class Optimize(object):
         elif self.comm.project.meshes == "mono-mesh" and move_meshes:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
+        self.comm.lasif.upload_stf(iteration=it_name)
         # Control group complications (update_control_group) should be done inside specific optimizer.
 
     def run_forward(self, verbose: bool = False):

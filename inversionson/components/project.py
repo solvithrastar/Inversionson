@@ -160,11 +160,17 @@ class ProjectComponent(Component):
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.gradient_wall_time"
                 )
-            if "remote_mesh_directory" not in self.info["HPC"]["interpolation"].keys():
-                raise InversionsonError(
-                    "We need to know the location where the meshes are stored"
-                    ". Key: HPC.interpolation.remote_mesh_directory"
-                )
+        if "remote_mesh_directory" not in self.info["HPC"].keys():
+            raise InversionsonError(
+                "We need to know the location where the meshes are stored"
+                ". Key: HPC.remote_mesh_directory"
+            )
+        if "inversionson_fast_dir" not in self.info["HPC"].keys():
+            raise InversionsonError(
+                "We need to know the location where to quickly access files used in "
+                "simualations"
+                ". Key: HPC.inversionson_fast_dir"
+            )
 
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
@@ -201,13 +207,6 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need information on the amount of ranks you want to "
                 "run your simulations. Key: HPC.diffusion_equation.ranks"
-            )
-
-        if "diff_model_directory" not in self.info["HPC"]["diffusion_equation"].keys():
-            raise InversionsonError(
-                "We need information on where diffusion models will be stored"
-                " in order to be reused. "
-                "Key: HPC.diffusion_equation.diff_model_directory"
             )
 
         if "inversion_parameters" not in self.info.keys():
@@ -559,9 +558,7 @@ class ProjectComponent(Component):
                 "gradient_wall_time"
             ]
             self.interpolation_site = self.info["HPC"]["interpolation"]["site_name"]
-            self.remote_mesh_dir = self.info["HPC"]["interpolation"][
-                "remote_mesh_directory"
-            ]
+
         # self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
         #     "site_name"
         # ]
@@ -572,9 +569,12 @@ class ProjectComponent(Component):
         self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
         self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
-        self.remote_diff_model_dir = self.info["HPC"]["diffusion_equation"][
-            "diff_model_directory"
-        ]
+        self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
+        self.remote_inversionson_dir = pathlib.Path(
+            self.info["HPC"]["inversionson_fast_dir"]
+        )
+        self.remote_diff_model_dir = self.remote_inversionson_dir / "diff_models"
+        self.fast_mesh_dir = self.remote_inversionson_dir / "meshes"
 
         self.initial_batch_size = self.info["initial_batch_size"]
         self.random_event_fraction = self.info["random_event_fraction"]

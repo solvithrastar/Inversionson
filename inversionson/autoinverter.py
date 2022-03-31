@@ -33,10 +33,67 @@ class AutoInverter(object):
         if not manual_mode:
             self.run_inversion(verbose=verbose)
 
+    def move_files_to_cluster(self):
+        """
+        Move all the remote scripts to hpc.
+        Move the bathymetry and topography files if it makes sense.
+        """
+        hpc_cluster = get_site(self.comm.project.site_name)
+
+        if not hpc_cluster.remote_exists(self.comm.project.remote_inversionson_dir):
+            hpc_cluster.remote_mkdir(self.comm.project.remote_inversionson_dir)
+        for directory in [
+            "DIFF_MODELS",
+            "SOURCE_TIME_FUNCTIONS",
+            "INTERPOLATION_WEIGHTS",
+            "MESHES",
+            "ADJOINT_SOURCES",
+            "PROCESSED_DATA",
+        ]:
+            if not hpc_cluster.remote_exists(
+                self.comm.project.remote_inversionson_dir / directory
+            ):
+                hpc_cluster.remote_mkdir(
+                    self.comm.project.remote_inversionson_dir / directory
+                )
+
+        if self.comm.project.ocean_loading["use"]:
+            if hpc_cluster.remote_exists(
+                self.comm.project.ocean_loading["remote_file"]
+            ):
+                print("Remote Bathymetry file is already uploaded")
+            else:
+                if not hpc_cluster.remote_exists(
+                    Path(self.comm.project.ocean_loading["remote_file"]).parent
+                ):
+                    hpc_cluster.remote_mkdir(
+                        Path(self.comm.project.ocean_loading["remote_file"]).parent
+                    )
+                hpc_cluster.remote_put(
+                    self.comm.project.ocean_loading["file"],
+                    self.comm.project.ocean_loading["remote_file"],
+                )
+        if self.comm.project.topography["use"]:
+            if hpc_cluster.remote_exists(self.comm.project.topography["remote_file"]):
+                print("Remote Topography file is already uploaded")
+            else:
+                if not hpc_cluster.remote_exists(
+                    Path(self.comm.project.topography["remote_file"]).parent
+                ):
+                    hpc_cluster.remote_mkdir(
+                        Path(self.comm.project.topography["remote_file"]).parent
+                    )
+                hpc_cluster.remote_put(
+                    self.comm.project.topography["file"],
+                    self.comm.project.topography["remote_file"],
+                )
+
     def run_inversion(self, n_iterations=1000, verbose=False):
         taskmanager = TaskManager(
             optimization_method=self.comm.project.optimizer, comm=self.comm
         )
+        print("Moving important files to cluster")
+        self.move_files_to_cluster()
         n_tasks = taskmanager.get_n_tasks()
         n_tasks *= n_iterations
         for i in range(n_tasks):

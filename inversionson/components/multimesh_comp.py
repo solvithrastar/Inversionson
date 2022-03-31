@@ -1,3 +1,4 @@
+from numpy import source
 from inversionson import InversionsonError
 from salvus.flow.sites import job, remote_io_site
 import salvus.flow.api as sapi
@@ -9,6 +10,7 @@ import multi_mesh.api as mapi
 import lasif.api as lapi
 from salvus.flow.api import get_site
 import pathlib
+import toml
 from typing import Union
 from inversionson.optimizers.adam_opt import AdamOpt
 
@@ -268,6 +270,109 @@ class MultiMeshComponent(Component):
         )
         return int_job
 
+    def prepare_interpolation_toml(self, gradient, event):
+        toml_name = "gradient_interp.toml" if gradient else "model_interp.toml"
+        toml_filename = (
+            self.comm.project.inversion_root / "INTERPOLATION" / event / toml_name
+        )
+        if os.path.exists(toml_filename):
+            return toml_filename
+        information = {}
+        information["gradient"] = gradient
+        if not gradient:
+            information["mesh_info"] = {
+                "event_name": event,
+                "mesh_folder": self.comm.project.fast_mesh_dir,
+                "long_term_mesh_folder": self.comm.project.remote_mesh_dir,
+                "min_period": self.comm.project.min_period,
+                "elems_per_quarter": self.comm.project.elem_per_quarter,
+            }
+            if self.comm.project.ellipticity:
+                information["ellipticity"] = 0.0033528106647474805
+            if self.comm.project.topography["use"]:
+                information["mesh_info"]["topography"] = self.comm.project.topography
+            if self.comm.project.ocean_loading["use"]:
+                information["mesh_info"][
+                    "ocean_loading"
+                ] = self.comm.project.ocean_loading
+            source_info = self.comm.lasif.get_source(event_name=event)
+            if isinstance(source_info, list):
+                source_info = source_info[0]
+            source_info["side_set"] = (
+                "r1_ol" if self.comm.project.ocean_loading["use"] else "r1"
+            )
+            source_info["stf"] = str(
+                self.comm.project.remote_inversionson_dir
+                / "SOURCE_TIME_FUNCTIONS"
+                / self.comm.project.current_iteration
+                / "stf.h5"
+            )
+            information["source_info"] = source_info
+            receivers = self.comm.lasif.get_receivers(event_name=event)
+            information["receiver_info"] = receivers
+            if self.comm.project.absorbing_boundaries:
+                if (
+                    "inner_boundary"
+                    in self.comm.lasif.lasif_comm.project.domain.get_side_set_names()
+                ):
+                    side_sets = ["inner_boundary"]
+                else:
+                    side_sets = [
+                        "r0",
+                        "t0",
+                        "t1",
+                        "p0",
+                        "p1",
+                    ]
+            else:
+                side_sets = []
+
+            information["simulation_info"] = {
+                "end_time": self.comm.project.end_time,
+                "time_step": self.comm.project.time_step,
+                "start_time": self.comm.project.start_time,
+                "minimum_period": self.comm.lasif.lasif_comm.project.simulation_settings[
+                    "minimum_period_in_s"
+                ],
+                "attenuation": self.comm.project.attenuation,
+                "absorbing_boundaries": self.comm.project.absorbing_boundaries,
+                "side_sets": side_sets,
+                "absorbing_boundary_length": self.comm.project.abs_bound_length
+                * 1000.0,
+            }
+
+        with open(toml_filename, "w") as fh:
+            toml.dump(information, fh)
+        return toml_filename
+
+    def move_toml_to_hpc(
+        self, toml_filename: pathlib.Path, event: str, hpc_cluster=None
+    ):
+        """
+        Move information file to HPC so that it can perform mesh generation
+        and interpolation
+
+        :param toml_filename: path to local toml
+        :type toml_filename: pathlib.Path
+        :param event: name of event
+        :type event: str
+        :param hpc_cluster: the cluster site object, defaults to None
+        :type hpc_cluster: Salvus.site, optional
+        """
+        gradient = True if "gradient" in toml_filename else False
+        if hpc_cluster is None:
+            hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
+        remote_path = (
+            pathlib.Path(self.comm.project.remote_mesh_dir) / event / toml_filename.name
+        )
+        if hpc_cluster.remote_exists(remote_path):
+            return remote_path
+        else:
+            if not hpc_cluster.remote_exists(remote_path.parent):
+                hpc_cluster.mkdir(remote_path.parent)
+            hpc_cluster.remote_put(toml_filename, remote_path)
+            return remote_path
+
     def get_interp_commands(
         self,
         event: str,
@@ -275,7 +380,8 @@ class MultiMeshComponent(Component):
         interp_folder: Union[str, pathlib.Path],
     ) -> list:
         """
-        Get the interpolation commands needed to do remote interpolations
+        Get the interpolation commands needed to do remote interpolations.
+        If not gradient, we will look for a smoothie mesh and create it if needed.
         """
         iteration = self.comm.project.current_iteration
         if "validation_" in iteration:
@@ -301,6 +407,10 @@ class MultiMeshComponent(Component):
             validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
+        interpolation_toml = self.prepare_interplation_toml(
+            gradient=gradient, event=event
+        )
+        remote_toml = self.move_toml_to_hpc(interpolation_toml)
         # if gradient:
         #     mesh_to_get_fields_from = str(
         #         self.comm.lasif.find_remote_mesh(
@@ -311,6 +421,12 @@ class MultiMeshComponent(Component):
         #     )
         #     move_fields_script = self.get_remote_field_moving_script_path()
         commands = [
+            # The copying should probably be handled within the interpolate.py function to make it smoother.
+            # It can look at both of the mesh folders.
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {remote_toml} ./interp_info.toml",
+                execute_with_mpi=False,
+            ),
             remote_io_site.site_utils.RemoteCommand(
                 command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
                 execute_with_mpi=False,
@@ -355,14 +471,15 @@ class MultiMeshComponent(Component):
                 command="mkdir output", execute_with_mpi=False
             )
         )
+        # commands.append(
+        #     remote_io_site.site_utils.RemoteCommand(
+        #         command="which python", execute_with_mpi=False
+        #     )
+        # )
         commands.append(
             remote_io_site.site_utils.RemoteCommand(
-                command="which python", execute_with_mpi=False
-            )
-        )
-        commands.append(
-            remote_io_site.site_utils.RemoteCommand(
-                command="python interpolate.py", execute_with_mpi=False
+                command="python interpolate.py ./interp_info.toml",
+                execute_with_mpi=False,
             )
         )
         commands.append(

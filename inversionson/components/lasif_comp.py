@@ -11,6 +11,7 @@ import toml
 import numpy as np
 import pathlib
 from salvus.flow.api import get_site
+from typing import List, Dict
 
 
 class LasifComponent(Component):
@@ -519,6 +520,41 @@ class LasifComponent(Component):
         stf = str(stfs / long_iter / "stf.h5")
         return stf
 
+    def upload_stf(self, iteration: str, hpc_cluster=None):
+        """
+        Upload the source time function to the remote machine
+
+        :param iteration: Name of iteration
+        :type iteration: str
+        """
+        local_stf = self.find_stf(iteration=iteration)
+        if hpc_cluster is None:
+            hpc_cluster = get_site(self.comm.project.site_name)
+
+        if not hpc_cluster.remote_exists(
+            self.comm.project.remote_inversionson_dir
+            / "SOURCE_TIME_FUNCTIONS"
+            / iteration
+        ):
+            hpc_cluster.remote_mkdir(
+                self.comm.project.remote_inversionson_dir
+                / "SOURCE_TIME_FUNCTIONS"
+                / iteration
+            )
+        if not hpc_cluster.remote_exists(
+            self.comm.project.remote_inversionson_dir
+            / "SOURCE_TIME_FUNCTIONS"
+            / iteration
+            / "stf.h5"
+        ):
+            hpc_cluster.remote_put(
+                local_stf,
+                self.comm.project.remote_inversionson_dir
+                / "SOURCE_TIME_FUNCTIONS"
+                / iteration
+                / "stf.h5",
+            )
+
     # TODO: Write find_gradient for Pathlib
     def find_gradient(
         self,
@@ -718,7 +754,7 @@ class LasifComponent(Component):
             self.lasif_comm, event_name, self.comm.project.current_iteration
         )
 
-    def get_receivers(self, event_name: str) -> dict:
+    def get_receivers(self, event_name: str) -> List[Dict]:
         """
         Locate receivers and get them in a format that salvus flow
         can use
