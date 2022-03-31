@@ -212,7 +212,7 @@ class SalvusFlowComponent(Component):
                 )
         if sim_type == "hpc_processing":
             if self.comm.project.hpc_processing_job[event]["submitted"]:
-                job_name = self.comm.project.model_interp_job[event]["name"]
+                job_name = self.comm.project.hpc_processing_job[event]["name"]
             else:
                 raise InversionsonError(
                     f"HPC processing job for event: {event} "
@@ -374,43 +374,25 @@ class SalvusFlowComponent(Component):
             adjoint_filename = self.comm.lasif.get_adjoint_source_file(
                 event=event_name, iteration=iteration
             )
-        else:
-            job_name = self.comm.salvus_flow.get_job_name(event=event_name,
-                                                           sim_type="hpc_processing")
-            proc_job = sapi.get_job(
-                site_name=self.comm.project.site_name, job_name=job_name
-            )
-            misfit_dict_toml = proc_job.output_path / "misfit_dict.toml"
-            adjoint_filename = "REMOTE:" + str(proc_job.output_path / "stf.h5")
 
         if not hpc_processing:
             p = h5py.File(adjoint_filename, "r")
             adjoint_recs = list(p.keys())
             p.close()
         else:
-            job_name = self.comm.salvus_flow._get_job_name(event=event_name,
-                                                           sim_type="forward",
-                                                           new=False)
-            forward_job = sapi.get_job(
-                site_name=self.comm.project.site_name, job_name=job_name
-            )
+            forward_job = self.get_job(event_name, sim_type="forward")
 
             # remote synthetics
-            remote_meta_path = forward_job.output_path / "meta.json.h5"
+            remote_meta_path = forward_job.output_path / "meta.json"
             hpc_cluster = get_site(self.comm.project.site_name)
             meta_json_filename = "meta.json"
             if os.path.exists(meta_json_filename):
                 os.remove(meta_json_filename)
             hpc_cluster.remote_get(remote_meta_path, meta_json_filename)
 
-            job_name = self.comm.salvus_flow._get_job_name(event=event_name,
-                                                           sim_type="hpc_processing",
-                                                           new=False)
-            proc_job = sapi.get_job(
-                site_name=self.comm.project.site_name, job_name=job_name
-            )
-            remote_misfit_dict_toml = proc_job.output_path / "misfit_dict.toml"
-            adjoint_filename = "REMOTE:" + proc_job.output_path / "stf.h5"
+            proc_job = self.get_job(event_name, sim_type="hpc_processing")
+            remote_misfit_dict_toml = str(proc_job.stdout_path.parent / "output" / "misfit_dict.toml")
+            adjoint_filename = "REMOTE:" + str(proc_job.stdout_path.parent / "output" / "stf.h5")
             local_misfit_dict = "misfit_dict.toml"
             if os.path.exists(local_misfit_dict):
                 os.remove(local_misfit_dict)
@@ -422,9 +404,11 @@ class SalvusFlowComponent(Component):
         # Need to make sure I only take receivers with an adjoint source
         adjoint_sources = []
         for rec in receivers:
-            if rec["network-code"] + "_" + rec["station-code"] in adjoint_recs:
+            if rec["network-code"] + "_" + rec["station-code"] in adjoint_recs\
+                    or rec["network-code"] + "." + rec["station-code"] in adjoint_recs:
                 adjoint_sources.append(rec)
 
+        # print(adjoint_sources)
 
         # Get path to meta.json to obtain receiver position, use again for adjoint
         if not self.comm.project.hpc_processing:
@@ -444,7 +428,8 @@ class SalvusFlowComponent(Component):
         meta_recs = data["forward_run_input"]["output"]["point_data"]["receiver"]
         meta_info_dict = {}
         for rec in meta_recs:
-            if rec["network_code"] + "_" + rec["station_code"] in adjoint_recs:
+            if rec["network_code"] + "_" + rec["station_code"] in adjoint_recs \
+                    or rec["network_code"] + "." + rec["station_code"] in adjoint_recs:
                 rec_name = rec["network_code"] + "_" + rec["station_code"]
                 meta_info_dict[rec_name] = {}
                 # this is the rotation from XYZ to ZNE,
@@ -453,6 +438,34 @@ class SalvusFlowComponent(Component):
                     "matrix": np.array(rec["rotation_on_output"]["matrix"]).T.tolist()
                 }
                 meta_info_dict[rec_name]["location"] = rec["location"]
+        for rec in adjoint_sources[:1]:
+            source.cartesian.VectorPoint3D(
+                x=
+                meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][0],
+                y=
+                meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][1],
+                z=
+                meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][2],
+                fx=1.0,
+                fy=1.0,
+                fz=1.0,
+                source_time_function=stf.Custom(
+                    filename=adjoint_filename,
+                    dataset_name="/" + rec["network-code"] + "_" + rec[
+                        "station-code"],
+                ),
+                rotation_on_input=meta_info_dict[
+                    rec["network-code"] + "_" + rec["station-code"]
+                    ]["rotation_on_input"],
+            )
+
+
 
         adj_src = [
             source.cartesian.VectorPoint3D(

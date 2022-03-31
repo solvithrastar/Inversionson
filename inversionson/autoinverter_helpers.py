@@ -1426,10 +1426,12 @@ class AdjointHelper(object):
             event, smooth=False, interp_folder=interp_folder
         )
 
-    def __dispatch_adjoint_simulation(self, event: str, verbose=False):
+    def __dispatch_adjoint_simulation(self, event: str,
+                                      hpc_processing: bool =False, verbose=False):
         """
         Dispatch an adjoint simulation
-
+        :param hpc_processing
+        :type hpc_processing: bool
         :param event: Name of event
         :type event: str
         """
@@ -1439,8 +1441,8 @@ class AdjointHelper(object):
             return
         if verbose:
             print(f"Event: {event}")
-        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
-        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
+        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event, hpc_processing)
+        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src, hpc_processing)
 
         if (
             self.comm.project.remote_mesh is not None
