@@ -51,7 +51,7 @@ class AdamOpt(Optimize):
     def task_path(self):
         # task_nums = glob.glob(f"{self.task_dir}/task_{self.iteration_number:05d}_*")
         task_files = glob.glob(f"{self.task_dir}/task_*_*")
-        if len(task_files) == 1:
+        if len(task_files) <= 1:
             return self.task_dir / f"task_00000_00.toml"
         iteration_numbers = [int(Path(x).stem.split("_")[-2]) for x in task_files]
         task_nums = glob.glob(f"{self.task_dir}/task_{max(iteration_numbers):05d}_*")
