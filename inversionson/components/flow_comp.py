@@ -4,9 +4,11 @@ import time
 import numpy as np
 import json
 import pathlib
+import toml
 
 from lasif.components.component import Component
 from salvus.flow.sites import job as s_job
+from salvus.flow.simple_config import simulation, source, stf, receiver
 from inversionson import InversionsonError
 
 
@@ -293,9 +295,6 @@ class SalvusFlowComponent(Component):
         :type event_name: str
         """
 
-        from salvus.flow.simple_config import source
-        from salvus.flow.simple_config import stf
-
         iteration = self.comm.project.current_iteration
         src_info = self.comm.lasif.get_source(event_name)
         stf_file = self.comm.lasif.find_stf(iteration)
@@ -350,7 +349,6 @@ class SalvusFlowComponent(Component):
         :rtype: object
         """
         import h5py
-        from salvus.flow.simple_config import source, stf
 
         iteration = self.comm.project.current_iteration
         receivers = self.comm.lasif.get_receivers(event_name)
@@ -470,7 +468,6 @@ class SalvusFlowComponent(Component):
         :param event: Name of event to get the receivers for
         :type event: str
         """
-        from salvus.flow.simple_config import receiver
 
         side_set = "r1"
 
@@ -582,6 +579,28 @@ class SalvusFlowComponent(Component):
 
         return w
 
+    def construct_simulation_from_dict(self, event: str):
+        """
+        Download a dictionary with the simulation object and use it to create a local simulation object
+        without having any of the relevant data locally.
+        Only used to submit a job to the remote without having to store anything locally.
+
+        :param event: Name of event
+        :type event: str
+        """
+
+        hpc_cluster = sapi.get_site(self.comm.project.site_name)
+        interp_job = self.get_job(event, sim_type="model_interp")
+        destination = (
+            self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+            / f"ITERATION_{self.comm.project.current_iteration}"
+            / event
+            / "simulation_dict.toml"
+        )
+        remote_dict = interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
+        hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
+        return simulation.Waveform().from_dict(toml.load(destination))
+
     def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
         """
         Create the adjoint simulation object that salvus flow needs
@@ -594,7 +613,6 @@ class SalvusFlowComponent(Component):
         :rtype: object
         """
         print("Constructing Adjoint Simulation now")
-        from salvus.flow.simple_config import simulation
 
         remote_interp = False
         if (

@@ -494,12 +494,17 @@ class ForwardHelper(object):
             job_info = self.comm.project.model_interp_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
-    def __run_forward_simulation(self, event: str, verbose=False):
+    def __run_forward_simulation(
+        self, event: str, simulation_created_remotely: bool = False, verbose=False
+    ):
         """
         Submit forward simulation to daint and possibly monitor aswell
 
         :param event: Name of event
         :type event: str
+        :param simulation_created_remotely: If the simulation object was created as a part of the interpolation job
+            then the dictionary will be downloaded and used to submit the job. Defaults to False
+        :type simulation_created_remotely: bool, optional
         """
         # Check status of simulation
         submitted, retrieved = self.__submitted_retrieved(event)
@@ -512,13 +517,16 @@ class ForwardHelper(object):
             print(f"Event: {event}")
         receivers = self.comm.salvus_flow.get_receivers(event)
         source = self.comm.salvus_flow.get_source_object(event)
-        w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
+        if simulation_created_remotely:
+            w = self.comm.salvus_flow.construct_simulation_from_dict(event)
+        else:
+            w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
 
-        if (
-            self.comm.project.remote_mesh is not None
-            and self.comm.project.meshes == "mono-mesh"
-        ):
-            w.set_mesh(self.comm.project.remote_mesh)
+            if (
+                self.comm.project.remote_mesh is not None
+                and self.comm.project.meshes == "mono-mesh"
+            ):
+                w.set_mesh(self.comm.project.remote_mesh)
         # if self.comm.project.meshes == "mono-mesh":
         #     w.set_mesh("REMOTE:" +
         #         str(self.comm.lasif.find_remote_mesh(
@@ -822,7 +830,9 @@ class ForwardHelper(object):
         while True:
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
-                self.__run_forward_simulation(event, verbose)
+                self.__run_forward_simulation(
+                    event, verbose, simulation_created_remotely=True
+                )
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',
