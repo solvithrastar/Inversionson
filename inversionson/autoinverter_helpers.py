@@ -18,7 +18,7 @@ from salvus.flow.api import get_site
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
-SLEEP_TIME = 30
+SLEEP_TIME = 1
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -601,20 +601,20 @@ class ForwardHelper(object):
 
         iteration = self.comm.project.current_iteration
 
-        job_name = self.comm.salvus_flow._get_job_name(event=event,
-                                                       sim_type="forward", new=False)
+        job_name = self.comm.salvus_flow.get_job_name(event=event,
+                                                       sim_type="forward")
         forward_job = sapi.get_job(
             site_name=self.comm.project.site_name, job_name=job_name
         )
 
         # remote synthetics
-        remote_syn_path = forward_job.output_path / "receivers.h5"
+        remote_syn_path = str(forward_job.output_path / "receivers.h5")
 
         # local processed_data
         min_period = self.comm.project.min_period
         max_period = self.comm.project.max_period
         lasif_root = self.comm.project.lasif_root
-        proc_filename = f"preprocssed_{min_period}s_to_{max_period}s.h5"
+        proc_filename = f"preprocessed_{int(min_period)}s_to_{int(max_period)}s.h5"
         local_proc_file = os.path.join(lasif_root, "PROCESSED_DATA", "EARTHQUAKES",
                      event, proc_filename)
 
@@ -640,6 +640,7 @@ class ForwardHelper(object):
         info = {}
         info["processed_filename"] = remote_proc_path
         info["synthetic_filename"] = remote_syn_path
+        info["window_set_name"] = "A"
         info["event_name"] = event
         info["delta"] = self.comm.project.simulation_dict["time_step"]
         info["npts"] = self.comm.project.simulation_dict["number_of_time_steps"]
@@ -667,8 +668,6 @@ class ForwardHelper(object):
 
         # Now submit the job here (make commands) and make a custom job
         # Now submit a job here
-        print(hpc_cluster.run_ssh_command(
-            f"python {remote_script} {remote_toml}"))
 
         description = f"HPC processing of {event} for iteration {iteration}"
 
@@ -679,7 +678,7 @@ class ForwardHelper(object):
         commands = [remote_io_site.site_utils.RemoteCommand(
             command="mkdir output", execute_with_mpi=False
         ), remote_io_site.site_utils.RemoteCommand(
-            command="python {remote_script} {remote_toml}",
+            command=f"python {remote_script} {remote_toml}",
             execute_with_mpi=False
         )]
 
@@ -1204,8 +1203,8 @@ class ForwardHelper(object):
             if self.comm.project.hpc_processing and adjoint:
                 hpc_proc_job_listener.monitor_jobs()
                 for event in hpc_proc_job_listener.events_retrieved_now:
-                    if adjoint and not self.comm.project.hpc_processing:
-                        self.__dispatch_adjoint_simulation(event, verbose)
+                    if adjoint and self.comm.project.hpc_processing:
+                        self.__dispatch_adjoint_simulation(event, self.comm.project.hpc_processing, verbose)
                     self.comm.project.change_attribute(
                         attribute=f'hpc_processing_job["{event}"]["retrieved"]',
                         new_value=True)
@@ -1245,7 +1244,7 @@ class AdjointHelper(object):
         Dispatching all adjoint simulations
         """
         for event in self.events:
-            self.__dispatch_adjoint_simulation(event, verbose=verbose)
+            self.__dispatch_adjoint_simulation(event, self.comm.project.hpc_processing, verbose=verbose)
 
     def process_gradients(
         self, events=None, interpolate=False, smooth_individual=False, verbose=False

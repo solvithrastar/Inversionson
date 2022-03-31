@@ -47,6 +47,7 @@ class SalvusFlowComponent(Component):
             "smoothing",
             "model_interp",
             "gradient_interp",
+            "hpc_processing",
         ]
         if iteration == "current":
             iteration = self.comm.project.current_iteration
@@ -124,7 +125,7 @@ class SalvusFlowComponent(Component):
         :type iteration: str, optional
         """
         if iteration == "current" or iteration == self.comm.project.current_iteration:
-            if "interp" in sim_type:
+            if sim_type in ["gradient_interp", "model_interp", "hpc_processing"]:
                 return self.__get_custom_job(event=event, sim_type=sim_type)
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["submitted"]:
@@ -207,6 +208,14 @@ class SalvusFlowComponent(Component):
             else:
                 raise InversionsonError(
                     f"Model interpolation job for event: {event} "
+                    "has not been submitted"
+                )
+        if sim_type == "hpc_processing":
+            if self.comm.project.hpc_processing_job[event]["submitted"]:
+                job_name = self.comm.project.model_interp_job[event]["name"]
+            else:
+                raise InversionsonError(
+                    f"HPC processing job for event: {event} "
                     "has not been submitted"
                 )
         elif sim_type == "gradient_interp":
@@ -366,14 +375,13 @@ class SalvusFlowComponent(Component):
                 event=event_name, iteration=iteration
             )
         else:
-            job_name = self.comm.salvus_flow._get_job_name(event=event_name,
-                                                           sim_type="hpc_processing",
-                                                           new=False)
+            job_name = self.comm.salvus_flow.get_job_name(event=event_name,
+                                                           sim_type="hpc_processing")
             proc_job = sapi.get_job(
                 site_name=self.comm.project.site_name, job_name=job_name
             )
             misfit_dict_toml = proc_job.output_path / "misfit_dict.toml"
-            adjoint_filename = "REMOTE:" + proc_job.output_path / "stf.h5"
+            adjoint_filename = "REMOTE:" + str(proc_job.output_path / "stf.h5")
 
         if not hpc_processing:
             p = h5py.File(adjoint_filename, "r")
