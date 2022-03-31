@@ -4,6 +4,7 @@ have in common. The class serves the purpose of making it easy to add
 a custom optimizer to Inversionson. Whenever the custom optimizer has a 
 task which works the same as in the base class. It should aim to use that one.
 """
+from abc import abstractmethod as _abstractmethod
 from pathlib import Path
 import os
 import glob
@@ -15,9 +16,9 @@ from inversionson import InversionsonError, autoinverter_helpers as helpers
 
 
 class Optimize(object):
-    def __init__(self, comm):
-        self.current_task = self.read_current_task()
-        self.available_tasks = [
+
+    # Derived classes should add to this
+    available_tasks = [
             "prepare_iteration",
             "run_forward",
             "compute_misfit",
@@ -27,31 +28,73 @@ class Optimize(object):
             "update_model",
             "documentation",
         ]
+
+    # Derived classes should override this
+    optimizer_name = "BaseClass for optimizers. Don't instantiate. If you see this..."
+
+
+    def __init__(self, comm):
+
+        # This init is only called by derived classes 
+
+        self.current_task = self.read_current_task()
+
         self.comm = comm
         self.opt_folder = (
             Path(self.comm.project.paths["inversion_root"]) / "OPTIMIZATION"
         )
+
         if not os.path.exists(self.opt_folder):
             os.mkdir(self.opt_folder)
+            
+        # These folders are universally needed
         self.model_dir = self.opt_folder / "MODELS"
         self.task_dir = self.opt_folder / "TASKS"
+        self.raw_gradient_dir = self.opt_folder / "RAW_GRADIENTS"
+        self.raw_update_dir = self.opt_folder / "RAW_UPDATES"
+
+        # Do any folder initilization for the derived classes
+        self._initialize_derived_class_folders()
+
         self.config_file = self.opt_folder / "opt_config.toml"
+
         if not os.path.exists(self.config_file):
             self._write_initial_config()
             print(
                 f"Please set config and provide initial model to "
-                f"Base optimizer in {self.config_file} \n"
-                f"Then reinitialize the inversion."
+                f"{self.optimizer_name} optimizer in {self.config_file} \n"
+                f"Then reinitialize the {self.optimizer_name} optimizer."
             )
             return
         self._read_config()
+
         if self.initial_model == "":
-            print(
+            raise InversionsonError(
                 f"Please set config and provide initial model to "
-                f"Base optimizer in {self.config_file} \n"
-                f"Then reinitialize the inversion."
+                f"{self.optimizer_name} optimizer in {self.config_file} \n"
+                f"Then reinitialize the {self.optimizer_name} optimizer."
             )
-            return
+
+        # Initialize folders if needed
+        if not os.path.exists(self._get_path_for_iteration(0, self.model_path)):
+            if self.initial_model is None:
+                raise InversionsonError(
+                    f"{self.optimizer_name} needs to be initialized with a "
+                    "path to an initial model."
+                )
+            print(f"Initializing {self.optimizer_name}...")
+            self._init_directories()
+            self._issue_first_task()
+        self.tmp_model_path = self.opt_folder / "tmp_model.h5"
+        self._read_task_file()
+
+        # Once this exits, continue with the derived class __init__(). 
+
+    @_abstractmethod
+    def _initialize_derived_class_folders(self):
+        """You need to make this yourself. Can do nothing, if no extra folders are
+        required"""
+        pass
 
     def _write_initial_config(self):
         """
