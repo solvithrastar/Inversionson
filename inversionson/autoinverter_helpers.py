@@ -637,6 +637,9 @@ class ForwardHelper(object):
             self.comm.project.remote_diff_model_dir, "..", "ADJOINT_SOURCES"
         )
 
+        if not hpc_cluster.remote_exists(remote_adj_dir):
+            hpc_cluster.remote_mkdir(remote_adj_dir)
+
         info = {}
         info["processed_filename"] = remote_proc_path
         info["synthetic_filename"] = remote_syn_path
