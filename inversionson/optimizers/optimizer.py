@@ -159,12 +159,18 @@ class Optimize(object):
     def delete_remote_files(self):
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
-        self.comm.salvus_flow.delete_stored_wavefields(
-            self.iteration_name, "model_interp"
-        )
-        self.comm.salvus_flow.delete_stored_wavefields(
-            self.iteration_name, "gradient_interp"
-        )
+
+        if self.comm.project.meshes == "multi-mesh":
+            self.comm.salvus_flow.delete_stored_wavefields(
+                self.iteration_name, "model_interp"
+            )
+            self.comm.salvus_flow.delete_stored_wavefields(
+                self.iteration_name, "gradient_interp"
+            )
+        if self.comm.project.hpc_processing:
+            self.comm.salvus_flow.delete_stored_wavefields(
+                self.iteration_name, "hpc_processing"
+            )
 
     def prepare_iteration(
         self,
