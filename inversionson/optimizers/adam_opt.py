@@ -27,59 +27,18 @@ class AdamOpt(Optimize):
     to facilitate any differences between the two classes.
     """
 
+    optimizer_name = "Adam"
+
     def __init__(self, comm):
-        self.available_tasks = [
-            "prepare_iteration",
-            "compute_gradient",
-            "update_model",
-        ]
-        self.comm = comm
-        self.opt_folder = (
-            Path(self.comm.project.paths["inversion_root"]) / "OPTIMIZATION"
-        )
-        self.models = self.opt_folder / "MODELS"
 
-        if not os.path.exists(self.opt_folder):
-            os.mkdir(self.opt_folder)
-        self.config_file = self.opt_folder / "opt_config.toml"
+        # Call the super init with all the common stuff
+        super().__init__(comm)
 
-        self.model_dir = self.opt_folder / "MODELS"
-        self.raw_gradient_dir = self.opt_folder / "RAW_GRADIENTS"
-        self.raw_update_dir = self.opt_folder / "RAW_UPDATES"
+    def _initialize_derived_class_folders(self):
+        """These folder are needed only for Adam."""
         self.smooth_update_dir = self.opt_folder / "SMOOTHED_UPDATES"
         self.first_moment_dir = self.opt_folder / "FIRST_MOMENTS"
         self.second_moment_dir = self.opt_folder / "SECOND_MOMENTS"
-        self.task_dir = self.opt_folder / "TASKS"
-
-        if not os.path.exists(self.config_file):
-            self._write_initial_config()
-            print(
-                f"Please set config and provide initial model to "
-                f"Adam optimizer in {self.config_file} \n"
-                f"Then reinitialize the Adam Optimizer."
-            )
-            return
-        self._read_config()
-
-        if self.initial_model == "":
-            raise InversionsonError(
-                f"Please set config and provide initial model to "
-                f"Adam optimizer in {self.config_file} \n"
-                f"Then reinitialize the Adam Optimizer."
-            )
-
-        # Initialize folders if needed
-        if not os.path.exists(self._get_path_for_iteration(0, self.model_path)):
-            if self.initial_model is None:
-                raise InversionsonError(
-                    "AdamOptimizer needs to be initialized with a "
-                    "path to an initial model."
-                )
-            print("Initializing Adam...")
-            self._init_directories()
-            self._issue_first_task()
-        self.tmp_model_path = self.opt_folder / "tmp_model.h5"
-        self._read_task_file()
 
     @property
     def task_path(self):

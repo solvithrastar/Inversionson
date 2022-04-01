@@ -9,15 +9,17 @@ import warnings
 import glob
 import shutil
 import toml
+import salvus.flow.api as sapi
 from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
+
 
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
 SLEEP_TIME = 10
-max_reposts = 0
+max_reposts = 3
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -34,6 +36,15 @@ SUM_GRADIENTS_SCRIPT_PATH = os.path.join(
     "inversionson",
     "remote_scripts",
     "gradient_summing.py",
+)
+
+PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
+    os.path.dirname(
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    ),
+    "inversionson",
+    "remote_scripts",
+    "window_and_calc_adj_src.py",
 )
 
 init()
@@ -83,6 +94,8 @@ class RemoteJobListener(object):
             job_dict = self.comm.project.model_interp_job
         elif self.job_type == "gradient_interp":
             job_dict = self.comm.project.gradient_interp_job
+        elif self.job_type == "hpc_processing":
+            job_dict = self.comm.project.hpc_processing_job
         else:
             job_dict = self.comm.project.smoothing_job
         if self.job_type in [
@@ -90,6 +103,7 @@ class RemoteJobListener(object):
             "adjoint",
             "model_interp",
             "gradient_interp",
+            "hpc_processing",
         ]:
             self.__monitor_jobs(job_dict=job_dict)
         elif self.job_type == "smoothing":
@@ -177,7 +191,7 @@ class RemoteJobListener(object):
                         print(f"Job {s.name}, will resubmit event {event}")
                         self.to_repost.append(event)
                         reposts += 1
-                        if reposts >= 3:
+                        if reposts >= max_reposts:
                             print("No I've actually reposted this too often \n")
                             print("There must be something wrong.")
                             raise InversionsonError("Too many reposts")
@@ -493,6 +507,8 @@ class ForwardHelper(object):
             job_info = self.comm.project.adjoint_job[event]
         elif sim_type == "model_interp":
             job_info = self.comm.project.model_interp_job[event]
+        elif sim_type == "hpc_processing":
+            job_info = self.comm.project.hpc_processing_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
     def __run_forward_simulation(
@@ -581,6 +597,125 @@ class ForwardHelper(object):
         """
         self.comm.lasif.process_data(event)
 
+    def _launch_hpc_processing_job(self, event):
+        """
+        Here, we launch a job to select windows and get adjoint sources
+        for an event.
+
+        """
+
+        submitted, _ = self.__submitted_retrieved(event, "hpc_processing")
+        if submitted:
+            return
+
+        iteration = self.comm.project.current_iteration
+
+        job_name = self.comm.salvus_flow.get_job_name(event=event, sim_type="forward")
+        forward_job = sapi.get_job(
+            site_name=self.comm.project.site_name, job_name=job_name
+        )
+
+        # remote synthetics
+        remote_syn_path = str(forward_job.output_path / "receivers.h5")
+
+        # local processed_data
+        min_period = self.comm.project.min_period
+        max_period = self.comm.project.max_period
+        lasif_root = self.comm.project.lasif_root
+        proc_filename = f"preprocessed_{int(min_period)}s_to_{int(max_period)}s.h5"
+        local_proc_file = os.path.join(
+            lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event, proc_filename
+        )
+
+        remote_proc_file_name = f"{event}_{proc_filename}"
+
+        hpc_cluster = get_site(self.comm.project.site_name)
+
+        remote_processed_dir = os.path.join(
+            self.comm.project.remote_diff_model_dir, "..", "PROCESSED_DATA"
+        )
+        if not hpc_cluster.remote_exists(remote_processed_dir):
+            hpc_cluster.remote_mkdir(remote_processed_dir)
+
+        remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
+        if not hpc_cluster.remote_exists(remote_proc_path):
+            hpc_cluster.remote_put(local_proc_file, remote_proc_path)
+
+        remote_adj_dir = os.path.join(
+            self.comm.project.remote_diff_model_dir, "..", "ADJOINT_SOURCES"
+        )
+
+        if not hpc_cluster.remote_exists(remote_adj_dir):
+            hpc_cluster.remote_mkdir(remote_adj_dir)
+
+        info = {}
+        info["processed_filename"] = remote_proc_path
+        info["synthetic_filename"] = remote_syn_path
+        info["window_set_name"] = "A"
+        info["event_name"] = event
+        info["delta"] = self.comm.project.simulation_dict["time_step"]
+        info["npts"] = self.comm.project.simulation_dict["number_of_time_steps"]
+
+        info["iteration_name"] = iteration
+        info["minimum_period"] = self.comm.project.min_period
+        info["maximum_period"] = self.comm.project.max_period
+        info["start_time_in_s"] = self.comm.project.simulation_dict["start_time"]
+
+        toml_filename = f"{iteration}_{event}_adj_info.toml"
+
+        with open(toml_filename, "w") as fh:
+            toml.dump(info, fh)
+
+        # Put info toml on daint and remove local toml
+        remote_toml = os.path.join(remote_adj_dir, toml_filename)
+        hpc_cluster.remote_put(toml_filename, remote_toml)
+        os.remove(toml_filename)
+
+        # Copy processing script to hpc
+        remote_script = os.path.join(remote_adj_dir, "window_and_calc_adj_src.py")
+        if not hpc_cluster.remote_exists(remote_script):
+            hpc_cluster.remote_put(PROCESS_OUTPUT_SCRIPT_PATH, remote_script)
+
+        # Now submit the job here (make commands) and make a custom job
+        # Now submit a job here
+
+        description = f"HPC processing of {event} for iteration {iteration}"
+
+        # use interp wall time for now
+        wall_time = self.comm.project.model_interp_wall_time
+        from salvus.flow.sites import job, remote_io_site
+
+        commands = [
+            remote_io_site.site_utils.RemoteCommand(
+                command="mkdir output", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"python {remote_script} {remote_toml}", execute_with_mpi=False
+            ),
+        ]
+
+        job = job.Job(
+            site=sapi.get_site(self.comm.project.interpolation_site),
+            commands=commands,
+            job_type="hpc_processing",
+            job_description=description,
+            job_info={},
+            wall_time_in_seconds=wall_time,
+            no_db=False,
+        )
+
+        self.comm.project.change_attribute(
+            attribute=f'hpc_processing_job["{event}"]["name"]',
+            new_value=job.job_name,
+        )
+        job.launch()
+        self.comm.project.change_attribute(
+            attribute=f'hpc_processing_job["{event}"]["submitted"]',
+            new_value=True,
+        )
+        print(f"Processing job for event {event} submitted")
+        self.comm.project.update_iteration_toml()
+
     def __select_windows(self, event: str):
         """
         Select the windows for the event and the iteration
@@ -600,21 +735,24 @@ class ForwardHelper(object):
                 return
 
         if "validation_" in iteration:
-            window_set_name = iteration
-            if self.comm.project.forward_job[event]["windows_selected"]:
-                print(f"Windows already selected for event {event}")
-                return
-            self.comm.lasif.select_windows(
-                window_set_name=window_set_name,
-                event=event,
-                validation=True,
-            )
-            self.comm.project.change_attribute(
-                attribute=f"forward_job['{event}']['windows_selected']",
-                new_value=True,
-            )
-            self.comm.project.update_iteration_toml(validation=True)
+            # We only compute full trace misfits here, legacy code below.
             return
+            ## Legacy code below
+            # window_set_name = iteration
+            # if self.comm.project.forward_job[event]["windows_selected"]:
+            #     print(f"Windows already selected for event {event}")
+            #     return
+            # self.comm.lasif.select_windows(
+            #     window_set_name=window_set_name,
+            #     event=event,
+            #     validation=True,
+            # )
+            # self.comm.project.change_attribute(
+            #     attribute=f"forward_job['{event}']['windows_selected']",
+            #     new_value=True,
+            # )
+            # self.comm.project.update_iteration_toml(validation=True)
+            # return
 
         # If event is in control group, we look for newest window set for event
         if (
@@ -720,6 +858,8 @@ class ForwardHelper(object):
 
         :param event: Name of event
         :type event: str
+        :param hpc_processing: Use reomate adjoint file
+        :type hpc_processing: bool
         """
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
         iteration = self.comm.project.current_iteration
@@ -730,6 +870,7 @@ class ForwardHelper(object):
             print(Fore.YELLOW + "\n ============================ \n")
             print(emoji.emojize(":rocket: | Run adjoint simulation", use_aliases=True))
             print(f"Event: {event}")
+
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
 
@@ -738,17 +879,6 @@ class ForwardHelper(object):
             and self.comm.project.meshes == "mono-mesh"
         ):
             w_adjoint.set_mesh(self.comm.project.remote_mesh)
-        # if self.comm.project.meshes == "mono-mesh":
-        #     w_adjoint.set_mesh("REMOTE:" +
-        #         str(self.comm.lasif.find_remote_mesh(
-        #             event=None,
-        #             gradient=False,
-        #             inverpolate_to=False,
-        #             check_if_exists=True,
-        #             iteration=iteration,
-        #             validatio="validation" in iteration,
-        #         ))
-        #     )
 
         self.comm.salvus_flow.submit_job(
             event=event,
@@ -1030,24 +1160,39 @@ class ForwardHelper(object):
         for_job_listener = RemoteJobListener(
             comm=self.comm, job_type="forward", events=events
         )
+        hpc_proc_job_listener = RemoteJobListener(
+            comm=self.comm, job_type="hpc_processing", events=events
+        )
         while True:
             for_job_listener.monitor_jobs()
+            # submit remote jobs for the ones that did not get
+            # submitted yet, although forwards are done.
+            for event in for_job_listener.events_already_retrieved:
+                if self.comm.project.hpc_processing and not validation:
+                    self._launch_hpc_processing_job(event)
             for event in for_job_listener.events_retrieved_now:
-                self.__retrieve_seismograms(event=event, verbose=verbose)
+                if not self.comm.project.hpc_processing:
+                    self.__retrieve_seismograms(event=event, verbose=verbose)
 
-                self.__work_with_retrieved_seismograms(
-                    event,
-                    windows,
-                    window_set,
-                    validation,
-                    verbose,
-                )
+                # Here I need to replace this with remote hpc job,
+                # then this actually needs be finished before any adjoint
+                # jobs are launched
+                if self.comm.project.hpc_processing and not validation:
+                    self._launch_hpc_processing_job(event)
+                else:
+                    self.__work_with_retrieved_seismograms(
+                        event,
+                        windows,
+                        window_set,
+                        validation,
+                        verbose,
+                    )
                 self.comm.project.change_attribute(
                     attribute=f'forward_job["{event}"]["retrieved"]',
                     new_value=True,
                 )
                 self.comm.project.update_iteration_toml()
-                if adjoint:
+                if adjoint and not self.comm.project.hpc_processing:
                     self.__dispatch_adjoint_simulation(event, verbose)
             for event in for_job_listener.to_repost:
                 self.comm.project.change_attribute(
@@ -1061,9 +1206,12 @@ class ForwardHelper(object):
                     f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                     "seismograms"
                 )
-            if len(for_job_listener.events_retrieved_now) + len(
-                for_job_listener.events_already_retrieved
-            ) == len(events):
+            if (
+                len(for_job_listener.events_retrieved_now)
+                + len(for_job_listener.events_already_retrieved)
+                == len(events)
+                and not self.comm.project.hpc_processing
+            ):
                 break
 
             if not for_job_listener.events_retrieved_now:
@@ -1072,6 +1220,34 @@ class ForwardHelper(object):
 
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
+            if self.comm.project.hpc_processing and adjoint:
+                hpc_proc_job_listener.monitor_jobs()
+                for event in hpc_proc_job_listener.events_retrieved_now:
+                    self.comm.project.change_attribute(
+                        attribute=f'hpc_processing_job["{event}"]["retrieved"]',
+                        new_value=True,
+                    )
+                    if adjoint and self.comm.project.hpc_processing:
+                        self.__dispatch_adjoint_simulation(event, verbose)
+
+                for event in hpc_proc_job_listener.to_repost:
+                    self.comm.project.change_attribute(
+                        attribute=f'hpc_processing_job["{event}"]["submitted"]',
+                        new_value=False,
+                    )
+                    self.comm.project.update_iteration_toml()
+                    self._launch_hpc_processing_job(event)
+                if len(hpc_proc_job_listener.events_retrieved_now) + len(
+                    hpc_proc_job_listener.events_already_retrieved
+                ) == len(events):
+                    break
+
+                if not hpc_proc_job_listener.events_retrieved_now:
+                    print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                    time.sleep(SLEEP_TIME)
+
+                hpc_proc_job_listener.to_repost = []
+                hpc_proc_job_listener.events_retrieved_now = []
 
 
 class AdjointHelper(object):
@@ -1274,7 +1450,6 @@ class AdjointHelper(object):
     def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
         Dispatch an adjoint simulation
-
         :param event: Name of event
         :type event: str
         """

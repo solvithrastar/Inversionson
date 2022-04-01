@@ -32,6 +32,7 @@ class ProjectComponent(Component):
         """
         self.info = information_dict
         self.AdamOpt = True
+        self.hpc_processing = True
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
         self.simulation_dict = self._read_config_file()
@@ -452,7 +453,7 @@ class ProjectComponent(Component):
                     " to check it regularly."
                 )
 
-    def __setup_components(self):
+    def  __setup_components(self):
         """
         Setup the different components that need to be used in the inversion.
         These are wrappers around the main libraries used in the inversion.
@@ -740,6 +741,9 @@ class ProjectComponent(Component):
                     if remote_interp:
                         jobs["model_interp"] = i_job_dict
                         jobs["gradient_interp"] = i_job_dict
+                    # Only implemented in the AdamOpt case for now
+                    if self.hpc_processing:
+                        jobs["hpc_processing"] = i_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
@@ -861,6 +865,8 @@ class ProjectComponent(Component):
                 jobs["model_interp"] = self.model_interp_job[event]
                 if not validation:
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
+            if self.hpc_processing:
+                jobs["hpc_processing"] = self.hpc_processing_job[event]
             if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                 if not validation:
                     jobs["smoothing"] = self.smoothing_job[event]
@@ -921,6 +927,9 @@ class ProjectComponent(Component):
         if remote_interp:
             self.model_interp_job = {}
             self.gradient_interp_job = {}
+        if self.hpc_processing and self.AdamOpt:
+            self.hpc_processing_job = {}
+
 
         if self.meshes == "mono-mesh":
             if "remote_simulation_mesh" not in it_dict.keys():
@@ -952,6 +961,10 @@ class ProjectComponent(Component):
                     self.gradient_interp_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["gradient_interp"]
+            if self.hpc_processing and self.AdamOpt:
+                self.hpc_processing_job[event] = it_dict["events"][str(_i)]["job_info"][
+                    "hpc_processing"
+                ]
         if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
             self.smoothing_job = it_dict["smoothing"]
 

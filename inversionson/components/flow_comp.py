@@ -9,6 +9,7 @@ import toml
 from lasif.components.component import Component
 from salvus.flow.sites import job as s_job
 from salvus.flow.simple_config import simulation, source, stf, receiver
+from salvus.flow.api import get_site
 from inversionson import InversionsonError
 
 
@@ -47,6 +48,7 @@ class SalvusFlowComponent(Component):
             "smoothing",
             "model_interp",
             "gradient_interp",
+            "hpc_processing",
         ]
         if iteration == "current":
             iteration = self.comm.project.current_iteration
@@ -94,6 +96,8 @@ class SalvusFlowComponent(Component):
                     job = self.comm.project.model_interp_job[event]["name"]
                 elif sim_type == "gradient_interp":
                     job = self.comm.project.gradient_interp_job[event]["name"]
+                elif sim_type == "hpc_processing":
+                    job = self.comm.project.hpc_processing_job[event]["name"]
                 else:
                     if (
                         self.comm.project.inversion_mode == "mono-batch"
@@ -122,7 +126,7 @@ class SalvusFlowComponent(Component):
         :type iteration: str, optional
         """
         if iteration == "current" or iteration == self.comm.project.current_iteration:
-            if "interp" in sim_type:
+            if sim_type in ["gradient_interp", "model_interp", "hpc_processing"]:
                 return self.__get_custom_job(event=event, sim_type=sim_type)
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["submitted"]:
@@ -206,6 +210,13 @@ class SalvusFlowComponent(Component):
                 raise InversionsonError(
                     f"Model interpolation job for event: {event} "
                     "has not been submitted"
+                )
+        if sim_type == "hpc_processing":
+            if self.comm.project.hpc_processing_job[event]["submitted"]:
+                job_name = self.comm.project.hpc_processing_job[event]["name"]
+            else:
+                raise InversionsonError(
+                    f"HPC processing job for event: {event} " "has not been submitted"
                 )
         elif sim_type == "gradient_interp":
             gradient = True
@@ -352,69 +363,61 @@ class SalvusFlowComponent(Component):
 
         iteration = self.comm.project.current_iteration
         receivers = self.comm.lasif.get_receivers(event_name)
-        adjoint_filename = self.comm.lasif.get_adjoint_source_file(
-            event=event_name, iteration=iteration
-        )
-        # A workaround needed for a current salvus bug:
-        # stf_forward = os.path.join(
-        #         self.comm.project.lasif_root,
-        #         "SALVUS_INPUT_FILES",
-        #         f"ITERATION_{iteration}",
-        #         "custom_stf.h5")
-        # job_name = self._get_job_name(
-        #     event=event_name,
-        #     sim_type="forward",
-        #     new=False)
-        # stf_forward_path = f"/scratch/snx3000/tsolvi/salvus_flow/run/{job_name}/input/custom_stf.h5"
-        # copy it:
-        # os.system(f"scp daint:{stf_forward_path} {stf_forward}")
-        # f = h5py.File(stf_forward)
-        # stf_source = f['stf'][()]
-        p = h5py.File(adjoint_filename, "r")
-        # if 'stf' in p.keys():
-        # del p['stf']
-        adjoint_recs = list(p.keys())
-        # p.create_dataset(name='stf', data=stf_source)
-        # p["stf"].attrs["sampling_rate_in_hertz"] = 1 / self.comm.project.time_step
-        # p["source"].attrs["spatial-type"] = np.string_("moment_tensor")
-        # p["stf"].attrs["start_time_in_seconds"] = -self.comm.project.time_step
-        # f.close()
-        # rec = receivers[0]
+        if not self.comm.project.hpc_processing:
+            adjoint_filename = self.comm.lasif.get_adjoint_source_file(
+                event=event_name, iteration=iteration
+            )
+
+        if not self.comm.project.hpc_processing:
+            p = h5py.File(adjoint_filename, "r")
+            adjoint_recs = list(p.keys())
+            p.close()
+        else:
+            forward_job = self.get_job(event_name, sim_type="forward")
+
+            # remote synthetics
+            remote_meta_path = forward_job.output_path / "meta.json"
+            hpc_cluster = get_site(self.comm.project.site_name)
+            meta_json_filename = "meta.json"
+            if os.path.exists(meta_json_filename):
+                os.remove(meta_json_filename)
+            hpc_cluster.remote_get(remote_meta_path, meta_json_filename)
+
+            proc_job = self.get_job(event_name, sim_type="hpc_processing")
+            remote_misfit_dict_toml = str(
+                proc_job.stdout_path.parent / "output" / "misfit_dict.toml"
+            )
+            adjoint_filename = "REMOTE:" + str(
+                proc_job.stdout_path.parent / "output" / "stf.h5"
+            )
+            local_misfit_dict = "misfit_dict.toml"
+            if os.path.exists(local_misfit_dict):
+                os.remove(local_misfit_dict)
+            hpc_cluster.remote_get(remote_misfit_dict_toml, local_misfit_dict)
+            misfits = toml.load(local_misfit_dict)
+            adjoint_recs = list(misfits[event_name].keys())
+
         # Need to make sure I only take receivers with an adjoint source
         adjoint_sources = []
         for rec in receivers:
-            if rec["network-code"] + "_" + rec["station-code"] in adjoint_recs:
+            if (
+                rec["network-code"] + "_" + rec["station-code"] in adjoint_recs
+                or rec["network-code"] + "." + rec["station-code"] in adjoint_recs
+            ):
                 adjoint_sources.append(rec)
 
-        p.close()
-        # if self.comm.project.meshes == "multi-mesh":
-        #     adj_src = [
-        #         source.seismology.VectorPoint3DZNE(
-        #             latitude=rec["latitude"],
-        #             longitude=rec["longitude"],
-        #             fz=1.0,
-        #             fn=1.0,
-        #             fe=1.0,
-        #             source_time_function=stf.Custom(
-        #                 filename=adjoint_filename,
-        #                 dataset_name="/"
-        #                 + rec["network-code"]
-        #                 + "_"
-        #                 + rec["station-code"],
-        #             ),
-        #         )
-        #         for rec in adjoint_sources
-        #     ]
-        #     return adj_src
+        # print(adjoint_sources)
+
         # Get path to meta.json to obtain receiver position, use again for adjoint
-        meta_json_filename = os.path.join(
-            self.comm.project.lasif_root,
-            "SYNTHETICS",
-            "EARTHQUAKES",
-            f"ITERATION_{iteration}",
-            event_name,
-            "meta.json",
-        )
+        if not self.comm.project.hpc_processing:
+            meta_json_filename = os.path.join(
+                self.comm.project.lasif_root,
+                "SYNTHETICS",
+                "EARTHQUAKES",
+                f"ITERATION_{iteration}",
+                event_name,
+                "meta.json",
+            )
 
         # Build meta info dict
 
@@ -423,7 +426,10 @@ class SalvusFlowComponent(Component):
         meta_recs = data["forward_run_input"]["output"]["point_data"]["receiver"]
         meta_info_dict = {}
         for rec in meta_recs:
-            if rec["network_code"] + "_" + rec["station_code"] in adjoint_recs:
+            if (
+                rec["network_code"] + "_" + rec["station_code"] in adjoint_recs
+                or rec["network_code"] + "." + rec["station_code"] in adjoint_recs
+            ):
                 rec_name = rec["network_code"] + "_" + rec["station_code"]
                 meta_info_dict[rec_name] = {}
                 # this is the rotation from XYZ to ZNE,
@@ -432,6 +438,28 @@ class SalvusFlowComponent(Component):
                     "matrix": np.array(rec["rotation_on_output"]["matrix"]).T.tolist()
                 }
                 meta_info_dict[rec_name]["location"] = rec["location"]
+        for rec in adjoint_sources[:1]:
+            source.cartesian.VectorPoint3D(
+                x=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][0],
+                y=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][1],
+                z=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                    "location"
+                ][2],
+                fx=1.0,
+                fy=1.0,
+                fz=1.0,
+                source_time_function=stf.Custom(
+                    filename=adjoint_filename,
+                    dataset_name="/" + rec["network-code"] + "_" + rec["station-code"],
+                ),
+                rotation_on_input=meta_info_dict[
+                    rec["network-code"] + "_" + rec["station-code"]
+                ]["rotation_on_input"],
+            )
 
         adj_src = [
             source.cartesian.VectorPoint3D(
@@ -566,12 +594,22 @@ class SalvusFlowComponent(Component):
         if bound:
             w.physics.wave_equation.boundaries = boundaries
 
-        # For gradient computation
+        # Compute wavefield subsampling factor.
+        samples_per_min_period = (
+            self.comm.project.min_period / self.comm.project.time_step
+        )
+        min_samples_per_min_period = 30.0
+        reduction_factor = int(samples_per_min_period / min_samples_per_min_period)
+        if reduction_factor >= 2:
+            checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        else:
+            checkpointing_flag = "auto-for-checkpointing"
 
+        # For gradient computation
         w.output.volume_data.format = "hdf5"
         w.output.volume_data.filename = "output.h5"
         w.output.volume_data.fields = ["adjoint-checkpoint"]
-        w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing"
+        w.output.volume_data.sampling_interval_in_time_steps = checkpointing_flag
         if self.comm.project.meshes == "multi-mesh":
             w.set_mesh(use_mesh)
 
@@ -626,24 +664,14 @@ class SalvusFlowComponent(Component):
         mesh = self.comm.lasif.find_event_mesh(event)
         if remote_interp:
             interp_job = self.get_job(event=event, sim_type="model_interp")
-        forward_job_name = self.comm.project.forward_job[event]["name"]
+
         forward_job = self.get_job(event=event, sim_type="forward")
         meta = forward_job.output_path / "meta.json"
         if remote_interp:
             remote_mesh = interp_job.path / "output" / "mesh.h5"
         else:
             remote_mesh = forward_job.input_path / "mesh.h5"
-
-        # gradient = os.path.join(
-        #     self.comm.lasif.lasif_root,
-        #     "GRADIENTS",
-        #     f"ITERATION_{self.comm.project.current_iteration}",
-        #     event,
-        #     "gradient.h5",
-        # )
         gradient = "gradient.h5"
-        # if not os.path.exists(os.path.dirname(gradient)):
-        #     os.makedirs(os.path.dirname(gradient))
 
         w = simulation.Waveform(mesh=mesh)
         w.adjoint.forward_meta_json_filename = f"REMOTE:{meta}"
