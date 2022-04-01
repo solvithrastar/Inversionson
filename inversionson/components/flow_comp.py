@@ -599,7 +599,7 @@ class SalvusFlowComponent(Component):
             w.physics.wave_equation.boundaries = boundaries
 
 
-        # Compute wavefield subsampling factor. 
+        # Compute wavefield subsampling factor.
         samples_per_min_period = self.comm.project.min_period / self.comm.project.time_step
         min_samples_per_min_period = 30.0
         reduction_factor = int(samples_per_min_period / min_samples_per_min_period)

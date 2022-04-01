@@ -1727,7 +1727,7 @@ class SmoothingHelper(object):
 
             if not int_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(_TIME)
+                time.sleep(SLEEP_TIME)
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
