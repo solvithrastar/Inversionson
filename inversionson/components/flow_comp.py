@@ -599,11 +599,18 @@ class SalvusFlowComponent(Component):
             w.physics.wave_equation.boundaries = boundaries
 
         # For gradient computation
+        samples_per_min_period = self.comm.project.min_period / self.comm.project.time_step
+        max_samples_per_min_period = 30.0
+        reduction_factor = int(samples_per_min_period / max_samples_per_min_period)
+        if reduction_factor >= 2:
+            checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        else:
+            checkpointing_flag = "auto-for-checkpointing"
 
         w.output.volume_data.format = "hdf5"
         w.output.volume_data.filename = "output.h5"
         w.output.volume_data.fields = ["adjoint-checkpoint"]
-        w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing"
+        w.output.volume_data.sampling_interval_in_time_steps = checkpointing_flag
         if self.comm.project.meshes == "multi-mesh":
             w.set_mesh(use_mesh)
 
