@@ -1156,6 +1156,11 @@ class ForwardHelper(object):
         )
         while True:
             for_job_listener.monitor_jobs()
+            # submit remote jobs for the ones that did not get
+            # submitted yet, although forwards are done.
+            for event in for_job_listener.events_already_retrieved:
+                if self.comm.project.hpc_processing and not validation:
+                    self._launch_hpc_processing_job(event)
             for event in for_job_listener.events_retrieved_now:
                 if not self.comm.project.hpc_processing:
                     self.__retrieve_seismograms(event=event, verbose=verbose)
@@ -1206,11 +1211,11 @@ class ForwardHelper(object):
             if self.comm.project.hpc_processing and adjoint:
                 hpc_proc_job_listener.monitor_jobs()
                 for event in hpc_proc_job_listener.events_retrieved_now:
-                    if adjoint and self.comm.project.hpc_processing:
-                        self.__dispatch_adjoint_simulation(event, self.comm.project.hpc_processing, verbose)
                     self.comm.project.change_attribute(
                         attribute=f'hpc_processing_job["{event}"]["retrieved"]',
                         new_value=True)
+                    if adjoint and self.comm.project.hpc_processing:
+                        self.__dispatch_adjoint_simulation(event, self.comm.project.hpc_processing, verbose)
 
                 for event in hpc_proc_job_listener.to_repost:
                     self.comm.project.change_attribute(
