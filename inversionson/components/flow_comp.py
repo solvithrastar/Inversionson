@@ -353,15 +353,12 @@ class SalvusFlowComponent(Component):
 
         return src
 
-    def get_adjoint_source_object(self, event_name: str,
-                                  hpc_processing: bool = False) -> object:
+    def get_adjoint_source_object(self, event_name: str) -> object:
         """
         Generate the adjoint source object for the respective event
 
         :param event_name: Name of event
         :type event_name: str
-        :param hpc_processing: Use reomate adjoint file
-        :type hpc_processing: bool
         :return: Adjoint source object for salvus
         :rtype: object
         """
@@ -375,7 +372,7 @@ class SalvusFlowComponent(Component):
                 event=event_name, iteration=iteration
             )
 
-        if not hpc_processing:
+        if not self.comm.project.hpc_processing:
             p = h5py.File(adjoint_filename, "r")
             adjoint_recs = list(p.keys())
             p.close()
@@ -614,8 +611,7 @@ class SalvusFlowComponent(Component):
 
         return w
 
-    def construct_adjoint_simulation(self, event: str, adj_src: object,
-                                     hpc_processing: bool = False) -> object:
+    def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
         """
         Create the adjoint simulation object that salvus flow needs
 
@@ -623,8 +619,6 @@ class SalvusFlowComponent(Component):
         :type event: str
         :param adj_src: List of adjoint source objects
         :type adj_src: object
-        :param hpc_processing: Use reomate adjoint file
-        :type hpc_processing: bool
         :return: Simulation object
         :rtype: object
         """

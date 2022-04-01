@@ -18,7 +18,7 @@ from salvus.flow.api import get_site
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
-SLEEP_TIME = 1
+SLEEP_TIME = 10
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -842,8 +842,7 @@ class ForwardHelper(object):
         )
         self.comm.project.update_iteration_toml()
 
-    def __dispatch_adjoint_simulation(self, event: str,
-                                      hpc_processing: bool = False, verbose=False):
+    def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
         Dispatch an adjoint simulation after finishing the forward
         processing
@@ -863,9 +862,9 @@ class ForwardHelper(object):
             print(emoji.emojize(":rocket: | Run adjoint simulation", use_aliases=True))
             print(f"Event: {event}")
 
-        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event, hpc_processing)
+        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event,
-                                                                       adj_src, hpc_processing)
+                                                                       adj_src)
 
         if (
             self.comm.project.remote_mesh is not None
@@ -1215,7 +1214,7 @@ class ForwardHelper(object):
                         attribute=f'hpc_processing_job["{event}"]["retrieved"]',
                         new_value=True)
                     if adjoint and self.comm.project.hpc_processing:
-                        self.__dispatch_adjoint_simulation(event, self.comm.project.hpc_processing, verbose)
+                        self.__dispatch_adjoint_simulation(event, verbose)
 
                 for event in hpc_proc_job_listener.to_repost:
                     self.comm.project.change_attribute(
@@ -1252,7 +1251,7 @@ class AdjointHelper(object):
         Dispatching all adjoint simulations
         """
         for event in self.events:
-            self.__dispatch_adjoint_simulation(event, self.comm.project.hpc_processing, verbose=verbose)
+            self.__dispatch_adjoint_simulation(event, verbose=verbose)
 
     def process_gradients(
         self, events=None, interpolate=False, smooth_individual=False, verbose=False
@@ -1434,12 +1433,9 @@ class AdjointHelper(object):
             event, smooth=False, interp_folder=interp_folder
         )
 
-    def __dispatch_adjoint_simulation(self, event: str,
-                                      hpc_processing: bool =False, verbose=False):
+    def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
         Dispatch an adjoint simulation
-        :param hpc_processing
-        :type hpc_processing: bool
         :param event: Name of event
         :type event: str
         """
@@ -1449,8 +1445,8 @@ class AdjointHelper(object):
             return
         if verbose:
             print(f"Event: {event}")
-        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event, hpc_processing)
-        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src, hpc_processing)
+        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
+        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
 
         if (
             self.comm.project.remote_mesh is not None
@@ -1731,7 +1727,7 @@ class SmoothingHelper(object):
 
             if not int_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                time.sleep(_TIME)
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
