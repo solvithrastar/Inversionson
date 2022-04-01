@@ -510,7 +510,7 @@ class MultiMeshComponent(Component):
         # if hpc_cluster.config["site_type"] == "local":
         remote_script_path = os.path.join(
             self.comm.project.remote_inversionson_dir,
-            "scripts",
+            "SCRIPTS",
             "interpolation.py",
         )
         # else:

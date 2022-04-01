@@ -564,7 +564,6 @@ class LasifComponent(Component):
                 / iteration
                 / "stf.h5",
             )
-            print("Uploaded Source time function")
 
     # TODO: Write find_gradient for Pathlib
     def find_gradient(

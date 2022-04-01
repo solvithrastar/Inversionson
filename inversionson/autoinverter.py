@@ -58,6 +58,7 @@ class AutoInverter(object):
             "MESHES",
             "ADJOINT_SOURCES",
             "PROCESSED_DATA",
+            "SCRIPTS",
         ]:
             if not hpc_cluster.remote_exists(
                 self.comm.project.remote_inversionson_dir / directory

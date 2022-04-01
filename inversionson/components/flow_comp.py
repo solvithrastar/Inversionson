@@ -661,7 +661,11 @@ class SalvusFlowComponent(Component):
         ):
             remote_interp = True
 
-        mesh = self.comm.lasif.find_event_mesh(event)
+        # mesh = self.comm.lasif.find_event_mesh(event)
+        mesh = self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"][
+            "domain_file"
+        ]
+
         if remote_interp:
             interp_job = self.get_job(event=event, sim_type="model_interp")
 

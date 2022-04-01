@@ -632,7 +632,7 @@ class ForwardHelper(object):
         hpc_cluster = get_site(self.comm.project.site_name)
 
         remote_processed_dir = os.path.join(
-            self.comm.project.remote_diff_model_dir, "..", "PROCESSED_DATA"
+            self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
         )
         if not hpc_cluster.remote_exists(remote_processed_dir):
             hpc_cluster.remote_mkdir(remote_processed_dir)
@@ -642,7 +642,7 @@ class ForwardHelper(object):
             hpc_cluster.remote_put(local_proc_file, remote_proc_path)
 
         remote_adj_dir = os.path.join(
-            self.comm.project.remote_diff_model_dir, "..", "ADJOINT_SOURCES"
+            self.comm.project.remote_inversionson_dir, "ADJOINT_SOURCES"
         )
 
         if not hpc_cluster.remote_exists(remote_adj_dir):
@@ -651,7 +651,7 @@ class ForwardHelper(object):
         info = {}
         info["processed_filename"] = remote_proc_path
         info["synthetic_filename"] = remote_syn_path
-        info["window_set_name"] = "A"
+        info["window_set_name"] = "A"  # Not used
         info["event_name"] = event
         info["delta"] = self.comm.project.simulation_dict["time_step"]
         info["npts"] = self.comm.project.simulation_dict["number_of_time_steps"]
