@@ -14,12 +14,11 @@ import toml
 from typing import Union
 from inversionson.optimizers.adam_opt import AdamOpt
 
-CUT_SOURCE_SCRIPT_PATH = os.path.join(
+REMOTE_SCRIPT_PATHS = os.path.join(
     os.path.dirname(
         os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
     "remote_scripts",
-    "move_fields.py",
 )
 
 
@@ -275,18 +274,20 @@ class MultiMeshComponent(Component):
         toml_filename = (
             self.comm.project.inversion_root / "INTERPOLATION" / event / toml_name
         )
-        if os.path.exists(toml_filename):
-            return toml_filename
+        if not os.path.exists(toml_filename.parent):
+            os.makedirs(toml_filename.parent)
+        # if os.path.exists(toml_filename):
+        #     return toml_filename
         information = {}
         information["gradient"] = gradient
+        information["mesh_info"] = {
+            "event_name": event,
+            "mesh_folder": str(self.comm.project.fast_mesh_dir),
+            "long_term_mesh_folder": str(self.comm.project.remote_mesh_dir),
+            "min_period": self.comm.project.min_period,
+            "elems_per_quarter": self.comm.project.elem_per_quarter,
+        }
         if not gradient:
-            information["mesh_info"] = {
-                "event_name": event,
-                "mesh_folder": self.comm.project.fast_mesh_dir,
-                "long_term_mesh_folder": self.comm.project.remote_mesh_dir,
-                "min_period": self.comm.project.min_period,
-                "elems_per_quarter": self.comm.project.elem_per_quarter,
-            }
             if self.comm.project.ellipticity:
                 information["ellipticity"] = 0.0033528106647474805
             if self.comm.project.topography["use"]:
@@ -359,19 +360,19 @@ class MultiMeshComponent(Component):
         :param hpc_cluster: the cluster site object, defaults to None
         :type hpc_cluster: Salvus.site, optional
         """
-        gradient = True if "gradient" in toml_filename else False
+        gradient = True if "gradient" in str(toml_filename) else False
         if hpc_cluster is None:
             hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         remote_path = (
             pathlib.Path(self.comm.project.remote_mesh_dir) / event / toml_filename.name
         )
-        if hpc_cluster.remote_exists(remote_path):
-            return remote_path
-        else:
-            if not hpc_cluster.remote_exists(remote_path.parent):
-                hpc_cluster.mkdir(remote_path.parent)
-            hpc_cluster.remote_put(toml_filename, remote_path)
-            return remote_path
+        # if hpc_cluster.remote_exists(remote_path):
+        #     return remote_path
+        # else:
+        if not hpc_cluster.remote_exists(remote_path.parent):
+            hpc_cluster.remote_mkdir(remote_path.parent)
+        hpc_cluster.remote_put(toml_filename, remote_path)
+        return remote_path
 
     def get_interp_commands(
         self,
@@ -407,10 +408,12 @@ class MultiMeshComponent(Component):
             validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
-        interpolation_toml = self.prepare_interplation_toml(
+        interpolation_toml = self.prepare_interpolation_toml(
             gradient=gradient, event=event
         )
-        remote_toml = self.move_toml_to_hpc(interpolation_toml)
+        remote_toml = self.move_toml_to_hpc(
+            toml_filename=interpolation_toml, event=event
+        )
         # if gradient:
         #     mesh_to_get_fields_from = str(
         #         self.comm.lasif.find_remote_mesh(
@@ -431,10 +434,10 @@ class MultiMeshComponent(Component):
                 command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
                 execute_with_mpi=False,
             ),
-            remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {mesh_to_interpolate_to} ./to_mesh.h5",
-                execute_with_mpi=False,
-            ),
+            # remote_io_site.site_utils.RemoteCommand(
+            #     command=f"cp {mesh_to_interpolate_to} ./to_mesh.h5",
+            #     execute_with_mpi=False,
+            # ),
             remote_io_site.site_utils.RemoteCommand(
                 command=f"cp {interpolation_script} ./interpolate.py",
                 execute_with_mpi=False,
@@ -482,12 +485,12 @@ class MultiMeshComponent(Component):
                 execute_with_mpi=False,
             )
         )
-        commands.append(
-            remote_io_site.site_utils.RemoteCommand(
-                command="mv ./to_mesh.h5 ./output/mesh.h5",
-                execute_with_mpi=False,
-            ),
-        )
+        # commands.append(
+        #     remote_io_site.site_utils.RemoteCommand(
+        #         command="mv ./to_mesh.h5 ./output/mesh.h5",
+        #         execute_with_mpi=False,
+        #     ),
+        # )
         # if not weights_exists:
         #     commands.append(
         #         remote_io_site.site_utils.RemoteCommand(
@@ -504,20 +507,23 @@ class MultiMeshComponent(Component):
         """
         # get_remote
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
-        if hpc_cluster.config["site_type"] == "local":
-            remote_script_path = os.path.join(
-                self.comm.project.remote_diff_model_dir,
-                "..",
-                "scripts",
-                "interpolation.py",
-            )
-        else:
-            username = hpc_cluster.config["ssh_settings"]["username"]
-            remote_script_path = os.path.join(
-                "/users", username, "scripts", "interpolation.py"
-            )
-        if not hpc_cluster.remote_exists(remote_script_path):
-            self._make_remote_interpolation_script(hpc_cluster)
+        # if hpc_cluster.config["site_type"] == "local":
+        remote_script_path = os.path.join(
+            self.comm.project.remote_inversionson_dir,
+            "scripts",
+            "interpolation.py",
+        )
+        # else:
+        #     username = hpc_cluster.config["ssh_settings"]["username"]
+        #     remote_script_path = os.path.join(
+        #         "/users", username, "scripts", "interpolation_test.py"
+        #     )
+        # if not hpc_cluster.remote_exists(remote_script_path):
+        #     hpc_cluster.remote_put(
+        #         os.path.join(REMOTE_SCRIPT_PATHS, "interpolation.py"),
+        #         remote_script_path,
+        #     )
+        #     # self._make_remote_interpolation_script(hpc_cluster)
         return remote_script_path
 
     def get_remote_field_moving_script_path(self):
@@ -532,7 +538,9 @@ class MultiMeshComponent(Component):
         # copy processing script to daint
         remote_script = os.path.join(remote_inversionson_scripts, "move_fields.py")
         if not site.remote_exists(remote_script):
-            site.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
+            site.remote_put(
+                os.path.join(REMOTE_SCRIPT_PATHS, "cut_and_clip.py"), remote_script
+            )
         return remote_script
 
     def _make_remote_interpolation_script(self, hpc_cluster):

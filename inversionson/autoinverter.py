@@ -2,6 +2,7 @@ import os
 import shutil
 import emoji
 import toml
+import inspect
 import sys
 
 from pathlib import Path
@@ -13,6 +14,14 @@ from inversionson.tasks import TaskManager
 from inversionson import InversionsonError
 
 init()
+INTERPOLATION_SCRIPT_PATH = os.path.join(
+    os.path.dirname(
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    ),
+    "inversionson",
+    "remote_scripts",
+    "interpolation.py",
+)
 
 
 def _find_project_comm(info):
@@ -87,6 +96,12 @@ class AutoInverter(object):
                     self.comm.project.topography["file"],
                     self.comm.project.topography["remote_file"],
                 )
+        remote_interp_path = self.comm.multi_mesh.find_interpolation_script()
+        hpc_cluster.remote_put(INTERPOLATION_SCRIPT_PATH, remote_interp_path)
+
+        self.comm.lasif.move_gradient_to_cluster(
+            hpc_cluster=hpc_cluster, overwrite=False
+        )
 
     def run_inversion(self, n_iterations=1000, verbose=False):
         taskmanager = TaskManager(

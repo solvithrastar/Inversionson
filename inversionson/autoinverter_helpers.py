@@ -16,7 +16,8 @@ from salvus.flow.api import get_site
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
-SLEEP_TIME = 30
+SLEEP_TIME = 10
+max_reposts = 0
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -116,7 +117,7 @@ class RemoteJobListener(object):
                 print(f"Status = {status}, event: {event}")
         elif status in ["unknown", "failed"]:
             print(f"{self.job_type} job for {event}, {status}, will resubmit")
-            if reposts >= 3:
+            if reposts >= max_reposts:
                 print("No I've actually reposted this too often \n")
                 print("There must be something wrong.")
                 raise InversionsonError("Too many reposts")
@@ -831,7 +832,7 @@ class ForwardHelper(object):
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(
-                    event, verbose, simulation_created_remotely=True
+                    event=event, verbose=verbose, simulation_created_remotely=True
                 )
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(

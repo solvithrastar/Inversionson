@@ -33,19 +33,21 @@ def create_mesh(mesh_info, source_info):
         sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = float(mesh_info["min_period"])
         sm.basic.elements_per_wavelength = 1.7
-        sm.basic.number_of_lateral_elements = float(mesh_info["elems_per_quarter"])
+        sm.basic.number_of_lateral_elements = int(mesh_info["elems_per_quarter"])
         sm.advanced.tensor_order = 4
         if "ellipticity" in mesh_info.keys():
-            sm.spherical.ellipticity = mesh_info["ellipticity"]
+            sm.spherical.ellipticity = float(mesh_info["ellipticity"])
         if "ocean_loading" in mesh_info.keys():
-            sm.ocean.bathymetry_file = mesh_info["ocean_loading"]["remote_file"]
+            sm.ocean.bathymetry_file = pathlib.Path(
+                mesh_info["ocean_loading"]["remote_file"]
+            )
             sm.ocean.bathymetry_varname = mesh_info["ocean_loading"]["variable"]
             sm.ocean.ocean_layer_style = "loading"
             sm.ocean.ocean_layer_density = 1025.0
         if "topography" in mesh_info.keys():
-            sm.topography.topography_file = mesh_info["topography"]["use"][
-                "remote_file"
-            ]
+            sm.topography.topography_file = pathlib.Path(
+                mesh_info["topography"]["use"]["remote_file"]
+            )
             sm.topography.topography_varname = mesh_info["topography"]["use"][
                 "variable"
             ]
@@ -55,13 +57,22 @@ def create_mesh(mesh_info, source_info):
             {"theta_min": 40.0, "theta_max": 140.0, "r_min": 6250.0}
         )
         m = sm.create_mesh()
-        m.write_mesh("to_mesh.h5")
+        m.write_h5("to_mesh.h5")
+
+
+def get_standard_gradient(mesh_info):
+    remote_gradient = (
+        pathlib.Path(mesh_info["mesh_folder"]) / "standard_gradient" / "mesh.h5"
+    )
+
+    shutil.copy(remote_gradient, "./to_mesh.h5")
 
 
 def move_mesh(mesh_folder, event_name):
-    shutil.move("./to_mesh.h5", "./output/mesh.h5")
-    mesh_location = os.path.join(mesh_folder, event_name, "mesh.h5")
+    mesh_location = pathlib.Path(mesh_folder) / event_name / "mesh.h5"
     if not os.path.exists(mesh_location):
+        if not os.path.exists(mesh_location.parent):
+            os.makedirs(mesh_location.parent)
         print("Copying mesh for storage")
         shutil.copy("./output/mesh.h5", mesh_location)
 
@@ -79,21 +90,12 @@ def interpolate_fields(from_mesh, to_mesh, layers, parameters, stored_array=None
 
 def create_simulation_object(mesh_info, source_info, receiver_info, simulation_info):
     """
-    Ok the STF needs to be online and the receiver file needs to be online too.
-    Technically I could maybe create the source object already?
-    Ok, looks like I can create the source object, make it into a dictionary
-    and then create a random one but that might be a problem with the stf.
+    Create the simulation object remotely and write it into a dictionary toml file.
+    This dictionary is then downloaded and used locally to create the simulation object,
+    bypassing the problem of slow receiver placements.
 
-    I think it's better to keep the stf file on daint and use it when creating the source.
-    The dictionary then refers to that one hopefully... That should work.
-    We then create this magical dictionary which we can download or maybe even refer to in job submission.
-    I'm starting to think that this might not necessarily fail.
-
-    Ok, I create the dictionary for the job on the remote and I download it.
-    I then use this dictionary to create the new job and submit it.
-
-    In the dictionary creation I need to know the source and receiver locations, so that
-    information needs to be available on the line.
+    The inputs are all dictionaries with the relevant information needed for
+    the creation of the simulation object.
     """
     import salvus.flow.simple_config as sc
 
@@ -126,7 +128,7 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
         ),
     )
 
-    mesh = f'REMOTE:{pathlib.Path().resolve() / "output" / "mesh.h5"}'
+    mesh = pathlib.Path().resolve() / "output" / "mesh.h5"
     w = sc.simulation.Waveform(mesh=mesh, sources=src, receivers=receivers)
 
     w.physics.wave_equation.end_time_in_seconds = simulation_info["end_time"]
@@ -137,6 +139,7 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
     bound = False
     boundaries = []
     if simulation_info["absorbing_boundaries"]:
+        print("I think there are absorbing boundaries")
         bound = True
         absorbing = sc.boundary.Absorbing(
             width_in_meters=simulation_info["absorbing_boundary_length"],
@@ -146,6 +149,7 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
         boundaries.append(absorbing)
 
     if "ocean_loading" in mesh_info.keys():
+        print("I think there is ocean loading")
         bound = True
         ocean_loading = sc.boundary.OceanLoading(side_sets=[source_info["side_set"]])
         boundaries.append(ocean_loading)
@@ -154,7 +158,7 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"
     w.output.volume_data.fields = ["adjoint-checkpoint"]
-    w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing"
+    w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing_20"
     w.validate()
 
     with open("output/simulation_dict.toml", "w") as fh:
@@ -168,13 +172,15 @@ if __name__ == "__main__":
     toml_filename = sys.argv[1]
 
     info = toml.load(toml_filename)
+    mesh_info = info["mesh_info"]
     if not info["gradient"]:
-        mesh_info = info["mesh_info"]
         source_info = info["source_info"]
         receiver_info = info["receiver_info"]
         simulation_info = info["simulation_info"]
         create_mesh(mesh_info=mesh_info, source_info=source_info)
         print("Mesh created or already existed")
+    else:
+        get_standard_gradient(mesh_info=mesh_info)
     interpolate_fields(
         from_mesh="./from_mesh.h5",
         to_mesh="./to_mesh.h5",
@@ -182,8 +188,11 @@ if __name__ == "__main__":
         parameters=["VPV", "VPH", "VSV", "VSH", "RHO"],
     )
     print("Fields interpolated")
+    shutil.move("./to_mesh.h5", "./output/mesh.h5")
     if not info["gradient"]:
         move_mesh(
             mesh_folder=mesh_info["mesh_folder"], event_name=mesh_info["event_name"]
         )
         print("Meshed moved to longer term storage")
+        print("Creating simulation object")
+        create_simulation_object(mesh_info, source_info, receiver_info, simulation_info)

@@ -177,12 +177,12 @@ class Optimize(object):
             self.comm.lasif.move_mesh(
                 event=None, iteration=it_name, hpc_cluster=interp_site
             )
-            for event in events:
-                if not self.comm.lasif.has_mesh(event, hpc_cluster=interp_site):
-                    self.comm.salvus_mesher.create_mesh(event=event)
-                    self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
-                else:
-                    self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
+            # for event in events:
+            #     if not self.comm.lasif.has_mesh(event, hpc_cluster=interp_site):
+            #         self.comm.salvus_mesher.create_mesh(event=event)
+            #         self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
+            #     else:
+            #         self.comm.lasif.move_mesh(event, it_name, hpc_cluster=interp_site)
         elif self.comm.project.meshes == "mono-mesh" and move_meshes:
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 

@@ -597,6 +597,8 @@ class SalvusFlowComponent(Component):
             / event
             / "simulation_dict.toml"
         )
+        if not os.path.exists(destination.parent):
+            os.makedirs(destination.parent)
         remote_dict = interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
         hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
         return simulation.Waveform().from_dict(toml.load(destination))

@@ -4,6 +4,7 @@ import shutil
 from lasif.components.component import Component
 from inversionson.optimizers.adam_opt import AdamOpt
 import lasif.api as lapi
+from lasif.utils import write_custom_stf
 import os
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
@@ -137,7 +138,13 @@ class LasifComponent(Component):
             validation = True
         if gradient:
             if interpolate_to:
-                mesh = remote_mesh_dir / "standard_gradient" / "mesh.h5"
+                mesh = (
+                    self.comm.project.remote_inversionson_dir
+                    / "meshes"
+                    / "standard_gradient"
+                    / "mesh.h5"
+                )
+                # mesh = remote_mesh_dir / "standard_gradient" / "mesh.h5"
             else:
                 output = self.comm.salvus_flow.get_job_file_paths(
                     event=event, sim_type="adjoint"
@@ -528,6 +535,9 @@ class LasifComponent(Component):
         :type iteration: str
         """
         local_stf = self.find_stf(iteration=iteration)
+        if not os.path.exists(local_stf):
+            write_custom_stf(stf_path=local_stf, comm=self.lasif_comm)
+
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.site_name)
 
@@ -554,6 +564,7 @@ class LasifComponent(Component):
                 / iteration
                 / "stf.h5",
             )
+            print("Uploaded Source time function")
 
     # TODO: Write find_gradient for Pathlib
     def find_gradient(
