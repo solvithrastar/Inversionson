@@ -639,7 +639,17 @@ class SalvusFlowComponent(Component):
             os.makedirs(destination.parent)
         remote_dict = interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
         hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
-        return simulation.Waveform().from_dict(toml.load(destination))
+
+        sim_dict = toml.load(destination)
+        remote_mesh = sim_dict["domain"]["mesh"]["filename"]
+        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
+        for key in ["mesh", "model", "geometry"]:
+            sim_dict["domain"][key]["filename"] = local_dummy_mesh
+
+        w = simulation.Waveform().from_dict(sim_dict)
+        w.set_mesh("REMOTE:" + remote_mesh)
+
+        return w
 
     def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
         """
