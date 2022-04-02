@@ -57,7 +57,7 @@ def create_mesh(mesh_info, source_info):
             {"theta_min": 40.0, "theta_max": 140.0, "r_min": 6250.0}
         )
         m = sm.create_mesh()
-        m.write_h5("to_mesh.h5")
+        m.write_h5("to_mesh.h5", mode="all")
 
 
 def get_standard_gradient(mesh_info):
