@@ -195,6 +195,10 @@ if __name__ == "__main__":
         print("Mesh created or already existed")
     else:
         get_standard_gradient(mesh_info=mesh_info)
+
+    if not os.path.exists(mesh_info["interpolation_weights"]):
+        os.makedirs(mesh_info["interpolation_weights"])
+
     interpolate_fields(
         from_mesh="./from_mesh.h5",
         to_mesh="./to_mesh.h5",
