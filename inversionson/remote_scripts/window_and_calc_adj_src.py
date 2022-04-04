@@ -55,6 +55,7 @@ def get_station_weights(list_of_stations, processed_data):
     # Make reduced list:
     stations = {}
     for station in list_of_stations:
+        stations[station] = {}
         stations[station]["latitude"] = coordinates[station]["latitude"]
         stations[station]["longitude"] = coordinates[station]["longitude"]
 
