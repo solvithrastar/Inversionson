@@ -608,6 +608,8 @@ class ForwardHelper(object):
         if submitted:
             return
 
+        self.__process_data(event)
+
         iteration = self.comm.project.current_iteration
 
         job_name = self.comm.salvus_flow.get_job_name(event=event, sim_type="forward")
@@ -1169,7 +1171,6 @@ class ForwardHelper(object):
             # submitted yet, although forwards are done.
             for event in for_job_listener.events_already_retrieved:
                 if self.comm.project.hpc_processing and not validation:
-                    self.__process_data(event)
                     self._launch_hpc_processing_job(event)
             for event in for_job_listener.events_retrieved_now:
                 # Still retrieve synthetics for validation data. NO QA
