@@ -3,6 +3,86 @@ import sys
 import toml
 import numpy as np
 import h5py
+from obspy.geodetics import locations2degrees
+from inversionson.hpc_processing.window_selection import select_windows
+from inversionson.hpc_processing.source_time_function import \
+    source_time_function
+from inversionson.hpc_processing.utils import select_component_from_stream
+from inversionson.hpc_processing.adjoint_source import calculate_adjoint_source
+from tqdm import tqdm
+import multiprocessing
+import warnings
+import pyasdf
+import os
+
+
+def calculate_station_weight(lat_1: float, lon_1: float, locations: np.ndarray):
+    """
+    Calculates the weight set for a set of stations for one event
+
+    :param lat_1: latitude of station
+    :type lat_1: float
+    :param lon_1: longitude of station
+    :type lon_1: float
+    :param locations: array of latitudes and longitudes of other stations
+    :type locations: numpy.ndarray
+    :return: weight. weight for this specific station
+    :rtype: float
+    """
+
+    distance = 1.0 / (
+            1.0
+            + locations2degrees(lat_1, lon_1, locations[0, :], locations[1, :])
+    )
+    factor = np.sum(distance) - 1.0
+    weight = 1.0 / factor
+    assert weight > 0.0
+    return weight
+
+
+def get_station_weights(list_of_stations, processed_data):
+    """
+    The plan here is to compute the station weights based
+    on a list of stations, that are in turn based on the selected windwos.
+    :param list_of_stations: List of windows
+    :type list_of_stations: List
+    """
+
+    print("Getting station weights...")
+    with pyasdf.ASDFDataSet(processed_data) as ds:
+        coordinates = ds.get_all_coordinates()
+
+    # Make reduced list:
+    stations = {}
+    for station in list_of_stations:
+        stations["CI.FUR"]["latitude"] = coordinates[station]["latitude"]
+        stations["CI.FUR"]["longitude"] = coordinates[station]["longitude"]
+
+    locations = np.zeros((2, len(stations)), dtype=np.float64)
+
+    for _i, station in enumerate(stations):
+        locations[0, _i] = stations[station]["latitude"]
+        locations[1, _i] = stations[station]["longitude"]
+
+    sum_value = 0.0
+    weight_set = {}
+    for station in tqdm(stations):
+        weight_set[station] = {}
+        weight = calculate_station_weight(
+            lat_1=stations[station]["latitude"],
+            lon_1=stations[station]["longitude"],
+            locations=locations,
+        )
+        sum_value += weight
+        weight_set[station]["station_weight"] = weight
+
+    for station in stations:
+        weight_set[station]["station_weight"] *= (
+                len(stations) / sum_value
+        )
+
+    print("Station weights computed")
+    return weight_set
 
 
 def run(info):
@@ -12,24 +92,12 @@ def run(info):
     This avoids the need to download the synthetics and upload the adjoint
     sources, and offloads computations to the remote.
     """
-    from inversionson.hpc_processing.window_selection import select_windows
-    from inversionson.hpc_processing.source_time_function import \
-        source_time_function
-    from inversionson.hpc_processing.utils import select_component_from_stream
-    from inversionson.hpc_processing.adjoint_source import calculate_adjoint_source
-    from tqdm import tqdm
-    import multiprocessing
-    import warnings
-    import pyasdf
-    import os
-
     warnings.filterwarnings("ignore")
 
     num_processes = multiprocessing.cpu_count()
 
     global _window_select
     global _process
-
 
     # READ INPUT DICT
     processed_filename = info["processed_filename"]
@@ -38,17 +106,11 @@ def run(info):
     event_name = info["event_name"]
     delta = info["delta"]
     npts = info["npts"]
-    iteration_name = info["iteration_name"]
     minimum_period = info["minimum_period"]
     maximum_period = info["maximum_period"]
     freqmin = 1.0 / minimum_period
     freqmax = 1.0 / maximum_period
     start_time_in_s = info["start_time_in_s"]
-
-    if "weight_set" in info.keys():
-        weight_set = info["weight_set"]
-    else:
-        weight_set = False
 
     if "scale_data_to_synthetics" in info.keys():
         scale_data_to_synthetics = info["scale_data_to_synthetics"]
@@ -186,6 +248,8 @@ def run(info):
         f"Selected windows for {num_sta_with_windows} out of "
         f"{len(task_list)} stations."
     )
+
+    station_weights = get_station_weights(sta_with_windows, processed_filename)
 
     all_windows = results
     # Toml dumping the windows doesn't quite work because they are objects.
@@ -359,7 +423,8 @@ def run(info):
                 elif channel[-1] == "Z":
                     z_comp = all_adj_srcs[station][channel]["adj_source"].data
 
-            zne = np.array((z_comp, n_comp, e_comp))
+            zne = np.array((z_comp, n_comp, e_comp)) * \
+                  station_weights[station]["station_weight"]
             # replace name to match the forward output run from salvus
             new_station_name = station.replace(".", "_")
             source = f.create_dataset(new_station_name, data=zne.T)
@@ -376,7 +441,9 @@ def run(info):
             continue
         misfit_dict[station] = {}
         for trace in all_adj_srcs[station].keys():
-            misfit_dict[station][trace] = all_adj_srcs[station][trace]["misfit"]
+            misfit_dict[station][trace] = \
+                all_adj_srcs[station][trace]["misfit"] * \
+                station_weights[station]["station_weight"]
     event_misfit_dict = {event_name: misfit_dict}
     print("Writing misfit dict")
 
