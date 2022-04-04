@@ -749,22 +749,15 @@ class SalvusFlowComponent(Component):
         else:
             wall_time = self.comm.project.wall_time
 
+        job = sapi.run_async(
+            site_name=site,
+            input_file=simulation,
+            ranks=ranks,
+            wall_time_in_seconds=wall_time,
+        )
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
         if hpc_cluster.config["site_type"] == "local":
-            print("Job sumitted, waiting till done..")
-            job = sapi.run(
-                site_name=site,
-                input_file=simulation,
-                ranks=ranks,
-                wall_time_in_seconds=wall_time,
-            )
-        else:
-            job = sapi.run_async(
-                site_name=site,
-                input_file=simulation,
-                ranks=ranks,
-                wall_time_in_seconds=wall_time,
-            )
+            job.wait()
 
         if (
             self.comm.project.remote_mesh is None
