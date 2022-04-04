@@ -278,6 +278,11 @@ class MultiMeshComponent(Component):
             os.makedirs(toml_filename.parent)
         # if os.path.exists(toml_filename):
         #     return toml_filename
+        tag = "GRADIENTS" if gradient else "MODELS"
+
+        remote_weights_path = os.path.join(
+            self.comm.project.remote_inversionson_dir,
+            "INTERPOLATION_WEIGHTS", tag, event)
         information = {}
         information["gradient"] = gradient
         information["mesh_info"] = {
@@ -286,7 +291,9 @@ class MultiMeshComponent(Component):
             "long_term_mesh_folder": str(self.comm.project.remote_mesh_dir),
             "min_period": self.comm.project.min_period,
             "elems_per_quarter": self.comm.project.elem_per_quarter,
+            "interpolation_weights": remote_weights_path,
         }
+
         if not gradient:
             if self.comm.project.ellipticity:
                 information["ellipticity"] = 0.0033528106647474805

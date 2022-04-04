@@ -173,9 +173,11 @@ if __name__ == "__main__":
 
     info = toml.load(toml_filename)
     mesh_info = info["mesh_info"]
+
     if not info["gradient"]:
         source_info = info["source_info"]
         receiver_info = info["receiver_info"]
+        stored_array = info["stored_array_path"]
         simulation_info = info["simulation_info"]
         create_mesh(mesh_info=mesh_info, source_info=source_info)
         print("Mesh created or already existed")
@@ -186,6 +188,7 @@ if __name__ == "__main__":
         to_mesh="./to_mesh.h5",
         layers="nocore",
         parameters=["VPV", "VPH", "VSV", "VSH", "RHO"],
+        stored_array=mesh_info["interpolation_weights"],
     )
     print("Fields interpolated")
     shutil.move("./to_mesh.h5", "./output/mesh.h5")
