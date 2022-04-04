@@ -742,7 +742,7 @@ class ProjectComponent(Component):
                         jobs["model_interp"] = i_job_dict
                         jobs["gradient_interp"] = i_job_dict
                     # Only implemented in the AdamOpt case for now
-                    if self.hpc_processing:
+                    if self.hpc_processing and not validation:
                         jobs["hpc_processing"] = i_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
@@ -865,7 +865,7 @@ class ProjectComponent(Component):
                 jobs["model_interp"] = self.model_interp_job[event]
                 if not validation:
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
-            if self.hpc_processing:
+            if self.hpc_processing and not validation:
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
             if self.inversion_mode == "mini-batch" and not self.AdamOpt:
                 if not validation:
@@ -927,7 +927,7 @@ class ProjectComponent(Component):
         if remote_interp:
             self.model_interp_job = {}
             self.gradient_interp_job = {}
-        if self.hpc_processing and self.AdamOpt:
+        if self.hpc_processing and self.AdamOpt and not validation:
             self.hpc_processing_job = {}
 
 
@@ -961,7 +961,7 @@ class ProjectComponent(Component):
                     self.gradient_interp_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["gradient_interp"]
-            if self.hpc_processing and self.AdamOpt:
+            if self.hpc_processing and self.AdamOpt and not validation:
                 self.hpc_processing_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "hpc_processing"
                 ]

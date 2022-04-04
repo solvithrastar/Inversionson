@@ -485,7 +485,10 @@ class SalvusFlowComponent(Component):
             )
             for rec in adjoint_sources
         ]
-
+        if os.path.exists(meta_json_filename):
+            os.remove(meta_json_filename)
+        if os.path.exists(local_misfit_dict):
+            os.remove(local_misfit_dict)
         return adj_src
 
     def get_receivers(self, event: str):

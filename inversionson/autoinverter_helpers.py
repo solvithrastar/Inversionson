@@ -1102,7 +1102,9 @@ class ForwardHelper(object):
         while True:
             vint_job_listener.monitor_jobs()
             for event in vint_job_listener.events_retrieved_now:
-                self.__run_forward_simulation(event, verbose)
+                self.__run_forward_simulation(event,
+                                              simulation_created_remotely=True,
+                                              verbose=verbose)
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',
@@ -1216,6 +1218,13 @@ class ForwardHelper(object):
                 and not self.comm.project.hpc_processing
             ):
                 break
+            elif (
+                len(for_job_listener.events_retrieved_now)
+                + len(for_job_listener.events_already_retrieved)
+                == len(events)
+                and validation
+            ):
+                break
 
             if not for_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
@@ -1223,7 +1232,7 @@ class ForwardHelper(object):
 
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
-            if self.comm.project.hpc_processing and adjoint:
+            if self.comm.project.hpc_processing and adjoint and not validation:
                 hpc_proc_job_listener.monitor_jobs()
                 for event in hpc_proc_job_listener.not_submitted:
                     self._launch_hpc_processing_job(event)

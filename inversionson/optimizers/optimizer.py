@@ -264,7 +264,7 @@ class Optimize(object):
             from_it = self.iteration_number - self.comm.project.when_to_validate + 1
             self.comm.salvus_mesher.get_average_model(iteration_range=(from_it, to_it))
             self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
-            if self.comm.project.interapolation_mode == "remote":
+            if self.comm.project.interpolation_mode == "remote":
                 self.comm.lasif.move_mesh(
                     event=None,
                     iteration=None,
