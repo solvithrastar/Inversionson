@@ -376,8 +376,12 @@ class AdamOpt(Optimize):
         """
         print("Adam: Applying smooth update...")
 
-        max_raw_update = np.max(np.abs(self.get_h5_data(self.raw_update_path)))
+        raw_update = self.get_h5_data(self.raw_update_path)
+        max_raw_update = np.max(np.abs(raw_update))
         update = self.get_h5_data(self.smooth_update_path)
+
+        raw_update_norm = np.sqrt(np.sum(raw_update ** 2))
+        update_norm = np.sqrt(np.sum(update ** 2))
 
         if np.sum(np.isnan(update)) > 1:
             raise Exception(
@@ -387,13 +391,26 @@ class AdamOpt(Optimize):
 
         max_upd = np.max(np.abs(update))
         print(f"Max smooth model update: {max_upd}")
-        if max_upd > 3.0 * self.alpha:
+        if max_upd > 4.0 * self.alpha:
             raise Exception(
-                "Check smooth gradient, the update is larger" "than expected."
+                "Check smooth gradient, the update is larger than expected."
             )
 
-        print("Rescaling maximum smooth update to max raw update:", max_raw_update)
-        update_scaling_fac = max_raw_update / max_upd
+        update_scaling_fac_norm = raw_update_norm / update_norm
+        update_scaling_fac_alpha = self.alpha / max_upd
+        update_scaling_fac_peak = max_raw_update / max_upd
+
+        update_scaling_fac = min(update_scaling_fac_norm,
+                                 update_scaling_fac_alpha,
+                                 update_scaling_fac_peak)
+        print("update_scaling_fac_norm", update_scaling_fac_norm,
+              "update_scaling_fac_alpha", update_scaling_fac_alpha,
+              "update_scaling_fac_peak", update_scaling_fac_peak,
+              )
+
+        print(f"Recaling based on lowest rescaling fac: {update_scaling_fac},"
+              f"New maximum update is: {max_upd * update_scaling_fac}")
+
         update *= update_scaling_fac
 
         # Update parameters
