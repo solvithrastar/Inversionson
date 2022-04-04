@@ -189,7 +189,6 @@ if __name__ == "__main__":
     if not info["gradient"]:
         source_info = info["source_info"]
         receiver_info = info["receiver_info"]
-        stored_array = info["stored_array_path"]
         simulation_info = info["simulation_info"]
         create_mesh(mesh_info=mesh_info, source_info=source_info)
         print("Mesh created or already existed")
