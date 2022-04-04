@@ -1169,9 +1169,11 @@ class ForwardHelper(object):
             # submitted yet, although forwards are done.
             for event in for_job_listener.events_already_retrieved:
                 if self.comm.project.hpc_processing and not validation:
+                    self.__process_data(event)
                     self._launch_hpc_processing_job(event)
             for event in for_job_listener.events_retrieved_now:
-                if not self.comm.project.hpc_processing:
+                # Still retrieve synthetics for validation data. NO QA
+                if not self.comm.project.hpc_processing or validation:
                     self.__retrieve_seismograms(event=event, verbose=verbose)
 
                 # Here I need to replace this with remote hpc job,
@@ -1222,6 +1224,8 @@ class ForwardHelper(object):
             for_job_listener.events_retrieved_now = []
             if self.comm.project.hpc_processing and adjoint:
                 hpc_proc_job_listener.monitor_jobs()
+                for event in hpc_proc_job_listener.not_submitted:
+                    self._launch_hpc_processing_job(event)
                 for event in hpc_proc_job_listener.events_retrieved_now:
                     self.comm.project.change_attribute(
                         attribute=f'hpc_processing_job["{event}"]["retrieved"]',
