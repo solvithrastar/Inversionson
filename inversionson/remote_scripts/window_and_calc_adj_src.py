@@ -371,6 +371,9 @@ def run(info):
     # Write misfits # TODO add station weighting
     misfit_dict = {}
     for station in all_adj_srcs.keys():
+        all_sta_channels = list(all_adj_srcs[station].keys())
+        if not len(all_sta_channels) > 0:
+            continue
         misfit_dict[station] = {}
         for trace in all_adj_srcs[station].keys():
             misfit_dict[station][trace] = all_adj_srcs[station][trace]["misfit"]
