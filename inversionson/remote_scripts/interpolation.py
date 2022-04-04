@@ -155,10 +155,22 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
         boundaries.append(ocean_loading)
     if bound:
         w.physics.wave_equation.boundaries = boundaries
+
+    # Compute wavefield subsampling factor.
+    samples_per_min_period = (
+            simulation_info["minimum_period"] / simulation_info["time_step"]
+    )
+    min_samples_per_min_period = 30.0
+    reduction_factor = int(samples_per_min_period / min_samples_per_min_period)
+    if reduction_factor >= 2:
+        checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+    else:
+        checkpointing_flag = "auto-for-checkpointing"
+
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"
     w.output.volume_data.fields = ["adjoint-checkpoint"]
-    w.output.volume_data.sampling_interval_in_time_steps = "auto-for-checkpointing_20"
+    w.output.volume_data.sampling_interval_in_time_steps = checkpointing_flag
     w.validate()
 
     with open("output/simulation_dict.toml", "w") as fh:
