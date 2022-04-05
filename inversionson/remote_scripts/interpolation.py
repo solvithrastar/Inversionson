@@ -85,6 +85,7 @@ def interpolate_fields(from_mesh, to_mesh, layers, parameters, stored_array=None
         layers=layers,
         parameters=parameters,
         stored_array=stored_array,
+        make_spherical=True,
     )
 
 
