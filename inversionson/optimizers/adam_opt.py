@@ -490,7 +490,8 @@ class AdamOpt(Optimize):
         super().prepare_iteration(
             it_name=it_name, move_meshes=move_meshes, events=events
         )
-        self.finish_task()
+        if not validation:
+            self.finish_task()
 
     def compute_gradient(self, verbose):
         """
@@ -574,6 +575,13 @@ class AdamOpt(Optimize):
         self.finish_task()
 
     def do_validation_iteration(self, verbose=False):
+        """
+        This function computes the validation misfits.
+        """
+        if self.task_dict["validated"]:
+            print("Validation misfit already computed")
+            return
+
         it_name = f"validation_{self.iteration_name}"
         if not self.comm.lasif.has_iteration(it_name):
             self.prepare_iteration(validation=True)
@@ -586,6 +594,9 @@ class AdamOpt(Optimize):
             attribute="current_iteration", new_value=iteration
         )
         self.comm.project.get_iteration_attributes()
+
+        self.task_dict["validated"] = True
+        self._update_task_file()
 
     def perform_task(self, verbose=False):
         """
@@ -639,6 +650,7 @@ class AdamOpt(Optimize):
             "smooth_update_completed",
             "misfit_completed",
             "summing_completed",
+            "validated:"
         ]
         for path in paths:
             if path in self.task_dict.keys():
