@@ -921,7 +921,9 @@ class ForwardHelper(object):
             )
 
         self.__process_data(event)
-        if windows:
+
+        # Skip window selection in case of validation data
+        if windows and not validation:
             if verbose:
                 print(Fore.WHITE + "\n ===================== \n")
                 print(emoji.emojize(":foggy: | Select windows", use_aliases=True))
