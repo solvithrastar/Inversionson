@@ -888,7 +888,8 @@ class LasifComponent(Component):
                 f"calculated, delete file: {adjoint_path}"
             )
         elif validation:
-            misfit = self.lasif_comm.adj_sources.calculate_validation_misfits(
+            misfit = self.lasif_comm.adj_sources.\
+                calculate_validation_misfits_multiprocessing(
                 event, iteration
             )
         else:
