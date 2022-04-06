@@ -396,7 +396,7 @@ class MultiMeshComponent(Component):
             validation = True
         else:
             validation = False
-        if iteration == "validation_it0000_model":
+        if iteration in ["validation_it0000_model", "validation_model_00000"]:
             validation = False  # Here there can't be any mesh averaging
 
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
