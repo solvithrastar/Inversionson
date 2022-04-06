@@ -76,3 +76,5 @@ site_name = "daint"
 model_wall_time = 300
 gradient_wall_time = 900
 
+[HPC.processing]
+wall_time = 1000

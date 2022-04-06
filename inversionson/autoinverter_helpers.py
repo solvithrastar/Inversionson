@@ -684,7 +684,7 @@ class ForwardHelper(object):
         description = f"HPC processing of {event} for iteration {iteration}"
 
         # use interp wall time for now
-        wall_time = self.comm.project.model_interp_wall_time
+        wall_time = self.comm.project.hpc_processing_wall_time
         from salvus.flow.sites import job, remote_io_site
 
         commands = [
@@ -1104,9 +1104,9 @@ class ForwardHelper(object):
         while True:
             vint_job_listener.monitor_jobs()
             for event in vint_job_listener.events_retrieved_now:
-                self.__run_forward_simulation(event,
-                                              simulation_created_remotely=True,
-                                              verbose=verbose)
+                self.__run_forward_simulation(
+                    event, simulation_created_remotely=True, verbose=verbose
+                )
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',

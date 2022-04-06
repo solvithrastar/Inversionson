@@ -161,6 +161,11 @@ class ProjectComponent(Component):
                     "We need to know the wall time of your model "
                     " interpolations. Key: HPC.interpolation.gradient_wall_time"
                 )
+            if "wall_time" not in self.info["HPC"]["processing"].keys():
+                raise InversionsonError(
+                    "We need to know the wall time for the remote processing. "
+                    "Key: HPC.processing.wall_time"
+                )
         if "remote_mesh_directory" not in self.info["HPC"].keys():
             raise InversionsonError(
                 "We need to know the location where the meshes are stored"
@@ -453,7 +458,7 @@ class ProjectComponent(Component):
                     " to check it regularly."
                 )
 
-    def  __setup_components(self):
+    def __setup_components(self):
         """
         Setup the different components that need to be used in the inversion.
         These are wrappers around the main libraries used in the inversion.
@@ -558,6 +563,7 @@ class ProjectComponent(Component):
             self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
                 "gradient_wall_time"
             ]
+            self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
             self.interpolation_site = self.info["HPC"]["interpolation"]["site_name"]
 
         # self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
@@ -929,7 +935,6 @@ class ProjectComponent(Component):
             self.gradient_interp_job = {}
         if self.hpc_processing and self.AdamOpt and not validation:
             self.hpc_processing_job = {}
-
 
         if self.meshes == "mono-mesh":
             if "remote_simulation_mesh" not in it_dict.keys():
