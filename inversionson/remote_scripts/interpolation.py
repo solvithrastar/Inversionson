@@ -89,6 +89,22 @@ def interpolate_fields(from_mesh, to_mesh, layers, parameters, stored_array=None
     )
 
 
+def move_nodal_field_to_gradient(mesh_info, field):
+    """
+    This is for moving a (z_node_1D) field from forward mesh to gradient
+    """
+    from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
+
+    mesh_location = os.path.join(
+        mesh_info["mesh_folder"], mesh_info["event_name"], "mesh.h5"
+    )
+    m_for = um.from_h5(mesh_location)
+    m_grad = um.from_h5("from_mesh.h5")
+    m_grad.attach_field(field, m_for.element_nodal_fields[field])
+    m_grad.write_h5("from_mesh.h5")
+    print(f"Moved {field} to gradient")
+
+
 def create_simulation_object(mesh_info, source_info, receiver_info, simulation_info):
     """
     Create the simulation object remotely and write it into a dictionary toml file.
@@ -159,7 +175,7 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
 
     # Compute wavefield subsampling factor.
     samples_per_min_period = (
-            simulation_info["minimum_period"] / simulation_info["time_step"]
+        simulation_info["minimum_period"] / simulation_info["time_step"]
     )
     min_samples_per_min_period = 30.0
     reduction_factor = int(samples_per_min_period / min_samples_per_min_period)
@@ -195,6 +211,7 @@ if __name__ == "__main__":
         print("Mesh created or already existed")
     else:
         get_standard_gradient(mesh_info=mesh_info)
+        move_nodal_field_to_gradient(mesh_info=mesh_info, field="z_node_1D")
 
     if not os.path.exists(mesh_info["interpolation_weights"]):
         os.makedirs(mesh_info["interpolation_weights"])
