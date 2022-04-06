@@ -134,8 +134,11 @@ class LasifComponent(Component):
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        if "validation" in iteration and "it0000" not in iteration:
+        if "validation" in iteration and "it0000" not in iteration\
+                and "00000" not in iteration:
             validation = True
+        if iteration in ["validation_it0000_model", "validation_model_00000"]:
+            iteration = iteration[11:]  # Just use the same as the initial model
         if gradient:
             if interpolate_to:
                 mesh = (
