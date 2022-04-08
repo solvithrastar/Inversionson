@@ -69,33 +69,33 @@ class AutoInverter(object):
 
         if self.comm.project.ocean_loading["use"]:
             if hpc_cluster.remote_exists(
-                self.comm.project.ocean_loading["remote_file"]
+                self.comm.project.ocean_loading["remote_path"]
             ):
                 print("Remote Bathymetry file is already uploaded")
             else:
                 if not hpc_cluster.remote_exists(
-                    Path(self.comm.project.ocean_loading["remote_file"]).parent
+                    Path(self.comm.project.ocean_loading["remote_path"]).parent
                 ):
                     hpc_cluster.remote_mkdir(
-                        Path(self.comm.project.ocean_loading["remote_file"]).parent
+                        Path(self.comm.project.ocean_loading["remote_path"]).parent
                     )
                 hpc_cluster.remote_put(
                     self.comm.project.ocean_loading["file"],
-                    self.comm.project.ocean_loading["remote_file"],
+                    self.comm.project.ocean_loading["remote_path"],
                 )
         if self.comm.project.topography["use"]:
-            if hpc_cluster.remote_exists(self.comm.project.topography["remote_file"]):
+            if hpc_cluster.remote_exists(self.comm.project.topography["remote_path"]):
                 print("Remote Topography file is already uploaded")
             else:
                 if not hpc_cluster.remote_exists(
-                    Path(self.comm.project.topography["remote_file"]).parent
+                    Path(self.comm.project.topography["remote_path"]).parent
                 ):
                     hpc_cluster.remote_mkdir(
-                        Path(self.comm.project.topography["remote_file"]).parent
+                        Path(self.comm.project.topography["remote_path"]).parent
                     )
                 hpc_cluster.remote_put(
                     self.comm.project.topography["file"],
-                    self.comm.project.topography["remote_file"],
+                    self.comm.project.topography["remote_path"],
                 )
         remote_interp_path = self.comm.multi_mesh.find_interpolation_script()
         hpc_cluster.remote_put(INTERPOLATION_SCRIPT_PATH, remote_interp_path)
