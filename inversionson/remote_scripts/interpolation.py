@@ -39,14 +39,14 @@ def create_mesh(mesh_info, source_info):
             sm.spherical.ellipticity = float(mesh_info["ellipticity"])
         if "ocean_loading" in mesh_info.keys():
             sm.ocean.bathymetry_file = pathlib.Path(
-                mesh_info["ocean_loading"]["remote_file"]
+                mesh_info["ocean_loading"]["remote_path"]
             )
             sm.ocean.bathymetry_varname = mesh_info["ocean_loading"]["variable"]
             sm.ocean.ocean_layer_style = "loading"
             sm.ocean.ocean_layer_density = 1025.0
         if "topography" in mesh_info.keys():
             sm.topography.topography_file = pathlib.Path(
-                mesh_info["topography"]["use"]["remote_file"]
+                mesh_info["topography"]["use"]["remote_path"]
             )
             sm.topography.topography_varname = mesh_info["topography"]["use"][
                 "variable"
