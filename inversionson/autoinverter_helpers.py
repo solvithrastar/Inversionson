@@ -572,6 +572,11 @@ class ForwardHelper(object):
         :param event: Name of event
         :type event: str
         """
+        # Skip this in the event of remote weight set calculations
+        # as part of the HPC processing job.
+        if self.comm.project.hpc_processing:
+            return
+
         if verbose:
             print(Fore.RED + "\n =========================== \n")
             print(
