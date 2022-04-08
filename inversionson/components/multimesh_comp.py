@@ -307,7 +307,8 @@ class MultiMeshComponent(Component):
             if isinstance(source_info, list):
                 source_info = source_info[0]
             source_info["side_set"] = (
-                "r1_ol" if self.comm.project.ocean_loading["use"] else "r1"
+                "r1_ol" if self.comm.project.ocean_loading["use"] and not
+                self.comm.project.meshes == "multi-mesh" else "r1"
             )
             source_info["stf"] = str(
                 self.comm.project.remote_inversionson_dir
