@@ -18,7 +18,7 @@ from salvus.flow.api import get_site
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
-SLEEP_TIME = 10
+SLEEP_TIME = 20
 max_reposts = 3
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
