@@ -542,10 +542,9 @@ class ProjectComponent(Component):
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
         self.optimizer = self.info["optimizer"].lower()
-        if self.meshes == "multi-mesh":
-            self.elem_per_quarter = self.info["Meshing"][
-                "elements_per_azimuthal_quarter"
-            ]
+        self.elem_per_quarter = self.info["Meshing"][
+            "elements_per_azimuthal_quarter"
+        ]
         self.topography = self.info["Meshing"]["topography"]
         self.ellipticity = self.info["Meshing"]["ellipticity"]
         self.ocean_loading = self.info["Meshing"]["ocean_loading"]
