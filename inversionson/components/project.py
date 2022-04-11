@@ -546,8 +546,8 @@ class ProjectComponent(Component):
             self.elem_per_quarter = self.info["Meshing"][
                 "elements_per_azimuthal_quarter"
             ]
-            self.topography = self.info["Meshing"]["topography"]
-            self.ellipticity = self.info["Meshing"]["ellipticity"]
+        self.topography = self.info["Meshing"]["topography"]
+        self.ellipticity = self.info["Meshing"]["ellipticity"]
         self.ocean_loading = self.info["Meshing"]["ocean_loading"]
         self.interpolation_mode = self.info["interpolation_mode"]
         self.cut_source_radius = self.info["cut_source_region_from_gradient_in_km"]
