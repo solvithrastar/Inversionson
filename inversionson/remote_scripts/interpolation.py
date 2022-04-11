@@ -142,7 +142,8 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
     )
 
     mesh = pathlib.Path().resolve() / "output" / "mesh.h5"
-    w = sc.simulation.Waveform(mesh=mesh, sources=src, receivers=receivers)
+    w = sc.simulation.Waveform(mesh=mesh, sources=src)
+    w.add_receivers(receivers, max_iterations=100000)
 
     w.physics.wave_equation.end_time_in_seconds = simulation_info["end_time"]
     w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
