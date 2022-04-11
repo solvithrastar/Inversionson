@@ -749,7 +749,7 @@ class ProjectComponent(Component):
                         jobs["gradient_interp"] = i_job_dict
                     # Only implemented in the AdamOpt case for now
                     if self.hpc_processing and not validation:
-                        jobs["hpc_processing"] = i_job_dict
+                        jobs["hpc_processing"] = f_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
