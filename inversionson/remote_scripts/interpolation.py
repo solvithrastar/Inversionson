@@ -222,7 +222,7 @@ if __name__ == "__main__":
     )
     print("Fields interpolated")
     shutil.move("./to_mesh.h5", "./output/mesh.h5")
-    if not info["gradient"]:
+    if not info["gradient"] and info["create_simulation_dict"]:
         move_mesh(
             mesh_folder=mesh_info["mesh_folder"], event_name=mesh_info["event_name"]
         )

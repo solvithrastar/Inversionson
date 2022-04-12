@@ -632,19 +632,24 @@ class SalvusFlowComponent(Component):
 
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
         interp_job = self.get_job(event, sim_type="model_interp")
+
+        # Always write events to the same folder
         destination = (
             self.comm.lasif.lasif_comm.project.paths["salvus_files"]
-            / f"ITERATION_{self.comm.project.current_iteration}"
+            / f"SIMULATIONS_DICTS"
             / event
             / "simulation_dict.toml"
         )
         if not os.path.exists(destination.parent):
             os.makedirs(destination.parent)
-        remote_dict = interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
-        hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
+
+        if not os.path.exists(destination):
+            remote_dict = interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
+            hpc_cluster.remote_get(remotepath=remote_dict,
+                                   localpath=destination)
 
         sim_dict = toml.load(destination)
-        remote_mesh = sim_dict["domain"]["mesh"]["filename"]
+        remote_mesh = interp_job.stdout_path.parent / "output" / "mesh.h5"
         local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
         for key in ["mesh", "model", "geometry"]:
             sim_dict["domain"][key]["filename"] = local_dummy_mesh

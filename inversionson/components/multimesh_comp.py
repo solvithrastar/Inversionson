@@ -276,14 +276,16 @@ class MultiMeshComponent(Component):
         )
         if not os.path.exists(toml_filename.parent):
             os.makedirs(toml_filename.parent)
-        # if os.path.exists(toml_filename):
-        #     return toml_filename
         tag = "GRADIENTS" if gradient else "MODELS"
 
         remote_weights_path = os.path.join(
             self.comm.project.remote_inversionson_dir,
             "INTERPOLATION_WEIGHTS", tag, event)
-        information = {}
+
+        if os.path.exists(toml_filename):  # if exists, we can update the important parameters. and skip the rest.
+            information = toml.load(toml_filename)
+        else:
+            information = {}
         information["gradient"] = gradient
         information["mesh_info"] = {
             "event_name": event,
@@ -293,6 +295,19 @@ class MultiMeshComponent(Component):
             "elems_per_quarter": self.comm.project.elem_per_quarter,
             "interpolation_weights": remote_weights_path,
         }
+
+        # If we have a dict already, we can just update it with the proper
+        # remote mesh files and also we don't need to create the simulation
+        # dict again in the interpolation job.
+        local_simulation_dict = (
+                self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                / f"SIMULATIONS_DICTS"
+                / event
+                / "simulation_dict.toml"
+        )
+        # Only create simulation dict when we don't have it yet.
+        information["create_simulation_dict"] = False \
+            if os.path.exists(local_simulation_dict) else True
 
         if not gradient:
             if self.comm.project.ellipticity:
@@ -317,8 +332,10 @@ class MultiMeshComponent(Component):
                 / "stf.h5"
             )
             information["source_info"] = source_info
-            receivers = self.comm.lasif.get_receivers(event_name=event)
-            information["receiver_info"] = receivers
+
+            if not os.path.exists(toml_filename): # this is a slow step, so let's skip it if we can
+                receivers = self.comm.lasif.get_receivers(event_name=event)
+                information["receiver_info"] = receivers
             if self.comm.project.absorbing_boundaries:
                 if (
                     "inner_boundary"
