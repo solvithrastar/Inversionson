@@ -575,6 +575,7 @@ class ProjectComponent(Component):
         self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
         self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
+        self.smoothing_tensor_order = self.info["Smoothing"]["tensor_order"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
         self.remote_inversionson_dir = pathlib.Path(
             self.info["HPC"]["inversionson_fast_dir"]

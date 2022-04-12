@@ -313,7 +313,7 @@ class SalvusSmoothComponent(Component):
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
-            tensor_order = 2  # Hard coded now but should be fixed
+            tensor_order = self.comm.project.smoothing_tensor_order
 
             sim.domain.polynomial_order = tensor_order
             sim.physics.diffusion_equation.time_step_in_seconds = (
