@@ -655,7 +655,7 @@ class SalvusFlowComponent(Component):
             sim_dict["domain"][key]["filename"] = local_dummy_mesh
 
         w = simulation.Waveform().from_dict(sim_dict)
-        w.set_mesh("REMOTE:" + remote_mesh)
+        w.set_mesh("REMOTE:" + str(remote_mesh))
 
         return w
 
