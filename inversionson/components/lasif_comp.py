@@ -1045,20 +1045,34 @@ class LasifComponent(Component):
         Returns True if an event was processed, otherwise False
         """
 
+        events_in_iteration = self.comm.project.events_in_iteration
         events = self.comm.lasif.list_events()
-
+        msg = f"Seems like there is nothing to do now. " \
+              f"I might as well process some random event."
         if not self.everything_already_processed:
             self.everything_already_processed = True
-            for event in events:
+            # First give the most urgent events a try.
+            for event in events_in_iteration:
                 if self._already_processed(event):
                     continue
                 else:
-                    print(f"Seems like there is nothing to do now. "
-                          f"I might as well process some random event")
+                    print(msg)
                     print(f"Processing {event}...")
                     self.everything_already_processed = False
                     lapi.process_data(self.lasif_comm, events=[event])
                     return True
+            for event in events:
+                if self._already_processed(event):
+                    continue
+                else:
+                    print(msg)
+                    print(f"Processing {event}...")
+                    self.everything_already_processed = False
+                    lapi.process_data(self.lasif_comm, events=[event])
+                    return True
+            # If nothing is processed, we return false, so the sleep_or_process
+            # function knows to sleep. and self.everything_already_processed
+            # is True.
         return False
 
     def select_windows(
