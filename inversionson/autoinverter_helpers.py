@@ -537,18 +537,18 @@ class ForwardHelper(object):
         """
         # Check status of simulation
         submitted, retrieved = self.__submitted_retrieved(event)
-        iteration = self.comm.project.current_iteration
         if submitted:
             return
         if verbose:
             print(Fore.YELLOW + "\n ============================ \n")
             print(emoji.emojize(":rocket: | Run forward simulation", use_aliases=True))
             print(f"Event: {event}")
-        receivers = self.comm.salvus_flow.get_receivers(event)
-        source = self.comm.salvus_flow.get_source_object(event)
+
         if simulation_created_remotely:
             w = self.comm.salvus_flow.construct_simulation_from_dict(event)
         else:
+            receivers = self.comm.salvus_flow.get_receivers(event)
+            source = self.comm.salvus_flow.get_source_object(event)
             w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
 
             if (
@@ -556,15 +556,6 @@ class ForwardHelper(object):
                 and self.comm.project.meshes == "mono-mesh"
             ):
                 w.set_mesh(self.comm.project.remote_mesh)
-        # if self.comm.project.meshes == "mono-mesh":
-        #     w.set_mesh("REMOTE:" +
-        #         str(self.comm.lasif.find_remote_mesh(
-        #             event=None,
-        #             interpolate_to=False,
-        #             iteration=iteration,
-        #             validation="validation" in iteration,
-        #         ))
-        #     )
 
         self.comm.salvus_flow.submit_job(
             event=event,
