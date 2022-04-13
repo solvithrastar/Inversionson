@@ -32,7 +32,6 @@ class ProjectComponent(Component):
         """
         self.info = information_dict
         self.AdamOpt = True
-        self.hpc_processing = True
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
         self.simulation_dict = self._read_config_file()
@@ -562,7 +561,6 @@ class ProjectComponent(Component):
             self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
                 "gradient_wall_time"
             ]
-            self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
             self.interpolation_site = self.info["HPC"]["interpolation"]["site_name"]
 
         # self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
@@ -580,6 +578,10 @@ class ProjectComponent(Component):
         self.remote_inversionson_dir = pathlib.Path(
             self.info["HPC"]["inversionson_fast_dir"]
         )
+        self.hpc_processing = self.info["HPC"]["processing"]["wall_time"]
+        self.hpc_processing_wall_time = self.info["HPC"]["processing"][
+            "wall_time"]
+        self.remote_conda_env = ["remote_conda_environment"]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "diff_models"
         self.fast_mesh_dir = self.remote_inversionson_dir / "meshes"
 

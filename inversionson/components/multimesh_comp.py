@@ -448,26 +448,24 @@ class MultiMeshComponent(Component):
         #         )
         #     )
         #     move_fields_script = self.get_remote_field_moving_script_path()
-        commands = [
-            # The copying should probably be handled within the interpolate.py function to make it smoother.
-            # It can look at both of the mesh folders.
-            remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {remote_toml} ./interp_info.toml",
-                execute_with_mpi=False,
-            ),
-            remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
-                execute_with_mpi=False,
-            ),
-            # remote_io_site.site_utils.RemoteCommand(
-            #     command=f"cp {mesh_to_interpolate_to} ./to_mesh.h5",
-            #     execute_with_mpi=False,
-            # ),
-            remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {interpolation_script} ./interpolate.py",
-                execute_with_mpi=False,
-            ),
-        ]
+        commands = [remote_io_site.site_utils.RemoteCommand(
+            command=f"cp {remote_toml} ./interp_info.toml",
+            execute_with_mpi=False,
+        ), remote_io_site.site_utils.RemoteCommand(
+            command=f"conda activate {self.comm.project.remote_conda_env}",
+            execute_with_mpi=False,
+        ), remote_io_site.site_utils.RemoteCommand(
+            command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
+            execute_with_mpi=False,
+        ), remote_io_site.site_utils.RemoteCommand(
+            command=f"cp {interpolation_script} ./interpolate.py",
+            execute_with_mpi=False,
+        ), remote_io_site.site_utils.RemoteCommand(
+            command="mkdir output", execute_with_mpi=False
+        ), remote_io_site.site_utils.RemoteCommand(
+            command="python interpolate.py ./interp_info.toml",
+            execute_with_mpi=False,
+        )]
         # if weights_exists:
         #     commands.append(
         #         remote_io_site.site_utils.RemoteCommand(
@@ -494,22 +492,11 @@ class MultiMeshComponent(Component):
         #             execute_with_mpi=False,
         #         )
         #     )
-        commands.append(
-            remote_io_site.site_utils.RemoteCommand(
-                command="mkdir output", execute_with_mpi=False
-            )
-        )
         # commands.append(
         #     remote_io_site.site_utils.RemoteCommand(
         #         command="which python", execute_with_mpi=False
         #     )
         # )
-        commands.append(
-            remote_io_site.site_utils.RemoteCommand(
-                command="python interpolate.py ./interp_info.toml",
-                execute_with_mpi=False,
-            )
-        )
         # commands.append(
         #     remote_io_site.site_utils.RemoteCommand(
         #         command="mv ./to_mesh.h5 ./output/mesh.h5",

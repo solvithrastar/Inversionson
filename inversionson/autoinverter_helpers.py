@@ -694,6 +694,9 @@ class ForwardHelper(object):
 
         commands = [
             remote_io_site.site_utils.RemoteCommand(
+                command=f"conda activate {self.comm.project.remote_conda_env}", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(
                 command="mkdir output", execute_with_mpi=False
             ),
             remote_io_site.site_utils.RemoteCommand(
