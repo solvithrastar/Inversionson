@@ -20,6 +20,7 @@ from inversionson.utils import sum_two_parameters_h5
 
 SLEEP_TIME = 20
 max_reposts = 3
+RANDOM_PROC = True
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -48,6 +49,17 @@ PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
 )
 
 init()
+
+
+def sleep_pr_process(comm):
+    """
+    This functions tries to process a random unprocessed event
+    or sleeps if all are processed.
+    """
+    if RANDOM_PROC \
+            and not comm.lasif.process_random_unprocessed_event():
+        print(f"Waiting {SLEEP_TIME} seconds before trying again")
+        time.sleep(SLEEP_TIME)
 
 
 class RemoteJobListener(object):
@@ -1000,8 +1012,7 @@ class ForwardHelper(object):
                 break
 
             if not int_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                sleep_pr_process(self.comm)
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
@@ -1061,8 +1072,7 @@ class ForwardHelper(object):
                 )
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
-            print(f"Waiting {SLEEP_TIME} seconds before trying again")
-            time.sleep(SLEEP_TIME)
+            sleep_pr_process(self.comm)
 
     def __dispatch_forwards_normal(self, verbose):
         """
@@ -1139,8 +1149,7 @@ class ForwardHelper(object):
                 break
 
             if not vint_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                sleep_pr_process(self.comm)
             vint_job_listener.to_repost = []
             vint_job_listener.events_retrieved_now = []
 
@@ -1267,8 +1276,7 @@ class ForwardHelper(object):
 
             if not for_job_listener.events_retrieved_now and not \
                     hpc_proc_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                sleep_pr_process(self.comm)
 
 class AdjointHelper(object):
     """
@@ -1421,8 +1429,7 @@ class AdjointHelper(object):
 
             if not adj_job_listener.events_retrieved_now \
                     and not interp_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                sleep_pr_process(self.comm)
 
             adj_job_listener.to_repost = []
             adj_job_listener.events_retrieved_now = []
@@ -1754,8 +1761,7 @@ class SmoothingHelper(object):
                 break
 
             if not int_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                sleep_pr_process(self.comm)
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
@@ -1956,8 +1962,7 @@ class SmoothingHelper(object):
                 break
 
             if not smooth_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
+                sleep_pr_process(self.comm)
 
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []

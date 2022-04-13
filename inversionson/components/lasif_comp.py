@@ -24,6 +24,8 @@ class LasifComponent(Component):
         super(LasifComponent, self).__init__(communicator, component_name)
         self.lasif_root = self.comm.project.lasif_root
         self.lasif_comm = self._find_project_comm()
+        # Store if some event might not processing
+        self.everything_already_processed = False
 
     def _find_project_comm(self):
         """
@@ -1034,6 +1036,28 @@ class LasifComponent(Component):
             return
 
         lapi.process_data(self.lasif_comm, events=[event])
+
+    def process_random_unprocessed_event(self):
+        """
+        Instead of waiting to queue for daint, we can also process some
+        random unprocessed event. That is what this function will do.
+
+        Returns True if an event was procssed.
+        """
+
+        events = self.comm.lasif.list_events()
+
+        if not self.everything_already_processed:
+            self.everything_already_processed = True
+            for event in events:
+                if self._already_processed(event):
+                    continue
+                else:
+                    print(f"Nothing to do..., will process {event} now...")
+                    self.everything_already_processed = False
+                    lapi.process_data(self.lasif_comm, events=[event])
+                    return True
+        return False
 
     def select_windows(
         self,
