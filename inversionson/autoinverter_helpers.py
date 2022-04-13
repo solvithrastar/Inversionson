@@ -657,8 +657,10 @@ class ForwardHelper(object):
             hpc_cluster.remote_mkdir(remote_processed_dir)
 
         remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
+        tmp_remote_path = remote_proc_path + "_tmp"
         if not hpc_cluster.remote_exists(remote_proc_path):
-            hpc_cluster.remote_put(local_proc_file, remote_proc_path)
+            hpc_cluster.remote_put(local_proc_file, tmp_remote_path)
+            hpc_cluster.run_ssh_command(f"mv {tmp_remote_path} {remote_proc_path}")
 
         remote_adj_dir = os.path.join(
             self.comm.project.remote_inversionson_dir, "ADJOINT_SOURCES"
