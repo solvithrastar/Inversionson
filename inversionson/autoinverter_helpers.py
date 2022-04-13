@@ -1351,11 +1351,10 @@ class AdjointHelper(object):
         adj_job_listener = RemoteJobListener(
             comm=self.comm, job_type="adjoint", events=events
         )
-        if interpolate:
-            interp_job_listener = RemoteJobListener(
-                comm=self.comm, job_type="gradient_interp", events=events
-            )
-            mode = self.comm.project.interpolation_mode
+
+        interp_job_listener = RemoteJobListener(
+            comm=self.comm, job_type="gradient_interp", events=events
+        )
 
         while True:
             adj_job_listener.monitor_jobs()
@@ -1367,7 +1366,7 @@ class AdjointHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 if interpolate:
-                    if mode == "remote":
+                    if self.comm.project.interpolation_mode == "remote":
                         self.__dispatch_raw_gradient_interpolation(
                             event, verbose=verbose
                         )
@@ -1420,7 +1419,8 @@ class AdjointHelper(object):
             ) == len(events):
                 break
 
-            if not adj_job_listener.events_retrieved_now:
+            if not adj_job_listener.events_retrieved_now \
+                    and not interp_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
 
@@ -1481,12 +1481,6 @@ class AdjointHelper(object):
             print(f"Event: {event}")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
-
-        if (
-            self.comm.project.remote_mesh is not None
-            and self.comm.project.meshes == "mono-mesh"
-        ):
-            w_adjoint.set_mesh(self.comm.project.remote_mesh)
 
         self.comm.salvus_flow.submit_job(
             event=event,
