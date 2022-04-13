@@ -1042,7 +1042,7 @@ class LasifComponent(Component):
         Instead of waiting to queue for daint, we can also process some
         random unprocessed event. That is what this function will do.
 
-        Returns True if an event was procssed.
+        Returns True if an event was processed, otherwise False
         """
 
         events = self.comm.lasif.list_events()
@@ -1053,7 +1053,9 @@ class LasifComponent(Component):
                 if self._already_processed(event):
                     continue
                 else:
-                    print(f"Nothing to do..., will process {event} now...")
+                    print(f"Seems like there is nothing to do now. "
+                          f"I might as well process some random event")
+                    print(f"Processing {event}...")
                     self.everything_already_processed = False
                     lapi.process_data(self.lasif_comm, events=[event])
                     return True
