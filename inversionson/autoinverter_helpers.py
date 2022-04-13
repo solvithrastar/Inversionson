@@ -723,7 +723,7 @@ class ForwardHelper(object):
             attribute=f'hpc_processing_job["{event}"]["submitted"]',
             new_value=True,
         )
-        print(f"Processing job for event {event} submitted")
+        print(f"HPC Processing job for event {event} submitted")
         self.comm.project.update_iteration_toml()
 
     def __select_windows(self, event: str):
@@ -1236,10 +1236,6 @@ class ForwardHelper(object):
             ):
                 break
 
-            if not for_job_listener.events_retrieved_now:
-                print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                time.sleep(SLEEP_TIME)
-
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
             if self.comm.project.hpc_processing and adjoint and not validation:
@@ -1266,13 +1262,12 @@ class ForwardHelper(object):
                 ) == len(events):
                     break
 
-                if not hpc_proc_job_listener.events_retrieved_now:
-                    print(f"Waiting {SLEEP_TIME} seconds before trying again")
-                    time.sleep(SLEEP_TIME)
-
                 hpc_proc_job_listener.to_repost = []
                 hpc_proc_job_listener.events_retrieved_now = []
 
+            if not for_job_listener.events_retrieved_now:
+                print(f"Waiting {SLEEP_TIME} seconds before trying again")
+                time.sleep(SLEEP_TIME)
 
 class AdjointHelper(object):
     """
