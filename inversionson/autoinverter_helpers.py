@@ -1265,7 +1265,8 @@ class ForwardHelper(object):
                 hpc_proc_job_listener.to_repost = []
                 hpc_proc_job_listener.events_retrieved_now = []
 
-            if not for_job_listener.events_retrieved_now:
+            if not for_job_listener.events_retrieved_now and not \
+                    hpc_proc_job_listener.events_retrieved_now:
                 print(f"Waiting {SLEEP_TIME} seconds before trying again")
                 time.sleep(SLEEP_TIME)
 
