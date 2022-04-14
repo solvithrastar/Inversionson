@@ -25,7 +25,8 @@ class LasifComponent(Component):
         self.lasif_root = self.comm.project.lasif_root
         self.lasif_comm = self._find_project_comm()
         # Store if some event might not processing
-        self.everything_already_processed = False
+        self.everything_processed = False
+        self.validation_data_processed = False
 
     def _find_project_comm(self):
         """
@@ -1037,28 +1038,48 @@ class LasifComponent(Component):
 
         lapi.process_data(self.lasif_comm, events=[event])
 
-    def process_random_unprocessed_event(self):
+    def process_random_unprocessed_event(self) -> bool:
         """
-        Instead of waiting to queue for daint, we can also process some
-        random unprocessed event. That is what this function will do.
+        Instead of sleeping when we queue for the HPC, we can also process a
+        random unprocessed event. That is what this function does.
 
-        Returns True if an event was processed, otherwise False
+        it first tries to process a high priority event, from
+        the validation dataset or the current iteration, otherwise
+        it tries to process any other event that may be used in the future.
+
+        Leaves the function as soon as one event was processed or
+        if there was nothing to process.
+
+        :return: Returns True if an event was processed, otherwise False
+        :rtype: bool
         """
 
         events_in_iteration = self.comm.project.events_in_iteration
         events = self.comm.lasif.list_events()
+        validation_events = self.comm.project.validation_dataset
         msg = f"Seems like there is nothing to do now. " \
               f"I might as well process some random event."
-        if not self.everything_already_processed:
-            self.everything_already_processed = True
+        if not self.everything_processed:
+            self.everything_processed = True
             # First give the most urgent events a try.
+            if not self.validation_data_processed:
+                self.validation_data_processed = True
+                for event in validation_events:
+                    if self._already_processed(event):
+                        continue
+                    else:
+                        print(msg)
+                        print(f"Processing validation {event}...")
+                        self.validation_data_processed = False
+                        lapi.process_data(self.lasif_comm, events=[event])
+                        return True
             for event in events_in_iteration:
                 if self._already_processed(event):
                     continue
                 else:
                     print(msg)
-                    print(f"Processing {event}...")
-                    self.everything_already_processed = False
+                    print(f"Processing current iteration {event}...")
+                    self.everything_processed = False
                     lapi.process_data(self.lasif_comm, events=[event])
                     return True
             for event in events:
@@ -1066,13 +1087,10 @@ class LasifComponent(Component):
                     continue
                 else:
                     print(msg)
-                    print(f"Processing {event}...")
-                    self.everything_already_processed = False
+                    print(f"Processing random other {event}...")
+                    self.everything_processed = False
                     lapi.process_data(self.lasif_comm, events=[event])
                     return True
-            # If nothing is processed, we return false, so the sleep_or_process
-            # function knows to sleep. and self.everything_already_processed
-            # is True.
         return False
 
     def select_windows(
