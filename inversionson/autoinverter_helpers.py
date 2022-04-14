@@ -1238,8 +1238,6 @@ class ForwardHelper(object):
             ):
                 break
 
-            for_job_listener.to_repost = []
-            for_job_listener.events_retrieved_now = []
             if self.comm.project.hpc_processing and adjoint and not validation:
                 hpc_proc_job_listener.monitor_jobs()
                 for event in hpc_proc_job_listener.not_submitted:
@@ -1270,6 +1268,13 @@ class ForwardHelper(object):
             if not for_job_listener.events_retrieved_now and not \
                     hpc_proc_job_listener.events_retrieved_now:
                 sleep_pr_process(self.comm)
+
+            for_job_listener.to_repost = []
+            for_job_listener.events_retrieved_now = []
+
+            hpc_proc_job_listener.to_repost = []
+            hpc_proc_job_listener.events_retrieved_now = []
+
 
 class AdjointHelper(object):
     """
