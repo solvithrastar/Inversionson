@@ -1240,8 +1240,6 @@ class ForwardHelper(object):
 
             if self.comm.project.hpc_processing and adjoint and not validation:
                 hpc_proc_job_listener.monitor_jobs()
-                for event in hpc_proc_job_listener.not_submitted:
-                    self._launch_hpc_processing_job(event)
                 for event in hpc_proc_job_listener.events_retrieved_now:
                     self.comm.project.change_attribute(
                         attribute=f'hpc_processing_job["{event}"]["retrieved"]',
