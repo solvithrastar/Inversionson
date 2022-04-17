@@ -307,11 +307,16 @@ class MultiMeshComponent(Component):
             hpc_cluster.remote_mkdir(remote_processed_dir)
 
         remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
+
+        asdf_input_filename = os.path.join(self.comm.project.remote_raw_data_dir,
+                                           f"{event}.h5")
+
         processing_info = {"minimum_period": self.comm.project.min_period,
                            "maximum_period": self.comm.project.max_period,
                            "npts": self.comm.project.simulation_dict["number_of_time_steps"],
                            "dt": self.comm.project.time_step,
                            "start_time_in_s": self.comm.project.start_time,
+                           "asdf_input_filename": asdf_input_filename
                            "asdf_output_filename": remote_proc_path
                            }
         information["processing_info"] = processing_info
