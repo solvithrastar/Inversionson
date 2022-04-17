@@ -308,15 +308,13 @@ class MultiMeshComponent(Component):
 
         remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
 
-        asdf_input_filename = os.path.join(self.comm.project.remote_raw_data_dir,
-                                           f"{event}.h5")
 
         processing_info = {"minimum_period": self.comm.project.min_period,
                            "maximum_period": self.comm.project.max_period,
                            "npts": self.comm.project.simulation_dict["number_of_time_steps"],
                            "dt": self.comm.project.time_step,
                            "start_time_in_s": self.comm.project.start_time,
-                           "asdf_input_filename": asdf_input_filename,
+                           "asdf_input_filename": "raw_event_data.h5",
                            "asdf_output_filename": remote_proc_path,
                            "preprocessing_tag": self.comm.lasif.lasif_comm.waveforms.preprocessing_tag,
                            }
@@ -480,6 +478,13 @@ class MultiMeshComponent(Component):
             command="python interpolate.py ./interp_info.toml",
             execute_with_mpi=False,
         )]
+
+        if self.comm.project.remote_data_processing:
+            raw_file = os.path.join(self.comm.project.remote_raw_data_dir, f"{event}.h5")
+            copy_data_command = [remote_io_site.site_utils.RemoteCommand(
+                command=f"cp f{raw_file} raw_event_data.h5",
+                execute_with_mpi=False)]
+            commands = copy_data_command + commands
 
         if self.comm.project.remote_conda_env:
             conda_command = [remote_io_site.site_utils.RemoteCommand(
