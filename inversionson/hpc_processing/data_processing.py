@@ -10,7 +10,6 @@ Project specific function processing observed data.
     (http://www.gnu.org/copyleft/gpl.html)
 """
 import numpy as np
-from lasif.exceptions import LASIFError
 from scipy import signal
 from pyasdf import ASDFDataSet
 import os
@@ -117,7 +116,7 @@ def preprocessing_function_asdf(processing_info):
                 f" asdf file: '{inf}'. Due to: '{e.__repr__()}'  "
                 f"Will be skipped."
             )
-            raise LASIFError(msg)
+            raise Exception(msg)
 
         # Rotate potential BHZ,BH1,BH2 data to BHZ,BHN,BHE
         if len(st) == 3:
@@ -141,7 +140,7 @@ def preprocessing_function_asdf(processing_info):
                             f" asdf file: '{inf}'. Due to: '{e.__repr__()}'  "
                             f"Will be skipped."
                         )
-                        raise LASIFError(msg)
+                        raise Exception(msg)
 
         # Bandpass filtering
         st.detrend("linear")
