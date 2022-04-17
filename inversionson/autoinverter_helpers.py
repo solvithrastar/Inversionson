@@ -699,15 +699,18 @@ class ForwardHelper(object):
 
         commands = [
             remote_io_site.site_utils.RemoteCommand(
-                command=f"conda activate {self.comm.project.remote_conda_env}", execute_with_mpi=False
-            ),
-            remote_io_site.site_utils.RemoteCommand(
                 command="mkdir output", execute_with_mpi=False
             ),
             remote_io_site.site_utils.RemoteCommand(
                 command=f"python {remote_script} {remote_toml}", execute_with_mpi=False
             ),
         ]
+        
+        if self.comm.project.remote_conda_env is not None:
+            conda_command = [remote_io_site.site_utils.RemoteCommand(
+                command=f"conda activate {self.comm.project.remote_conda_env}",
+                execute_with_mpi=False)]
+            commands = conda_command + commands
 
         job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),

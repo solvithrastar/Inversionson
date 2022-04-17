@@ -316,7 +316,7 @@ class MultiMeshComponent(Component):
                            "npts": self.comm.project.simulation_dict["number_of_time_steps"],
                            "dt": self.comm.project.time_step,
                            "start_time_in_s": self.comm.project.start_time,
-                           "asdf_input_filename": asdf_input_filename
+                           "asdf_input_filename": asdf_input_filename,
                            "asdf_output_filename": remote_proc_path
                            }
         information["processing_info"] = processing_info
@@ -463,11 +463,9 @@ class MultiMeshComponent(Component):
         remote_toml = self.move_toml_to_hpc(
             toml_filename=interpolation_toml, event=event
         )
+
         commands = [remote_io_site.site_utils.RemoteCommand(
             command=f"cp {remote_toml} ./interp_info.toml",
-            execute_with_mpi=False,
-        ), remote_io_site.site_utils.RemoteCommand(
-            command=f"conda activate {self.comm.project.remote_conda_env}",
             execute_with_mpi=False,
         ), remote_io_site.site_utils.RemoteCommand(
             command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
@@ -481,6 +479,13 @@ class MultiMeshComponent(Component):
             command="python interpolate.py ./interp_info.toml",
             execute_with_mpi=False,
         )]
+
+        if self.comm.project.remote_conda_env is not None:
+            conda_command = [remote_io_site.site_utils.RemoteCommand(
+                command=f"conda activate {self.comm.project.remote_conda_env}",
+                execute_with_mpi=False)]
+            commands = conda_command + commands
+
         return commands
 
     def find_interpolation_script(self) -> str:
