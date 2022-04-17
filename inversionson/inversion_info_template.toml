@@ -69,6 +69,14 @@ site_name = "daint"
 wall_time = 3600
 ranks = 48
 
+# It is possible to process the data on the HPC. In this case, you have to provide the path to the data folder
+# and ensure that the events that are available locally are also on the remote. Inversionson
+# expects the same structure as in lasif_project/DATA/EARTHQUAKES. One event per file.
+# Currently, this is only be supported for the multi-mesh workflow
+[HPC.remote_data_processing]
+use = false
+remote_raw_data_directory = "path_to_remote_data_directory"
+
 [HPC.diffusion_equation]
 wall_time = 1000
 ranks = 24

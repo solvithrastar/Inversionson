@@ -295,6 +295,34 @@ class MultiMeshComponent(Component):
             "elems_per_quarter": self.comm.project.elem_per_quarter,
             "interpolation_weights": remote_weights_path,
         }
+        information["data_processing"] = self.comm.project.remote_data_processing
+
+        proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_to_{int(self.comm.project.max_period)}s.h5"
+        remote_proc_file_name = f"{event}_{proc_filename}"
+        hpc_cluster = get_site(self.comm.project.site_name)
+        remote_processed_dir = os.path.join(
+            self.comm.project.remote_inversionson_dir, "PROCESSED_DATA")
+
+        if not hpc_cluster.remote_exists(remote_processed_dir):
+            hpc_cluster.remote_mkdir(remote_processed_dir)
+
+        remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
+        processing_info = {"minimum_period": self.comm.project.min_period,
+                           "maximum_period": self.comm.project.max_period,
+                           "npts": self.comm.project.simulation_info["number_of_time_steps"],
+                           "dt": self.comm.project.time_step,
+                           "start_time_in_s": self.comm.project.start_time,
+                           "asdf_output_filename": remote_proc_path
+                           }
+        information["processing_info"] = processing_info
+
+        remote_receiver_dir = os.path.join(
+            self.comm.project.remote_inversionson_dir, "RECEIVERS"
+        )
+        if not hpc_cluster.remote_exists(remote_receiver_dir):
+            hpc_cluster.remote_mkdir(remote_receiver_dir)
+        information["receiver_json_path"] = os.path.join(remote_receiver_dir,
+                                                         f"{event}_receivers.json")
 
         # If we have a dict already, we can just update it with the proper
         # remote mesh files and also we don't need to create the simulation
@@ -333,7 +361,7 @@ class MultiMeshComponent(Component):
             )
             information["source_info"] = source_info
 
-            if not os.path.exists(toml_filename): # this is a slow step, so let's skip it if we can
+            if not os.path.exists(toml_filename) and not self.comm.project.remote_data_processing: # this is a slow step, so let's skip it if we can
                 receivers = self.comm.lasif.get_receivers(event_name=event)
                 information["receiver_info"] = receivers
             if self.comm.project.absorbing_boundaries:
@@ -417,15 +445,6 @@ class MultiMeshComponent(Component):
         if iteration in ["validation_it0000_model", "validation_model_00000"]:
             validation = False  # Here there can't be any mesh averaging
 
-        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
-        interp_info_file = pathlib.Path(interp_folder) / "interp_info.h5"
-        weights_exists = hpc_cluster.remote_exists(interp_info_file)
-
-        mesh_to_interpolate_to = self.comm.lasif.find_remote_mesh(
-            event=event,
-            gradient=gradient,
-            interpolate_to=True,
-        )
         mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
             event=event,
             gradient=gradient,
@@ -439,15 +458,6 @@ class MultiMeshComponent(Component):
         remote_toml = self.move_toml_to_hpc(
             toml_filename=interpolation_toml, event=event
         )
-        # if gradient:
-        #     mesh_to_get_fields_from = str(
-        #         self.comm.lasif.find_remote_mesh(
-        #             event=event,
-        #             iteration=iteration,
-        #             already_interpolated=True,
-        #         )
-        #     )
-        #     move_fields_script = self.get_remote_field_moving_script_path()
         commands = [remote_io_site.site_utils.RemoteCommand(
             command=f"cp {remote_toml} ./interp_info.toml",
             execute_with_mpi=False,
@@ -466,50 +476,6 @@ class MultiMeshComponent(Component):
             command="python interpolate.py ./interp_info.toml",
             execute_with_mpi=False,
         )]
-        # if weights_exists:
-        #     commands.append(
-        #         remote_io_site.site_utils.RemoteCommand(
-        #             command=f"cp {interp_info_file} ./interp_info.h5",
-        #             execute_with_mpi=False,
-        #         )
-        #     )
-        # if gradient:
-        #     commands.append(
-        #         remote_io_site.site_utils.RemoteCommand(
-        #             command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 layer elemental",
-        #             execute_with_mpi=False,
-        #         )
-        #     )
-        #     commands.append(
-        #         remote_io_site.site_utils.RemoteCommand(
-        #             command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 fluid elemental",
-        #             execute_with_mpi=False,
-        #         )
-        #     )
-        #     commands.append(
-        #         remote_io_site.site_utils.RemoteCommand(
-        #             command=f"python {move_fields_script} {mesh_to_get_fields_from} ./from_mesh.h5 z_node_1D nodal",
-        #             execute_with_mpi=False,
-        #         )
-        #     )
-        # commands.append(
-        #     remote_io_site.site_utils.RemoteCommand(
-        #         command="which python", execute_with_mpi=False
-        #     )
-        # )
-        # commands.append(
-        #     remote_io_site.site_utils.RemoteCommand(
-        #         command="mv ./to_mesh.h5 ./output/mesh.h5",
-        #         execute_with_mpi=False,
-        #     ),
-        # )
-        # if not weights_exists:
-        #     commands.append(
-        #         remote_io_site.site_utils.RemoteCommand(
-        #             command=f"mv ./interp_info.h5 {interp_info_file}",
-        #             execute_with_mpi=False,
-        #         )
-        #     )
         return commands
 
     def find_interpolation_script(self) -> str:

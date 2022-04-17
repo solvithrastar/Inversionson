@@ -4,11 +4,54 @@ import toml
 import os
 import shutil
 import pathlib
+import pyasdf
 
 # Here we should handle all the looking at the different mesh folders.
 # If the mesh does not exist on scratch, we check on non-scratch.
 # The from_mesh also needs to be found on either one of the two.
 # This needs to be implemented on Monday/Saturday/Tuesday
+
+
+def process_data(processing_info):
+    """
+    Calls the processing function to process data that is stored on /project
+    """
+
+    from inversionson.hpc_processing.data_processing import preprocessing_function_asdf
+    preprocessing_function_asdf(processing_info)
+
+def build_or_get_receiver_info(info):
+    import json
+    receiver_json_path = info["receiver_json_path"]
+
+    if not os.path.exists("receiver_json_path"):
+        proc_file = processing_info["asdf_output_filename"]
+        with pyasdf.ASDFDataSet(proc_file, mode="r") as ds:
+            all_coords = ds.get_all_coordinates()
+
+            # build list of dicts
+            all_recs = []
+            for station in all_coords.keys():
+                rec = {}
+                net, sta = station.split(".")
+                lat = all_coords[station]["latitude"]
+                lon = all_coords[station]["longitude"]
+
+                rec["latitude"] = lat
+                rec["longitude"] = lon
+                rec["network-code"] = net
+                rec["station-code"] = sta
+                all_recs.append(rec)
+
+        with open(receiver_json_path, "w") as outfile:
+            json.dump(all_recs, outfile)
+        return all_recs
+    else:
+        # Opening JSON file
+        with open(receiver_json_path, 'r') as openfile:
+            # Reading from json file
+            all_recs = json.load(openfile)
+        return all_recs
 
 
 def create_mesh(mesh_info, source_info):
@@ -200,9 +243,20 @@ if __name__ == "__main__":
     info = toml.load(toml_filename)
     mesh_info = info["mesh_info"]
 
+    # Process data if it doesn't exist already
+    if info["data_processing"]:
+        processing_info = info["processing_info"]
+        if not os.path.exists(processing_info["asdf_output_filename"]):
+            process_data(processing_info)
+
     if not info["gradient"]:
         source_info = info["source_info"]
-        receiver_info = info["receiver_info"]
+
+        if info["data_processing"]:
+            receiver_info = build_or_get_receiver_info(info)
+        else:
+            receiver_info = info["receiver_info"]
+
         simulation_info = info["simulation_info"]
         create_mesh(mesh_info=mesh_info, source_info=source_info)
         print("Mesh created or already existed")

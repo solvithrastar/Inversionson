@@ -260,7 +260,9 @@ class AdamOpt(Optimize):
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
                 unused_events = list(set(all_events).difference(set(norm_dict.keys())))
-                max_norm = max(norm_dict.values())
+                list_of_vals = np.array(list(norm_dict.values()))
+                max_norm = np.max(list_of_vals)
+
                 # Assign high norm values to unused events to make them
                 # more likely to be chosen
                 for event in unused_events:
