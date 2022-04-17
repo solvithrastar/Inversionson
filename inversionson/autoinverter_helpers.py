@@ -705,8 +705,8 @@ class ForwardHelper(object):
                 command=f"python {remote_script} {remote_toml}", execute_with_mpi=False
             ),
         ]
-        
-        if self.comm.project.remote_conda_env is not None:
+
+        if self.comm.project.remote_conda_env:
             conda_command = [remote_io_site.site_utils.RemoteCommand(
                 command=f"conda activate {self.comm.project.remote_conda_env}",
                 execute_with_mpi=False)]

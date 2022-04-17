@@ -317,7 +317,8 @@ class MultiMeshComponent(Component):
                            "dt": self.comm.project.time_step,
                            "start_time_in_s": self.comm.project.start_time,
                            "asdf_input_filename": asdf_input_filename,
-                           "asdf_output_filename": remote_proc_path
+                           "asdf_output_filename": remote_proc_path,
+                           "preprocessing_tag": self.comm.lasif.lasif_comm.waveforms.preprocessing_tag,
                            }
         information["processing_info"] = processing_info
 
@@ -480,7 +481,7 @@ class MultiMeshComponent(Component):
             execute_with_mpi=False,
         )]
 
-        if self.comm.project.remote_conda_env is not None:
+        if self.comm.project.remote_conda_env:
             conda_command = [remote_io_site.site_utils.RemoteCommand(
                 command=f"conda activate {self.comm.project.remote_conda_env}",
                 execute_with_mpi=False)]
