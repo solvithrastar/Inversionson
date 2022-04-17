@@ -482,7 +482,7 @@ class MultiMeshComponent(Component):
         if self.comm.project.remote_data_processing:
             raw_file = os.path.join(self.comm.project.remote_raw_data_dir, f"{event}.h5")
             copy_data_command = [remote_io_site.site_utils.RemoteCommand(
-                command=f"cp f{raw_file} raw_event_data.h5",
+                command=f"cp {raw_file} raw_event_data.h5",
                 execute_with_mpi=False)]
             commands = copy_data_command + commands
 
