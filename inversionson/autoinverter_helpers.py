@@ -58,6 +58,9 @@ def sleep_pr_process(comm):
     """
     if RANDOM_PROC \
             and not comm.lasif.process_random_unprocessed_event():
+        print(f"Seems like there is nothing to do now "
+              f"I might as well process some random event.")
+    else:
         print(f"Waiting {SLEEP_TIME} seconds before trying again")
         time.sleep(SLEEP_TIME)
 
