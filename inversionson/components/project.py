@@ -61,7 +61,7 @@ class ProjectComponent(Component):
             round(
                 (solver_settings["end_time_in_s"] - simulation_info["start_time"])
                 / solver_settings["time_step_in_s"]
-            )
+            ) + 1
         )
         simulation_info["end_time"] = solver_settings["end_time_in_s"]
         simulation_info["time_step"] = solver_settings["time_step_in_s"]
