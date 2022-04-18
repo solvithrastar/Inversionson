@@ -1,4 +1,5 @@
 import copy
+import json
 import sys
 import toml
 import numpy as np
@@ -7,9 +8,10 @@ from obspy.geodetics import locations2degrees
 from inversionson.hpc_processing.window_selection import select_windows
 from inversionson.hpc_processing.source_time_function import \
     source_time_function
-from inversionson.hpc_processing.utils import select_component_from_stream
+from inversionson.hpc_processing.utils import select_component_from_stream, build_or_get_receiver_info
 from inversionson.hpc_processing.adjoint_source import calculate_adjoint_source
 from tqdm import tqdm
+from salvus.flow.simple_config import simulation, source, stf, receiver
 import multiprocessing
 import warnings
 import pyasdf
@@ -38,6 +40,102 @@ def calculate_station_weight(lat_1: float, lon_1: float, locations: np.ndarray):
     weight = 1.0 / factor
     assert weight > 0.0
     return weight
+
+
+def get_adjoint_source_object(event_name, adjoint_filename,
+                              receiver_json_path, proc_filename,
+                              misfits, forward_meta_json_filename) -> object:
+    """
+    Generate the adjoint source object for the respective event
+
+    :param event_name: Name of event
+    :type event_name: str
+    :return: Adjoint source object for salvus
+    :rtype: object
+    """
+    receivers = build_or_get_receiver_info(receiver_json_path, proc_filename)
+    adjoint_recs = list(misfits[event_name].keys())
+
+    # Need to make sure I only take receivers with an adjoint source
+    adjoint_sources = []
+    for rec in receivers:
+        if (
+                rec["network-code"] + "_" + rec["station-code"] in adjoint_recs
+                or rec["network-code"] + "." + rec[
+            "station-code"] in adjoint_recs
+        ):
+            adjoint_sources.append(rec)
+
+    # Build meta_info_dict
+    with open(forward_meta_json_filename) as json_file:
+        data = json.load(json_file)
+
+    meta_recs = data["forward_run_input"]["output"]["point_data"]["receiver"]
+    meta_info_dict = {}
+    for rec in meta_recs:
+        if (
+                rec["network_code"] + "_" + rec["station_code"] in adjoint_recs
+                or rec["network_code"] + "." + rec[
+            "station_code"] in adjoint_recs
+        ):
+            rec_name = rec["network_code"] + "_" + rec["station_code"]
+            meta_info_dict[rec_name] = {}
+            # this is the rotation from XYZ to ZNE,
+            # we still need to transpose to get ZNE -> XYZ
+            meta_info_dict[rec_name]["rotation_on_input"] = {
+                "matrix": np.array(
+                    rec["rotation_on_output"]["matrix"]).T.tolist()
+            }
+            meta_info_dict[rec_name]["location"] = rec["location"]
+
+    adj_src = [
+        source.cartesian.VectorPoint3D(
+            x=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                "location"
+            ][0],
+            y=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                "location"
+            ][1],
+            z=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
+                "location"
+            ][2],
+            fx=1.0,
+            fy=1.0,
+            fz=1.0,
+            source_time_function=stf.Custom(
+                filename=adjoint_filename,
+                dataset_name="/" + rec["network-code"] + "_" + rec[
+                    "station-code"],
+            ),
+            rotation_on_input=meta_info_dict[
+                rec["network-code"] + "_" + rec["station-code"]
+                ]["rotation_on_input"],
+        )
+        for rec in adjoint_sources
+    ]
+    return adj_src
+
+
+def construct_adjoint_simulation(parameterization,
+                                 forward_meta_json_filename,
+                                 adj_src: object):
+    """
+    Create the adjoint simulation object that salvus flow needs
+    """
+    print("Constructing Adjoint Simulation now")
+
+    with open(forward_meta_json_filename, "r") as fh:
+        meta_info = json.load(fh)
+    forward_mesh = meta_info["forward_run_input"]["domain"]["mesh"]["filename"]
+    gradient = "gradient.h5"
+    w = simulation.Waveform(mesh=forward_mesh)
+    w.adjoint.forward_meta_json_filename = f"REMOTE:{forward_meta_json_filename}"
+    w.adjoint.gradient.parameterization = parameterization
+    w.adjoint.gradient.output_filename = gradient
+    w.adjoint.gradient.format = "hdf5-full"
+    w.adjoint.point_source = adj_src
+    with open("output/adjoint_simulation_dict.toml", "w") as fh:
+        toml.dump(w.get_dictionary(), fh)
 
 
 def get_station_weights(list_of_stations, processed_data):
@@ -150,12 +248,12 @@ def run(info):
         try:
             # Make sure both have length 1.
             assert len(obs_tag) == 1, (
-                "Station: %s - Requires 1 observed waveform tag. Has %i."
-                % (observed_station._station_name, len(obs_tag))
+                    "Station: %s - Requires 1 observed waveform tag. Has %i."
+                    % (observed_station._station_name, len(obs_tag))
             )
             assert len(syn_tag) == 1, (
-                "Station: %s - Requires 1 synthetic waveform tag. Has %i."
-                % (observed_station._station_name, len(syn_tag))
+                    "Station: %s - Requires 1 synthetic waveform tag. Has %i."
+                    % (observed_station._station_name, len(syn_tag))
             )
         except AssertionError:
             return {station: None}
@@ -182,7 +280,7 @@ def run(info):
 
                 if scale_data_to_synthetics:
                     scaling_factor = (
-                        synth_tr.data.ptp() / data_tr.data.ptp()
+                            synth_tr.data.ptp() / data_tr.data.ptp()
                     )
                     # Store and apply the scaling.
                     data_tr.stats.scaling_factor = scaling_factor
@@ -232,7 +330,7 @@ def run(info):
         results = {}
         with tqdm(total=len(task_list)) as pbar:
             for i, r in enumerate(
-                pool.imap_unordered(_window_select, task_list)
+                    pool.imap_unordered(_window_select, task_list)
             ):
                 pbar.update()
                 k, v = r.popitem()
@@ -411,9 +509,12 @@ def run(info):
         all_sta_channels = list(all_adj_srcs[station].keys())
 
         if len(all_sta_channels) > 0:
-            e_comp = np.zeros_like(all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
-            n_comp = np.zeros_like(all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
-            z_comp = np.zeros_like(all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
+            e_comp = np.zeros_like(
+                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
+            n_comp = np.zeros_like(
+                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
+            z_comp = np.zeros_like(
+                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
 
             for channel in all_sta_channels:
                 # check channel and set component
@@ -434,7 +535,8 @@ def run(info):
             source.attrs["spatial-type"] = np.string_("vector")
             source.attrs["start_time_in_seconds"] = start_time_in_s
 
-    # Write misfits # TODO add station weighting
+    # Write misfits (currently unused in the ADAM workflow other than for
+    # figuring out which stations should have adjoint sources.
     misfit_dict = {}
     for station in all_adj_srcs.keys():
         all_sta_channels = list(all_adj_srcs[station].keys())
@@ -452,10 +554,20 @@ def run(info):
     with open(misfit_filename, "w") as fh:
         toml.dump(event_misfit_dict, fh)
 
+    # now create adjoint source simulation object
+    adj_src = get_adjoint_source_object(event_name,
+                                        adjoint_source_file_name,
+                                        info["receiver_json_path"],
+                                        processed_filename,
+                                        event_misfit_dict,
+                                        info["forward_meta_json_filename"])
+
+    construct_adjoint_simulation(info["parameterization"],
+                                 info["forward_meta_json_filename"], adj_src)
+
+
 if __name__ == "__main__":
     toml_filename = sys.argv[1]
     # toml_filename = "/Users/dirkphilip/Software/Inversionson/test_remote_window/info_dict.toml"
     info = toml.load(toml_filename)
     run(info)
-
-

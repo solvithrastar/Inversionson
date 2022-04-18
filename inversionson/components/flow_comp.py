@@ -438,28 +438,6 @@ class SalvusFlowComponent(Component):
                     "matrix": np.array(rec["rotation_on_output"]["matrix"]).T.tolist()
                 }
                 meta_info_dict[rec_name]["location"] = rec["location"]
-        for rec in adjoint_sources[:1]:
-            source.cartesian.VectorPoint3D(
-                x=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
-                    "location"
-                ][0],
-                y=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
-                    "location"
-                ][1],
-                z=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
-                    "location"
-                ][2],
-                fx=1.0,
-                fy=1.0,
-                fz=1.0,
-                source_time_function=stf.Custom(
-                    filename=adjoint_filename,
-                    dataset_name="/" + rec["network-code"] + "_" + rec["station-code"],
-                ),
-                rotation_on_input=meta_info_dict[
-                    rec["network-code"] + "_" + rec["station-code"]
-                ]["rotation_on_input"],
-            )
 
         adj_src = [
             source.cartesian.VectorPoint3D(
@@ -657,6 +635,44 @@ class SalvusFlowComponent(Component):
         w = simulation.Waveform().from_dict(sim_dict)
         w.set_mesh("REMOTE:" + str(remote_mesh))
 
+        return w
+
+    def construct_adjoint_simulation_from_dict(self, event: str):
+        """
+        Download a dictionary with the simulation object and use it to create a local simulation object
+        without having any of the relevant data locally.
+        Only used to submit a job to the remote without having to store anything locally.
+
+        :param event: Name of event
+        :type event: str
+        """
+
+        hpc_cluster = sapi.get_site(self.comm.project.site_name)
+        hpc_proc_job = self.get_job(event, sim_type="hpc_processing")
+
+        # Always write events to the same folder
+        destination = (
+            self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+            / f"SIMULATIONS_DICTS"
+            / event
+            / "adjoint_simulation_dict.toml"
+        )
+        if not os.path.exists(destination.parent):
+            os.makedirs(destination.parent)
+
+        if not os.path.exists(destination):
+            remote_dict = hpc_proc_job.stdout_path.parent / "output" / "adjoint_simulation_dict.toml"
+            hpc_cluster.remote_get(remotepath=remote_dict,
+                                   localpath=destination)
+
+        adjoint_sim_dict = toml.load(destination)
+        remote_mesh = adjoint_sim_dict["domain"]["mesh"]["filename"]
+        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
+        for key in ["mesh", "model", "geometry"]:
+            adjoint_sim_dict["domain"][key]["filename"] = local_dummy_mesh
+
+        w = simulation.Waveform().from_dict(adjoint_sim_dict)
+        w.set_mesh("REMOTE:" + str(remote_mesh))
         return w
 
     def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:

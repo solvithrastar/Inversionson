@@ -622,12 +622,12 @@ class ForwardHelper(object):
         for an event.
 
         """
-
         submitted, _ = self.__submitted_retrieved(event, "hpc_processing")
         if submitted:
             return
 
-        self.__process_data(event)
+        if not self.comm.project.remote_data_processing:
+            self.__process_data(event)
 
         iteration = self.comm.project.current_iteration
 
@@ -638,7 +638,7 @@ class ForwardHelper(object):
 
         # remote synthetics
         remote_syn_path = str(forward_job.output_path / "receivers.h5")
-
+        forward_meta_json_filename = str(forward_job.output_path / "meta.json")
         # local processed_data
         min_period = self.comm.project.min_period
         max_period = self.comm.project.max_period
@@ -649,7 +649,6 @@ class ForwardHelper(object):
         )
 
         remote_proc_file_name = f"{event}_{proc_filename}"
-
         hpc_cluster = get_site(self.comm.project.site_name)
 
         remote_processed_dir = os.path.join(
@@ -671,18 +670,32 @@ class ForwardHelper(object):
         if not hpc_cluster.remote_exists(remote_adj_dir):
             hpc_cluster.remote_mkdir(remote_adj_dir)
 
+        if "VPV" in self.comm.project.inversion_params:
+            parameterization = "tti"
+        elif "VP" in self.comm.project.inversion_params:
+            parameterization = "rho-vp-vs"
+
+        remote_receiver_dir = os.path.join(
+            self.comm.project.remote_inversionson_dir, "RECEIVERS"
+        )
+        if not hpc_cluster.remote_exists(remote_receiver_dir):
+            hpc_cluster.remote_mkdir(remote_receiver_dir)
+
         info = {}
         info["processed_filename"] = remote_proc_path
         info["synthetic_filename"] = remote_syn_path
+        info["forward_meta_json_filename"] = forward_meta_json_filename
+        info["parameterization"] = parameterization
         info["window_set_name"] = "A"  # Not used
         info["event_name"] = event
         info["delta"] = self.comm.project.simulation_dict["time_step"]
         info["npts"] = self.comm.project.simulation_dict["number_of_time_steps"]
-
         info["iteration_name"] = iteration
         info["minimum_period"] = self.comm.project.min_period
         info["maximum_period"] = self.comm.project.max_period
         info["start_time_in_s"] = self.comm.project.simulation_dict["start_time"]
+        info["receiver_json_path"] = os.path.join(remote_receiver_dir,
+                                                         f"{event}_receivers.json")
 
         toml_filename = f"{iteration}_{event}_adj_info.toml"
 
@@ -699,9 +712,7 @@ class ForwardHelper(object):
         if not hpc_cluster.remote_exists(remote_script):
             hpc_cluster.remote_put(PROCESS_OUTPUT_SCRIPT_PATH, remote_script)
 
-        # Now submit the job here (make commands) and make a custom job
-        # Now submit a job here
-
+        # Now submit the job
         description = f"HPC processing of {event} for iteration {iteration}"
 
         # use interp wall time for now
@@ -716,7 +727,7 @@ class ForwardHelper(object):
                 command=f"python {remote_script} {remote_toml}", execute_with_mpi=False
             ),
         ]
-
+        # Allow to set conda environment first
         if self.comm.project.remote_conda_env:
             conda_command = [remote_io_site.site_utils.RemoteCommand(
                 command=f"conda activate {self.comm.project.remote_conda_env}",
@@ -891,7 +902,6 @@ class ForwardHelper(object):
         :type hpc_processing: bool
         """
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
-        iteration = self.comm.project.current_iteration
         if submitted:
             return
 
@@ -900,8 +910,17 @@ class ForwardHelper(object):
             print(emoji.emojize(":rocket: | Run adjoint simulation", use_aliases=True))
             print(f"Event: {event}")
 
-        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
-        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
+        if (self.comm.project.meshes == "multi-mesh"
+                and self.comm.project.interpolation_mode == "remote"
+            ):
+                simulation_created_remotely = True
+            else:
+                simulation_created_remotely = False
+        if simulation_created_remotely:
+            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation_from_dict(event)
+        else:
+            adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
+            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
 
         if (
             self.comm.project.remote_mesh is not None
