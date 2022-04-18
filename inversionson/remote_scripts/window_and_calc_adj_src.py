@@ -138,7 +138,8 @@ def construct_adjoint_simulation(parameterization,
         toml.dump(w.get_dictionary(), fh)
 
 
-def get_station_weights(list_of_stations, processed_data):
+def get_station_weights(list_of_stations, processed_data,
+                        receiver_json_path):
     """
     The plan here is to compute the station weights based
     on a list of stations, that are in turn based on the selected windwos.
@@ -147,8 +148,12 @@ def get_station_weights(list_of_stations, processed_data):
     """
 
     print("Getting station weights...")
-    with pyasdf.ASDFDataSet(processed_data) as ds:
-        coordinates = ds.get_all_coordinates()
+    list_of_recs = build_or_get_receiver_info(receiver_json_path, processed_data)
+    coordinates = {}
+    for rec in list_of_recs:
+        station_name = rec["network-code"] + "." + rec["station-code"]
+        coordinates[station_name] = {"latitude": rec["latitude"],
+                                     "longitude": rec["longitude"]}
 
     # Make reduced list:
     stations = {}
@@ -348,7 +353,8 @@ def run(info):
         f"{len(task_list)} stations."
     )
 
-    station_weights = get_station_weights(sta_with_windows, processed_filename)
+    station_weights = get_station_weights(sta_with_windows, processed_filename,
+                                          info["receiver_json_path"])
 
     all_windows = results
     # Toml dumping the windows doesn't quite work because they are objects.
