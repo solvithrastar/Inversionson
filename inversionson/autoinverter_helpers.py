@@ -527,19 +527,27 @@ class ForwardHelper(object):
         return job_info["submitted"], job_info["retrieved"]
 
     def __run_forward_simulation(
-        self, event: str, simulation_created_remotely: bool = False, verbose=False
+        self, event: str, verbose=False
     ):
         """
         Submit forward simulation to daint and possibly monitor aswell
 
         :param event: Name of event
         :type event: str
-        :param simulation_created_remotely: If the simulation object was created as a part of the interpolation job
-            then the dictionary will be downloaded and used to submit the job. Defaults to False
-        :type simulation_created_remotely: bool, optional
         """
         # Check status of simulation
         submitted, retrieved = self.__submitted_retrieved(event)
+
+        # In the case of remote mesh interpolation for smoothiesem, assume
+        # that the simulation object is created there as well.
+        if (
+            self.comm.project.meshes == "multi-mesh"
+            and self.comm.project.interpolation_mode == "remote"
+        ):
+            simulation_created_remotely = True
+        else:
+            simulation_created_remotely = False
+
         if submitted:
             return
         if verbose:
@@ -985,7 +993,7 @@ class ForwardHelper(object):
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(
-                    event=event, verbose=verbose, simulation_created_remotely=True
+                    event=event, verbose=verbose
                 )
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
@@ -1122,7 +1130,7 @@ class ForwardHelper(object):
             vint_job_listener.monitor_jobs()
             for event in vint_job_listener.events_retrieved_now:
                 self.__run_forward_simulation(
-                    event, simulation_created_remotely=True, verbose=verbose
+                    event, verbose=verbose
                 )
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
