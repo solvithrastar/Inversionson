@@ -662,9 +662,9 @@ class SalvusFlowComponent(Component):
 
         if os.path.exists(destination):
             os.remove(destination)
-            remote_dict = hpc_proc_job.stdout_path.parent / "output" / "adjoint_simulation_dict.toml"
-            hpc_cluster.remote_get(remotepath=remote_dict,
-                                   localpath=destination)
+        remote_dict = hpc_proc_job.stdout_path.parent / "output" / "adjoint_simulation_dict.toml"
+        hpc_cluster.remote_get(remotepath=remote_dict,
+                               localpath=destination)
 
         adjoint_sim_dict = toml.load(destination)
         remote_mesh = adjoint_sim_dict["domain"]["mesh"]["filename"]

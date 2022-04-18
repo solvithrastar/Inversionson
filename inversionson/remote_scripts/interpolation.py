@@ -4,12 +4,44 @@ import toml
 import os
 import shutil
 import pathlib
+import h5py
 from inversionson.hpc_processing.utils import build_or_get_receiver_info
+from inversionson.hpc_processing.cut_and_clip import cut_source_region_from_gradient, clip_gradient
 
 # Here we should handle all the looking at the different mesh folders.
 # If the mesh does not exist on scratch, we check on non-scratch.
 # The from_mesh also needs to be found on either one of the two.
 # This needs to be implemented on Monday/Saturday/Tuesday
+
+
+def cut_and_clip(gradient_filename, source_location, parameters,
+                 radius_to_cut_in_km, clipping_percentile):
+    """
+    Cut and clip
+    Needs the below keys in infp:
+    gradient_filename = info["filename"]
+    radius_to_cut_in_km = info["cutout_radius_in_km"]
+    source_location = info["source_location"]
+    clipping_percentile = info["clipping_percentile"]
+    parameters = info["parameters"]
+    """
+
+    cut_source_region_from_gradient(
+        gradient_filename, source_location,
+        radius_to_cut=radius_to_cut_in_km
+    )
+
+    print("Source cut completed successfully.")
+
+    print("Clipping now.")
+    if clipping_percentile < 1.0:
+        clip_gradient(gradient_filename, clipping_percentile, parameters)
+
+    # Set reference frame to spherical, This is done to inform the diffusion smoothing
+    print("Set reference frame.")
+    with h5py.File(gradient_filename, "r+") as f:
+        attributes = f["MODEL"].attrs
+        attributes.modify("reference_frame", b"spherical")
 
 
 def process_data(processing_info):
@@ -245,6 +277,14 @@ if __name__ == "__main__":
         stored_array=mesh_info["interpolation_weights"],
     )
     print("Fields interpolated")
+
+    # Also clip the gradient here. We prefer not to use the login node anymore
+    # for this if we have a job anyway.
+    if info["gradient"]:
+        cut_and_clip("./to_mesh.h5", info["source_location"],
+                     info["parameters"], info["cutout_radius_in_km"],
+                     info["clipping_percentile"])
+
     shutil.move("./to_mesh.h5", "./output/mesh.h5")
     if not info["gradient"] and info["create_simulation_dict"]:
         move_mesh(

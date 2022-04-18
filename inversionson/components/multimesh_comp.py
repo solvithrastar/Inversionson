@@ -297,6 +297,13 @@ class MultiMeshComponent(Component):
         }
         information["data_processing"] = self.comm.project.remote_data_processing
 
+        # Provide information for cut and clipping
+        if gradient:
+            information["cutout_radius_in_km"] = self.comm.project.cut_source_radius
+            information["source_location"] = self.comm.lasif.get_source(event_name=event)
+            information["clipping_percentile"] = self.comm.project.clip_gradient
+            information["parameters"] = self.comm.project.inversion_params
+
         proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_to_{int(self.comm.project.max_period)}s.h5"
         remote_proc_file_name = f"{event}_{proc_filename}"
         hpc_cluster = get_site(self.comm.project.site_name)

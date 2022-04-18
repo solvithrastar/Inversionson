@@ -1396,7 +1396,11 @@ class AdjointHelper(object):
         while True:
             adj_job_listener.monitor_jobs()
             for event in adj_job_listener.events_retrieved_now:
-                self.__cut_and_clip_gradient(event=event, verbose=verbose)
+                if not (
+                        self.comm.project.meshes == "multi-mesh"
+                        and self.comm.project.interpolation_mode == "remote"
+                ):
+                    self.__cut_and_clip_gradient(event=event, verbose=verbose)
                 self.comm.project.change_attribute(
                     attribute=f'adjoint_job["{event}"]["retrieved"]',
                     new_value=True,
