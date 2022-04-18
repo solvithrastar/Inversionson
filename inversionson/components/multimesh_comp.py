@@ -251,8 +251,24 @@ class MultiMeshComponent(Component):
         description = "Interpolation of "
         description += "gradient " if gradient else "model "
         description += f"for event {event}"
-
         wall_time = self.comm.project.model_interp_wall_time
+
+        # Add wall time when the data needs to be processed, this way
+        # we can get through the queue faster for jobs that were finished already.
+        if self.comm.project.remote_data_processing:
+            hpc_cluster = get_site(self.comm.project.site_name)
+            remote_processed_dir = os.path.join(
+                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
+            )
+            proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s" \
+                            f"_to_{int(self.comm.project.max_period)}s.h5"
+            remote_proc_file_name = f"{event}_{proc_filename}"
+            remote_proc_path = os.path.join(remote_processed_dir,
+                                            remote_proc_file_name)
+
+            if not hpc_cluster.remote_exists(remote_proc_path):
+                wall_time += self.comm.project.remote_data_proc_wall_time
+
         if gradient:
             wall_time = self.comm.project.grad_interp_wall_time
 

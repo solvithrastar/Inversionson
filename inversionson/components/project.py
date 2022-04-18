@@ -568,6 +568,7 @@ class ProjectComponent(Component):
         # ]
         # We currently assume smoothing site to be simulation site.
         self.remote_data_processing = self.info["HPC"]["remote_data_processing"]["use"]
+        self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"]["wall_time"]
         self.remote_raw_data_dir = self.info["HPC"]["remote_data_processing"]["remote_raw_data_directory"]
         self.smoothing_site_name = self.site_name
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
