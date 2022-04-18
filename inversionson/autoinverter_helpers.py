@@ -913,9 +913,9 @@ class ForwardHelper(object):
         if (self.comm.project.meshes == "multi-mesh"
                 and self.comm.project.interpolation_mode == "remote"
             ):
-                simulation_created_remotely = True
-            else:
-                simulation_created_remotely = False
+            simulation_created_remotely = True
+        else:
+            simulation_created_remotely = False
         if simulation_created_remotely:
             w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation_from_dict(event)
         else:
