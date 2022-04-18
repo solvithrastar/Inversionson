@@ -555,8 +555,9 @@ def run(info):
         toml.dump(event_misfit_dict, fh)
 
     # now create adjoint source simulation object
+    adjoint_filename = "REMOTE:" + os.path.abspath(adjoint_source_file_name)
     adj_src = get_adjoint_source_object(event_name,
-                                        adjoint_source_file_name,
+                                        adjoint_filename,
                                         info["receiver_json_path"],
                                         processed_filename,
                                         event_misfit_dict,
