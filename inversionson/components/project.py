@@ -61,7 +61,8 @@ class ProjectComponent(Component):
             round(
                 (solver_settings["end_time_in_s"] - simulation_info["start_time"])
                 / solver_settings["time_step_in_s"]
-            ) + 1
+            )
+            + 1
         )
         simulation_info["end_time"] = solver_settings["end_time_in_s"]
         simulation_info["time_step"] = solver_settings["time_step_in_s"]
@@ -541,9 +542,7 @@ class ProjectComponent(Component):
         self.inversion_mode = self.info["inversion_mode"]
         self.meshes = self.info["meshes"]
         self.optimizer = self.info["optimizer"].lower()
-        self.elem_per_quarter = self.info["Meshing"][
-            "elements_per_azimuthal_quarter"
-        ]
+        self.elem_per_quarter = self.info["Meshing"]["elements_per_azimuthal_quarter"]
         self.topography = self.info["Meshing"]["topography"]
         self.ellipticity = self.info["Meshing"]["ellipticity"]
         self.ocean_loading = self.info["Meshing"]["ocean_loading"]
@@ -568,8 +567,12 @@ class ProjectComponent(Component):
         # ]
         # We currently assume smoothing site to be simulation site.
         self.remote_data_processing = self.info["HPC"]["remote_data_processing"]["use"]
-        self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"]["wall_time"]
-        self.remote_raw_data_dir = self.info["HPC"]["remote_data_processing"]["remote_raw_data_directory"]
+        self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"][
+            "wall_time"
+        ]
+        self.remote_raw_data_dir = self.info["HPC"]["remote_data_processing"][
+            "remote_raw_data_directory"
+        ]
         self.smoothing_site_name = self.site_name
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
@@ -582,8 +585,7 @@ class ProjectComponent(Component):
             self.info["HPC"]["inversionson_fast_dir"]
         )
         self.hpc_processing = self.info["HPC"]["processing"]["use"]
-        self.hpc_processing_wall_time = self.info["HPC"]["processing"][
-            "wall_time"]
+        self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "diff_models"
         self.fast_mesh_dir = self.remote_inversionson_dir / "meshes"
@@ -887,6 +889,7 @@ class ProjectComponent(Component):
                 }
             else:
                 it_dict["events"][str(_i)] = {
+                    "name": event,
                     "job_info": jobs,
                 }
             if not validation:
