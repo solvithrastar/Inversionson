@@ -581,7 +581,7 @@ class ProjectComponent(Component):
         self.remote_inversionson_dir = pathlib.Path(
             self.info["HPC"]["inversionson_fast_dir"]
         )
-        self.hpc_processing = self.info["HPC"]["processing"]["wall_time"]
+        self.hpc_processing = self.info["HPC"]["processing"]["use"]
         self.hpc_processing_wall_time = self.info["HPC"]["processing"][
             "wall_time"]
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
