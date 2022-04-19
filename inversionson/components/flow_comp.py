@@ -396,6 +396,8 @@ class SalvusFlowComponent(Component):
             hpc_cluster.remote_get(remote_misfit_dict_toml, local_misfit_dict)
             misfits = toml.load(local_misfit_dict)
             adjoint_recs = list(misfits[event_name].keys())
+            if os.path.exists(local_misfit_dict):
+                os.remove(local_misfit_dict)
 
         # Need to make sure I only take receivers with an adjoint source
         adjoint_sources = []
@@ -465,8 +467,7 @@ class SalvusFlowComponent(Component):
         ]
         if os.path.exists(meta_json_filename):
             os.remove(meta_json_filename)
-        if os.path.exists(local_misfit_dict):
-            os.remove(local_misfit_dict)
+
         return adj_src
 
     def get_receivers(self, event: str):
