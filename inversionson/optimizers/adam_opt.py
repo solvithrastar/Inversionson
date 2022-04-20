@@ -435,7 +435,7 @@ class AdamOpt(Optimize):
         update *= update_scaling_fac
 
         # Update parameters
-        if max(self.roughness_decay_smoothing_length) >= 0:
+        if max(self.roughness_decay_smoothing_length) > 0.0:
             theta_prev = self.get_h5_data(self.smoothed_model_path)
         else:
             theta_prev = self.get_h5_data(self.model_path)
@@ -512,7 +512,7 @@ class AdamOpt(Optimize):
 
     def perform_smoothing(self):
         tasks = {}
-        if max(self.update_smoothing_length) >= 0.0:
+        if max(self.update_smoothing_length) > 0.0:
             tasks["smooth_raw_update"] = {"reference_model": str(
                     self.comm.lasif.get_master_model()),
                     "model_to_smooth": str(self.raw_update_path),
@@ -520,7 +520,7 @@ class AdamOpt(Optimize):
                     "smoothing_parameters": self.parameters,
                     "output_location": str(self.smooth_update_path)}
 
-        if max(self.roughness_decay_smoothing_length) >= 0.0:
+        if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
             # to the internal parameterization
 
