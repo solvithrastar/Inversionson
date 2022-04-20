@@ -559,13 +559,12 @@ class AdamOpt(Optimize):
                           "model_to_smooth": self.raw_update_path,
                           "smoothing_lengths": self.comm.project.smoothing_lengths,
                           "smoothing_params": self.parameters,
-                          "output_location": self.smooth_update_path}
-                 }
+                          "output_location": self.smooth_update_path}}
             # Run the remote smoother with the raw update
-            RegularizationHelper(comm=self.comm,
-                                 iteration_name=self.iteration_name,
-                                 tasks=tasks)
-            RegularizationHelper.monitor_tasks()
+            reg_helper = RegularizationHelper(
+                comm=self.comm, iteration_name=self.iteration_name,
+                tasks=tasks)
+            reg_helper.monitor_tasks()
 
             # # This only smooths the update
             # self.regularization(
