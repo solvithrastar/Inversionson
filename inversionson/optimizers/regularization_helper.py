@@ -33,7 +33,8 @@ class RegularizationHelper(object):
         self.max_reposts = 3
         self.iteration_name = iteration_name
         self.regularization_folder = (
-            Path(self.comm.project.paths["inversion_root"]) / "REGULARIZATION"
+            Path(self.comm.project.paths["inversion_root"]) / "OPTIMIZATION"
+            / "REGULARIZATION"
         )
         if not os.path.exists(self.regularization_folder):
             os.mkdir(self.regularization_folder)
@@ -87,6 +88,10 @@ class RegularizationHelper(object):
                 self.tasks[task_name]["submitted"] = True
                 self.tasks[task_name]["job_name"] = job.job_array_name
                 self._write_tasks(self.tasks)
+            elif task_dict["reposts"] >= self.max_reposts:
+                raise Exception("Too many reposts in smoothing, "
+                                "please check the time steps and the inputs."
+                                "and reset the number of reposts in the toml file.")
 
     def update_task_status_and_retrieve(self):
         for task_dict in self.tasks.values():

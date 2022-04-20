@@ -52,6 +52,7 @@ class Optimize(object):
         self.task_dir = self.opt_folder / "TASKS"
         self.raw_gradient_dir = self.opt_folder / "RAW_GRADIENTS"
         self.raw_update_dir = self.opt_folder / "RAW_UPDATES"
+        self.regularization_dir = self.opt_folder / "REGULARIZATION"
 
         # Do any folder initilization for the derived classes
         self._initialize_derived_class_folders()

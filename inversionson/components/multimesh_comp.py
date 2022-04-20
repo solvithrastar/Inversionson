@@ -329,8 +329,6 @@ class MultiMeshComponent(Component):
         if not hpc_cluster.remote_exists(remote_processed_dir):
             hpc_cluster.remote_mkdir(remote_processed_dir)
 
-        remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
-
 
         processing_info = {"minimum_period": self.comm.project.min_period,
                            "maximum_period": self.comm.project.max_period,
@@ -503,11 +501,20 @@ class MultiMeshComponent(Component):
         )]
 
         if self.comm.project.remote_data_processing:
-            raw_file = os.path.join(self.comm.project.remote_raw_data_dir, f"{event}.h5")
-            copy_data_command = [remote_io_site.site_utils.RemoteCommand(
-                command=f"cp {raw_file} raw_event_data.h5",
-                execute_with_mpi=False)]
-            commands = copy_data_command + commands
+            hpc_cluster = get_site(self.comm.project.site_name)
+            remote_processed_dir = os.path.join(
+                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA")
+            proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_to_{int(self.comm.project.max_period)}s.h5"
+            remote_proc_file_name = f"{event}_{proc_filename}"
+            remote_proc_path = os.path.join(remote_processed_dir,
+                                            remote_proc_file_name)
+
+            if not hpc_cluster.remote_exists(remote_proc_path):
+                raw_file = os.path.join(self.comm.project.remote_raw_data_dir, f"{event}.h5")
+                copy_data_command = [remote_io_site.site_utils.RemoteCommand(
+                    command=f"cp {raw_file} raw_event_data.h5",
+                    execute_with_mpi=False)]
+                commands = copy_data_command + commands
 
         if self.comm.project.remote_conda_env:
             conda_command = [remote_io_site.site_utils.RemoteCommand(
