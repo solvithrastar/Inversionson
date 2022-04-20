@@ -9,8 +9,8 @@ from inversionson.utils import sleep_or_process
 
 class RegularizationHelper(object):
     """
-    This class can get a list of tasks that require smoothing,
-    dispatch the tasks and monitor and retrieve them.
+    This class takes a list of tasks that require smoothing.
+    It can then dispatch the jobs, monitor and retrieve them.
     """
 
     def __init__(self, comm, iteration_name, tasks):
@@ -24,7 +24,7 @@ class RegularizationHelper(object):
                 {task_name: {"reference_model": str, "model_to_smooth": str,
                 "smoothing_lengths": list, "smoothing_parameters": list,
                 "output_location": str}, "task_name2" : {...}, etc.}
-        :type dict
+        :type tasks: dict
         :param iteration_name: Name of the iteration.
         :type iteration_name: str
         """
