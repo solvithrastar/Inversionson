@@ -159,6 +159,7 @@ class AdamOpt(Optimize):
             self.smooth_update_dir,
             self.task_dir,
             self.regularization_dir,
+            self.smoothed_model_dir,
         ]
 
         for folder in folders:
