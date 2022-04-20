@@ -120,6 +120,7 @@ class RegularizationHelper(object):
                 )
                 smooth_gradient.write_h5(task_dict["output_location"])
                 task_dict["retrieved"] = True
+                self.write_tasks()
 
     def all_retrieved(self):
         for task_dict in self.tasks.values():
