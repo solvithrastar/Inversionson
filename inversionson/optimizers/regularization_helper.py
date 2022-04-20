@@ -95,6 +95,8 @@ class RegularizationHelper(object):
 
     def update_task_status_and_retrieve(self):
         for task_dict in self.tasks.values():
+            if task_dict["retrieved"]:
+                continue
             job = sapi.get_job_array(job_array_name=task_dict["job_name"],
                                      site_name=self.site_name)
             status = job.update_status(force_update=True)
@@ -123,9 +125,10 @@ class RegularizationHelper(object):
         return True
 
     def monitor_tasks(self):
+        print("Monitoring smoothing jobs...")
         self.dispatch_smoothing_tasks()
+        self.update_task_status_and_retrieve()  # Start with retrieval to skip loop
         while not self.all_retrieved():
-            print("Monitoring smoothing jobs...")
-            self.update_task_status_and_retrieve()
-            self.dispatch_smoothing_tasks()
             sleep_or_process(self.comm)
+            self.dispatch_smoothing_tasks()
+            self.update_task_status_and_retrieve()
