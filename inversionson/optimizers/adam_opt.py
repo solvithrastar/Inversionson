@@ -557,7 +557,7 @@ class AdamOpt(Optimize):
             reg_helper = RegularizationHelper(
                 comm=self.comm, iteration_name=self.iteration_name,
                 tasks=tasks)
-            reg_helper.monitor_tasks(sleep_time_in_s=self.comm.sleep_time_in_s)
+            reg_helper.monitor_tasks()
 
             # # This only smooths the update
             # self.regularization(

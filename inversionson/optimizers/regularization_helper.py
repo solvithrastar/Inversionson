@@ -125,7 +125,7 @@ class RegularizationHelper(object):
                 return False
         return True
 
-    def monitor_tasks(self, sleep_time_in_s=30):
+    def monitor_tasks(self):
         """
         This functions monitors the tasks, resubmits them if they fail
         or retrieves them
