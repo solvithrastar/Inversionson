@@ -65,7 +65,7 @@ class RegularizationHelper(object):
                     existing_tasks[task_name] = tasks[task_name]
                     existing_tasks[task_name].update(base_dict)
                 else:  # Update existing tasks with passed tasks
-                    existing_tasks[task_name] = tasks[task_name]
+                    existing_tasks[task_name].update(tasks[task_name])
             with open(self._get_iteration_toml_filename(), "w") as fh:
                 toml.dump(existing_tasks, fh)
 
