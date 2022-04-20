@@ -40,7 +40,7 @@ class AdamOpt(Optimize):
         self.smooth_update_dir = self.opt_folder / "SMOOTHED_UPDATES"
         self.first_moment_dir = self.opt_folder / "FIRST_MOMENTS"
         self.second_moment_dir = self.opt_folder / "SECOND_MOMENTS"
-        self.smoothed_model_dir = self.opt_fodler / "SMOOTHED_MODELS"
+        self.smoothed_model_dir = self.opt_folder / "SMOOTHED_MODELS"
 
     @property
     def task_path(self):
