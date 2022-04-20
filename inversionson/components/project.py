@@ -33,6 +33,7 @@ class ProjectComponent(Component):
         self.info = information_dict
         self.AdamOpt = True
         self.sleep_time_in_s = 30
+        self.random_event_processing = False
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
         self.simulation_dict = self._read_config_file()

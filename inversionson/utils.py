@@ -9,6 +9,20 @@ or something like that.
 import numpy as np
 import os, sys
 import h5py
+import time
+
+def sleep_or_process(comm):
+    """
+    This functions tries to process a random unprocessed event
+    or sleeps if all are processed.
+    """
+    if comm.project.random_event_processing \
+            and not comm.lasif.process_random_unprocessed_event():
+        print(f"Seems like there is nothing to do now "
+              f"I might as well process some random event.")
+    else:
+        print(f"Waiting {comm.project.sleep_time_in_s} seconds before trying again")
+        time.sleep(comm.project.sleep_time_in_s)
 
 
 def latlondepth_to_cartesian(

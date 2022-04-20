@@ -4,8 +4,7 @@ import toml
 from pathlib import Path
 from salvus.flow import api as sapi
 from salvus.opt.smoothing import get_smooth_model
-from inversionson.autoinverter_helpers import sleep_or_process
-
+from inversionson.utils import sleep_or_process
 
 class RegularizationHelper(object):
     """
@@ -136,4 +135,4 @@ class RegularizationHelper(object):
             print("Attempting to retrieve smoothing jobs.")
             self.update_tasks_and_retrieve()
             self.dispatch_smoothing_tasks()
-            sleep_or_process()
+            sleep_or_process(self.comm)

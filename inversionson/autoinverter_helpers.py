@@ -2,7 +2,6 @@ from typing import Dict, List
 import emoji
 from colorama import init
 from colorama import Fore
-import time
 import os
 import inspect
 import warnings
@@ -13,13 +12,13 @@ import salvus.flow.api as sapi
 from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
+from inversionson.utils import sleep_or_process
 
 
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
 max_reposts = 3
-RANDOM_PROC = True
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -48,20 +47,6 @@ PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
 )
 
 init()
-
-
-def sleep_or_process(comm):
-    """
-    This functions tries to process a random unprocessed event
-    or sleeps if all are processed.
-    """
-    if RANDOM_PROC \
-            and not comm.lasif.process_random_unprocessed_event():
-        print(f"Seems like there is nothing to do now "
-              f"I might as well process some random event.")
-    else:
-        print(f"Waiting {comm.project.sleep_time_in_s} seconds before trying again")
-        time.sleep(comm.project.sleep_time_in_s)
 
 
 class RemoteJobListener(object):
