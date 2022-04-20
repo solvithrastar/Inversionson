@@ -7,7 +7,6 @@ import shutil
 import h5py
 from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
-from inversionson.autoinverter_helpers import SLEEP_TIME
 from inversionson.optimizers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
@@ -469,13 +468,6 @@ class AdamOpt(Optimize):
             if not os.path.exists(self.raw_update_path):
                 self._compute_raw_update()
         if smooth:
-            smooth_update = self.comm.lasif.find_gradient(
-                iteration=self.iteration_name,
-                event=None,
-                smooth=True,
-                summed=True,
-            )
-            shutil.copy(smooth_update, self.smooth_update_path)
             self._apply_smooth_update()
 
     def ready_for_validation(self) -> bool:
@@ -565,7 +557,7 @@ class AdamOpt(Optimize):
             reg_helper = RegularizationHelper(
                 comm=self.comm, iteration_name=self.iteration_name,
                 tasks=tasks)
-            reg_helper.monitor_tasks(sleep_time_in_s=SLEEP_TIME)
+            reg_helper.monitor_tasks(sleep_time_in_s=self.comm.sleep_time_in_s)
 
             # # This only smooths the update
             # self.regularization(

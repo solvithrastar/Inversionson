@@ -18,7 +18,6 @@ from salvus.flow.api import get_site
 from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
-SLEEP_TIME = 20
 max_reposts = 3
 RANDOM_PROC = True
 
@@ -51,7 +50,7 @@ PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
 init()
 
 
-def sleep_pr_process(comm):
+def sleep_or_process(comm):
     """
     This functions tries to process a random unprocessed event
     or sleeps if all are processed.
@@ -61,8 +60,8 @@ def sleep_pr_process(comm):
         print(f"Seems like there is nothing to do now "
               f"I might as well process some random event.")
     else:
-        print(f"Waiting {SLEEP_TIME} seconds before trying again")
-        time.sleep(SLEEP_TIME)
+        print(f"Waiting {comm.project.sleep_time_in_s} seconds before trying again")
+        time.sleep(comm.project.sleep_time_in_s)
 
 
 class RemoteJobListener(object):
@@ -1038,7 +1037,7 @@ class ForwardHelper(object):
                 break
 
             if not int_job_listener.events_retrieved_now:
-                sleep_pr_process(self.comm)
+                sleep_or_process(self.comm)
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
@@ -1098,7 +1097,7 @@ class ForwardHelper(object):
                 )
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
-            sleep_pr_process(self.comm)
+            sleep_or_process(self.comm)
 
     def __dispatch_forwards_normal(self, verbose):
         """
@@ -1175,7 +1174,7 @@ class ForwardHelper(object):
                 break
 
             if not vint_job_listener.events_retrieved_now:
-                sleep_pr_process(self.comm)
+                sleep_or_process(self.comm)
             vint_job_listener.to_repost = []
             vint_job_listener.events_retrieved_now = []
 
@@ -1298,7 +1297,7 @@ class ForwardHelper(object):
 
             if not for_job_listener.events_retrieved_now and not \
                     hpc_proc_job_listener.events_retrieved_now:
-                sleep_pr_process(self.comm)
+                sleep_or_process(self.comm)
 
             for_job_listener.to_repost = []
             for_job_listener.events_retrieved_now = []
@@ -1462,7 +1461,7 @@ class AdjointHelper(object):
 
             if not adj_job_listener.events_retrieved_now \
                     and not interp_job_listener.events_retrieved_now:
-                sleep_pr_process(self.comm)
+                sleep_or_process(self.comm)
 
             adj_job_listener.to_repost = []
             adj_job_listener.events_retrieved_now = []
@@ -1794,7 +1793,7 @@ class SmoothingHelper(object):
                 break
 
             if not int_job_listener.events_retrieved_now:
-                sleep_pr_process(self.comm)
+                sleep_or_process(self.comm)
 
             int_job_listener.to_repost = []
             int_job_listener.events_retrieved_now = []
@@ -1995,7 +1994,7 @@ class SmoothingHelper(object):
                 break
 
             if not smooth_job_listener.events_retrieved_now:
-                sleep_pr_process(self.comm)
+                sleep_or_process(self.comm)
 
             smooth_job_listener.to_repost = []
             smooth_job_listener.events_retrieved_now = []
