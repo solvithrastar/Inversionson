@@ -7,12 +7,13 @@ import shutil
 import h5py
 from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
+from inversionson.optimizers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
 
 class AdamOpt(Optimize):
     """
-    A class that performs Adam optimization, if weight_decay is
+    A class that performs Adam optimization, if model_decay is
     set to a non-zero value, it performs AdamW optimization. This is
     essentially a type of L2 smoothing.
 
@@ -91,11 +92,12 @@ class AdamOpt(Optimize):
             "alpha": 0.001,
             "beta_1": 0.9,
             "beta_2": 0.999,
-            "weight_decay": 0.001,
+            "model_decay": 0.001,
             "gradient_scaling_factor": 1e17,
             "epsilon": 1e-1,
             "parameters": ["VSV", "VSH", "VPV", "VPH"],
             "initial_model": "",
+            "prior_model": "",
             "max_iterations": 1000,
         }
         with open(self.config_file, "w") as fh:
@@ -117,7 +119,8 @@ class AdamOpt(Optimize):
         self.beta_1 = config["beta_1"]  # decay factor for first moments
         self.beta_2 = config["beta_2"]  # decay factor for second moments
         # weight decay as percentage of # deviation from initial
-        self.weight_decay = config["weight_decay"]
+        self.model_decay = config["model_decay"]
+        self.prior_model = config["prior_model"]
         # gradient scaling factor avoid issues with floats
         self.grad_scaling_fac = config["gradient_scaling_factor"]
         # Regularization parameter to avoid dividing by zero
@@ -417,15 +420,18 @@ class AdamOpt(Optimize):
 
         # Update parameters
         theta_prev = self.get_h5_data(self.model_path)
+        theta_delta_prior = np.copy(theta_prev)
 
         # normalise theta and apply update
         theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
+        theta_prior = self.get_h5_data(self.prior_model)
 
         # Normalize the model and prevent division by zero in the outer core.
         theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+        theta_delta_prior[theta_prior != 0] = theta_delta_prior[theta_prior != 0] / theta_prior[theta_prior != 0] - 1
 
-        # only add weight_decay at this stage
-        theta_new = theta_prev - update - self.weight_decay * theta_prev
+        # only add model_decay at this stage
+        theta_new = theta_prev - update - self.model_decay * theta_delta_prior
 
         # remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
@@ -548,13 +554,26 @@ class AdamOpt(Optimize):
             print("Raw updating already completed")
 
         if not self.task_dict["smoothing_completed"]:
-            # This only smooths the update
-            self.regularization(
-                smooth_individual=False,
-                sum_gradients=False,
-                smooth_update=True,
-                verbose=verbose,
-            )
+            tasks = {"smooth_raw_update":
+                         {"reference_model": self.comm.lasif.get_master_model(),
+                          "model_to_smooth": self.raw_update_path,
+                          "smoothing_lengths": self.comm.project.smoothing_lengths,
+                          "smoothing_params": self.parameters,
+                          "output_location": self.smooth_update_path}
+                 }
+            # Run the remote smoother with the raw update
+            RegularizationHelper(comm=self.comm,
+                                 iteration_name=self.iteration_name,
+                                 tasks=tasks)
+            RegularizationHelper.monitor_tasks()
+
+            # # This only smooths the update
+            # self.regularization(
+            #     smooth_individual=False,
+            #     sum_gradients=False,
+            #     smooth_update=True,
+            #     verbose=verbose,
+            # )
             self.task_dict["smoothing_completed"] = True
             self._update_task_file()
         else:
