@@ -117,21 +117,18 @@ class AdamOpt(Optimize):
 
     def _read_config(self):
         """Reads the config file."""
-
         if not os.path.exists(self.config_file):
             raise Exception("Can't read the ADAM config file")
         config = toml.load(self.config_file)
 
-
-        self.config = dict2obj(config)
         self.initial_model = config["initial_model"]
         self.alpha = config["alpha"]
         self.beta_1 = config["beta_1"]  # decay factor for first moments
         self.beta_2 = config["beta_2"]  # decay factor for second moments
 
-        # Model decay per iteration as a percentage of the relative deviation to the prior model
+        # Perturbation decay per iteration as a percentage of the relative
+        # deviation to the initial model
         self.perturbation_decay = config["perturbation_decay"]
-
         self.roughness_decay_type = config["roughness_decay_type"]
         if self.roughness_decay_type not in ["relative_perturbation", "absolute"]:
             raise Exception("Roughness decay type should be either "
