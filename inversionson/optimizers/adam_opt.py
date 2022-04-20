@@ -97,7 +97,7 @@ class AdamOpt(Optimize):
             "alpha": 0.001,
             "beta_1": 0.9,
             "beta_2": 0.999,
-            "model_decay": 0.001,
+            "perturbation_decay": 0.001,
             "roughness_decay_type": "relative_perturbation", # or absolute
             "update_smoothing_length": [0.5, 1.0, 1.0],
             "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
