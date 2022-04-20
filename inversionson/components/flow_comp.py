@@ -465,7 +465,7 @@ class SalvusFlowComponent(Component):
             )
             for rec in adjoint_sources
         ]
-        if os.path.exists(meta_json_filename):
+        if os.path.exists(meta_json_filename) and self.comm.project.hpc_processing:
             os.remove(meta_json_filename)
 
         return adj_src
