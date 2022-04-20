@@ -555,11 +555,11 @@ class AdamOpt(Optimize):
 
         if not self.task_dict["smoothing_completed"]:
             tasks = {"smooth_raw_update":
-                         {"reference_model": self.comm.lasif.get_master_model(),
-                          "model_to_smooth": self.raw_update_path,
+                         {"reference_model": str(self.comm.lasif.get_master_model()),
+                          "model_to_smooth": str(self.raw_update_path),
                           "smoothing_lengths": self.comm.project.smoothing_lengths,
                           "smoothing_parameters": self.parameters,
-                          "output_location": self.smooth_update_path}}
+                          "output_location": str(self.smooth_update_path)}}
             # Run the remote smoother with the raw update
             reg_helper = RegularizationHelper(
                 comm=self.comm, iteration_name=self.iteration_name,
