@@ -113,7 +113,7 @@ class RegularizationHelper(object):
                     task_dict["submitted"] = False
             if finished:
                 smooth_gradient = get_smooth_model(
-                    job=task_dict["job_name"],
+                    job=job,
                     model=task_dict["reference_model"],
                 )
                 smooth_gradient.write_h5(task_dict["output_location"])

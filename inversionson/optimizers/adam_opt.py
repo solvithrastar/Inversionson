@@ -7,6 +7,7 @@ import shutil
 import h5py
 from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
+from inversionson.autoinverter_helpers import SLEEP_TIME
 from inversionson.optimizers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
@@ -564,7 +565,7 @@ class AdamOpt(Optimize):
             reg_helper = RegularizationHelper(
                 comm=self.comm, iteration_name=self.iteration_name,
                 tasks=tasks)
-            reg_helper.monitor_tasks()
+            reg_helper.monitor_tasks(sleep_time_in_s=SLEEP_TIME)
 
             # # This only smooths the update
             # self.regularization(
