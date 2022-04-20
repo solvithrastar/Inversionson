@@ -6,6 +6,7 @@ from salvus.flow import api as sapi
 from salvus.opt.smoothing import get_smooth_model
 from inversionson.utils import sleep_or_process
 
+
 class RegularizationHelper(object):
     """
     This class can get a list of tasks that require smoothing,
@@ -73,6 +74,8 @@ class RegularizationHelper(object):
                     old_tasks[task_name]["submitted"] = False
                     old_tasks[task_name]["retrieved"] = False
                     old_tasks[task_name]["reposts"] = 0
+                else:
+                    old_tasks[task_name] = tasks[task_name]
             with open(self.get_iteration_toml_filename(), "w") as fh:
                 toml.dump(old_tasks, fh)
 
