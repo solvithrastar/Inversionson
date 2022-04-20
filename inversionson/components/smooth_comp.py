@@ -452,7 +452,7 @@ class SalvusSmoothComponent(Component):
             if not hpc_cluster.remote_exists(remote_diff_model):
                 tmp_remote_diff_model = remote_diff_model + "_tmp"
                 hpc_cluster.remote_put(diff_model_file, tmp_remote_diff_model)
-                hpc_cluster.run_ssh_command(f"mv {tmp_remote_diff_model} {diff_model_file}")
+                hpc_cluster.run_ssh_command(f"mv {tmp_remote_diff_model} {remote_diff_model}")
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
