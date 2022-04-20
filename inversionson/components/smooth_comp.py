@@ -362,7 +362,7 @@ class SalvusSmoothComponent(Component):
             self.comm.project.change_attribute('smoothing_job["submitted"]', True)
         self.comm.project.update_iteration_toml()
 
-    def run_remote_smoother_for_model(
+    def get_sims_for_smoothing_task(
         self,
         reference_model,
         model_to_smooth,

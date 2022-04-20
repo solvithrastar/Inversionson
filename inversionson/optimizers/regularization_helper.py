@@ -80,7 +80,7 @@ class RegularizationHelper(object):
         """
         for task_name, task_dict in self.tasks.items():
             if not task_dict["submitted"] and task_dict["reposts"] < self.max_reposts:
-                sims = self.comm.smoother.run_remote_smoother_for_model(
+                sims = self.comm.smoother.get_sims_for_smoothing_task(
                     reference_model=task_dict["reference_model"],
                     model_to_smooth=task_dict["model_to_smooth"],
                     smoothing_lengths=task_dict["smoothing_lengths"],
