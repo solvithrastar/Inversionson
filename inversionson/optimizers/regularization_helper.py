@@ -20,10 +20,13 @@ class RegularizationHelper(object):
         smoothing and the output location to which the smoothed parameters
         should be retrieved.
 
-        tasks = {task_name: {"reference_model": str, "model_to_smooth": str,
+        :param tasks: a dict of dicts like this:
+                {task_name: {"reference_model": str, "model_to_smooth": str,
                 "smoothing_lengths": list, "smoothing_parameters": list,
-                "output_location": str}, "..." : {...}}
-        :param:
+                "output_location": str}, "task_name2" : {...}, etc.}
+        :type dict
+        :param iteration_name: Name of the iteration.
+        :type iteration_name: str
         """
         self.comm = comm
         self.site_name = self.comm.project.smoothing_site_name
@@ -63,7 +66,7 @@ class RegularizationHelper(object):
                     existing_tasks[task_name].update(base_dict)
                 else:  # Update existing tasks with passed tasks
                     existing_tasks[task_name] = tasks[task_name]
-            with open(self.get_iteration_toml_filename(), "w") as fh:
+            with open(self._get_iteration_toml_filename(), "w") as fh:
                 toml.dump(existing_tasks, fh)
 
     def dispatch_smoothing_tasks(self):
