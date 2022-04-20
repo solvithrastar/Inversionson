@@ -545,7 +545,7 @@ class AdamOpt(Optimize):
                     "model_to_smooth": str(model_to_smooth),
                     "smoothing_lengths": self.roughness_decay_smoothing_length,
                     "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smooth_update_path)}
+                    "output_location": str(self.smoothed_model_path)}
 
         if len(tasks.keys()) > 0:
             reg_helper = RegularizationHelper(
