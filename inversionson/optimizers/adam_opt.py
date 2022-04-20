@@ -558,7 +558,7 @@ class AdamOpt(Optimize):
                          {"reference_model": self.comm.lasif.get_master_model(),
                           "model_to_smooth": self.raw_update_path,
                           "smoothing_lengths": self.comm.project.smoothing_lengths,
-                          "smoothing_params": self.parameters,
+                          "smoothing_parameters": self.parameters,
                           "output_location": self.smooth_update_path}}
             # Run the remote smoother with the raw update
             reg_helper = RegularizationHelper(
