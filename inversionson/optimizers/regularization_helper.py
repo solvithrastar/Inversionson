@@ -106,6 +106,7 @@ class RegularizationHelper(object):
                     task_dict["reposts"] += 1
                     task_dict["submitted"] = False
                     self._write_tasks(self.tasks)
+                    break
             if finished:
                 smooth_gradient = get_smooth_model(
                     job=job,
