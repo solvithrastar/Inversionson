@@ -43,16 +43,11 @@ class RegularizationHelper(object):
 
     def write_tasks(self, tasks):
         """
-        tasks is a dictionary of dictionaries, where each value represents
-        a smoothing task and the key is the unique name.
+        This function writes the tasks to file or updates the task file.
 
-        Each value or dictionary represents the inputs to the smoothing job
-        which are the reference model, a model that needs smoothing,
-        the smoothing lengths and parameters and the location to where
-        the smoothed end result should be stored
-
-        We then add their job name, number of reposts and submission, retrieved
-        status.
+        :param tasks = Dictionary of dictionaries with the relevant info, where
+        for the smoothing jobs. Each key in the outer dictionary represents a task.
+        :type tasks: Dict
         """
         # Write initial toml if there is no task toml yet
         if not os.path.exists(self.get_iteration_toml_filename()):
@@ -61,23 +56,23 @@ class RegularizationHelper(object):
                 task_dict["submitted"] = False
                 task_dict["retrieved"] = False
                 task_dict["reposts"] = 0
-
             with open(self.get_iteration_toml_filename(), "w") as fh:
                 toml.dump(tasks, fh)
 
-        else: # We add the tasks to the old tasks if needed
-            old_tasks = toml.load(self.get_iteration_toml_filename())
+        else:  # We add the tasks to the existing tasks if needed
+            existing_tasks = toml.load(self.get_iteration_toml_filename())
             for task_name, task in tasks.items():
-                if task_name not in old_tasks.keys():
-                    old_tasks[task_name] = tasks[task_name]
-                    old_tasks[task_name]["job_name"] = ""
-                    old_tasks[task_name]["submitted"] = False
-                    old_tasks[task_name]["retrieved"] = False
-                    old_tasks[task_name]["reposts"] = 0
-                else:
-                    old_tasks[task_name] = tasks[task_name]
+                # Add the empty task if it does not exist
+                if task_name not in existing_tasks.keys():
+                    existing_tasks[task_name] = tasks[task_name]
+                    existing_tasks[task_name]["job_name"] = ""
+                    existing_tasks[task_name]["submitted"] = False
+                    existing_tasks[task_name]["retrieved"] = False
+                    existing_tasks[task_name]["reposts"] = 0
+                else:  # Update existing tasks with passed tasks
+                    existing_tasks[task_name] = tasks[task_name]
             with open(self.get_iteration_toml_filename(), "w") as fh:
-                toml.dump(old_tasks, fh)
+                toml.dump(existing_tasks, fh)
 
     def dispatch_smoothing_tasks(self):
         """
@@ -113,6 +108,7 @@ class RegularizationHelper(object):
                 elif s.name in ["unknown", "failed"]:
                     task_dict["reposts"] += 1
                     task_dict["submitted"] = False
+                    self.write_tasks(self.tasks)
             if finished:
                 smooth_gradient = get_smooth_model(
                     job=job,
