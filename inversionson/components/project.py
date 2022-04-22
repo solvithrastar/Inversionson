@@ -104,10 +104,6 @@ class ProjectComponent(Component):
                 "We need a given path for the inversion root directory."
                 " Key: inversion_path"
             )
-        if self.info["dropout_probability"] >= 1.0:
-            raise InversionsonError(
-                "The dropout probability should be between 0.0 and 0.99."
-            )
 
         if "meshes" not in self.info.keys():
             raise InversionsonError(
@@ -195,13 +191,6 @@ class ProjectComponent(Component):
                 "We need information on the amount of ranks you want to "
                 "run your simulations. Key: HPC.wave_propagation.ranks"
             )
-
-        # Removed because it's not fully supported
-        # if "site_name" not in self.info["HPC"]["diffusion_equation"].keys():
-        #     raise InversionsonError(
-        #         "We need information on the site where jobs are submitted. "
-        #         "Key: HPC.diffusion_equation.site_name"
-        #     )
 
         if "wall_time" not in self.info["HPC"]["diffusion_equation"].keys():
             raise InversionsonError(
@@ -538,10 +527,6 @@ class ProjectComponent(Component):
             ]
             self.interpolation_site = self.info["HPC"]["interpolation"]["site_name"]
 
-        # self.smoothing_site_name = self.info["HPC"]["diffusion_equation"][
-        #     "site_name"
-        # ]
-        # We currently assume smoothing site to be simulation site.
         self.remote_data_processing = self.info["HPC"]["remote_data_processing"]["use"]
         self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"][
             "wall_time"
@@ -566,7 +551,6 @@ class ProjectComponent(Component):
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
         self.fast_mesh_dir = self.remote_inversionson_dir / "meshes"
         self.batch_size = self.info["batch_size"]
-        self.dropout_probability = self.info["dropout_probability"]
         self.when_to_validate = self.info["inversion_monitoring"][
             "iterations_between_validation_checks"
         ]
@@ -589,12 +573,6 @@ class ProjectComponent(Component):
         self.paths = {}
         self.paths["inversion_root"] = pathlib.Path(self.inversion_root)
         self.paths["lasif_root"] = pathlib.Path(self.lasif_root)
-        # self.paths["salvus_opt"] = os.path.join(self.inversion_root, "SALVUS_OPT")
-        # if not os.path.exists(self.paths["salvus_opt"]):
-        #     raise InversionsonError(
-        #         "Please make a folder for Salvus opt and initialize it in there"
-        #     )
-
         self.paths["documentation"] = self.inversion_root / "DOCUMENTATION"
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
@@ -604,8 +582,6 @@ class ProjectComponent(Component):
 
         if not os.path.exists(self.paths["iteration_tomls"]):
             os.makedirs(self.paths["iteration_tomls"])
-        # self.paths["salvus_smoother"] = self.info["salvus_smoother"]
-
 
     def create_iteration_toml(self, iteration: str):
         """
