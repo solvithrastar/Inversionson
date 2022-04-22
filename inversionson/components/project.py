@@ -596,8 +596,6 @@ class ProjectComponent(Component):
                 line_below=True,
                 emoji_alias=":date:",
             )
-
-            self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
         self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
         self.modelling_params = self.arrange_params(self.info["modelling_parameters"])
 

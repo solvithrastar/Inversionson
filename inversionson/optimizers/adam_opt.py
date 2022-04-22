@@ -586,10 +586,13 @@ class AdamOpt(Optimize):
         This task takes the raw gradient and does all the regularisation and everything
         to update the model.
         """
+        if self.comm.project.meshes == "multi-mesh":
+            interpolate = True
+            self.comm.lasif.move_gradient_to_cluster()
+        else:
+            interpolate = False
+
         if not self.task_dict["summing_completed"]:
-            if self.comm.project.meshes == "multi-mesh":
-                interpolate = True
-                self.comm.lasif.move_gradient_to_cluster()
             adjoint_helper = AdjointHelper(
                 comm=self.comm, events=self.comm.project.events_in_iteration
             )
@@ -598,7 +601,7 @@ class AdamOpt(Optimize):
                 smooth_individual=False,
                 verbose=verbose,
             )
-            assert self.adjoint_helper.assert_all_simulations_retrieved()
+            assert adjoint_helper.assert_all_simulations_retrieved()
             smoothing_helper = SmoothingHelper(
                 comm=self.comm, events=self.comm.project.events_in_iteration)
             smoothing_helper.monitor_interpolations()
