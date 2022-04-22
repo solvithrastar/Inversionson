@@ -2,19 +2,15 @@ from typing import Dict, List
 import os
 import inspect
 import warnings
-import glob
 import shutil
 import emoji
 import toml
 import salvus.flow.api as sapi
 from tqdm import tqdm
-import time
+
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 from inversionson.utils import sleep_or_process
-
-
-from inversionson.optimizers.adam_opt import AdamOpt
 from inversionson.utils import sum_two_parameters_h5
 
 max_reposts = 3
@@ -1767,11 +1763,8 @@ class SmoothingHelper(object):
         )
         hpc_cluster.remote_get(remote_output_path, gradient)
 
-        # Only sum the raw gradient in AdamOpt, not the update
-        if self.comm.project.optimizer == "adam":
-            adam_opt = AdamOpt(self.comm)
-            if "VPV" in adam_opt.parameters:
-                sum_two_parameters_h5(gradient, ["VPV", "VPH"])
+        if "VPV" in self.comm.project.inversion_params:
+            sum_two_parameters_h5(gradient, ["VPV", "VPH"])
 
     def dispatch_smoothing_simulations(self, smooth_individual=False, verbose=False):
         """
