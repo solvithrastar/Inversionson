@@ -9,7 +9,6 @@ import os
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
 import toml
-import numpy as np
 import pathlib
 from salvus.flow.api import get_site
 from typing import List, Dict
@@ -430,84 +429,6 @@ class LasifComponent(Component):
             event_specific=event_specific,
         )
 
-    def get_minibatch(self, first=False) -> list:
-        """
-        Get a batch of events to use in the coming iteration.
-        This is still under development
-
-        :param first: First batch of inversion?
-        :type first: bool
-        :return: A fresh batch of earthquakes
-        :rtype: list
-        """
-        # If this is the first time ever that a batch is selected
-        valid_data = list(
-            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
-        )
-        events = self.list_events()
-        if first:
-            blocked_events = valid_data
-            use_these = None
-            count = self.comm.project.initial_batch_size
-            avail_events = list(set(events) - set(blocked_events))
-            batch = lapi.get_subset(
-                self.lasif_comm,
-                count=count,
-                events=avail_events,
-                existing_events=None,
-            )
-            return batch
-        else:
-            (
-                blocked_events,
-                use_these,
-            ) = self.comm.salvus_opt.find_blocked_events(events=events)
-            count = self.comm.salvus_opt.get_batch_size()
-        prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
-        prev_iter_info = self.comm.project.get_old_iteration_info(prev_iter)
-        existing = prev_iter_info["new_control_group"]
-        self.comm.project.change_attribute(
-            attribute="old_control_group", new_value=existing
-        )
-        count -= len(existing)
-        if use_these is not None:
-            count -= len(use_these)
-            batch = list(set(use_these + existing))
-            avail_events = list(set(events) - set(blocked_events) - set(use_these))
-            existing = list(set(existing + use_these))
-            avail_events = list(set(avail_events) - set(existing))
-        else:
-            batch = existing
-            if len(blocked_events) == len(valid_data) + len(existing):
-                n_random_events = int(
-                    np.floor(self.comm.project.random_event_fraction * count)
-                )
-                rand_batch = self.comm.minibatch.get_random_event(
-                    n=n_random_events,
-                    existing=existing,
-                    avail_events=list(set(events) - set(blocked_events)),
-                )
-                count -= len(rand_batch)
-                batch = list(batch + rand_batch)
-                existing = batch
-                count -= len(rand_batch)
-            avail_events = list(set(events) - set(blocked_events) - set(existing))
-        # TODO: existing events should only be the control group.
-        # events should exclude the blocked events because that's what
-        # are the options to choose from. The existing go into the poisson disc
-        print(f"We need {count} new events")
-        print(f"We do not want {len(blocked_events)} events")
-        print(f"We have {len(avail_events)} events to choose from")
-        add_batch = lapi.get_subset(
-            self.lasif_comm,
-            count=count,
-            events=avail_events,
-            existing_events=existing,
-        )
-        batch = list(set(batch + add_batch))
-        print(f"Picked batch: {batch}")
-        return batch
-
     def list_events(self, iteration=None):
         """
         Make lasif list events, supposed to be used when all events
@@ -650,19 +571,6 @@ class LasifComponent(Component):
                     "gradient.h5",
                 )
 
-        if (
-            not smooth
-            and self.comm.project.inversion_mode == "mini-batch"
-            and not self.comm.project.optimizer == "adam"
-        ):
-            if not os.path.exists(
-                os.path.join(gradients, f"ITERATION_{iteration}", event)
-            ):
-                os.makedirs(os.path.join(gradients, f"ITERATION_{iteration}", event))
-
-            gradient = os.path.join(
-                gradients, f"ITERATION_{iteration}", event, "gradient.h5"
-            )
         if os.path.exists(gradient):
             return gradient
         if just_give_path:
@@ -811,9 +719,6 @@ class LasifComponent(Component):
                 iteration,
             )
         else:
-            # return self.lasif_comm.project.lasif_config["domain_settings"][
-            #     "domain_file"
-            # ]
             if "validation" in iteration and "it0000" and "00000" not in iteration:
                 if self.comm.project.optimizer == "adam":
                     adam_opt = AdamOpt(self.comm)
@@ -886,7 +791,6 @@ class LasifComponent(Component):
             event,
             "stf.h5",
         )
-        mpi = False
         if os.path.exists(adjoint_path) and not validation:
             print(f"Adjoint source exists for event: {event} ")
             print(
@@ -1108,8 +1012,6 @@ class LasifComponent(Component):
         :type event: str
         """
         # Check if window set exists:
-        from inversionson.utils import double_fork
-
         path = os.path.join(
             self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
         )

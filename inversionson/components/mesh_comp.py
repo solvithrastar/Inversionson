@@ -7,7 +7,6 @@ from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
 from inversionson.optimizers.adam_opt import AdamOpt
-import toml
 
 from lasif.components.component import Component
 
@@ -310,10 +309,7 @@ class SalvusMeshComponent(Component):
                     iteration, adam_opt.model_path
                 )
             else:
-                it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
-                    number=iteration
-                )
-                model_path = self.comm.salvus_opt.get_model_path(iteration=it)
+                raise NotImplementedError("")
             m_tmp = UnstructuredMesh.from_h5(model_path)
             for field_name, field in new_fields.items():
                 field += m_tmp.element_nodal_fields[field_name]
@@ -353,62 +349,6 @@ class SalvusMeshComponent(Component):
 
         m.attach_field("ROI", roi)
         m.write_h5(mesh)
-
-    def write_new_opt_fields_to_simulation_mesh(self):
-        """
-        Salvus opt makes a mesh which has the correct velocities but
-        it does not have everything which is needed to run a simulation.
-        We will thus write it's fields on to our simulation mesh.
-        """
-        if self.comm.project.meshes == "multi-mesh":
-            raise InversionsonError(
-                "Multi-mesh inversion should not use this function. Only " "Mono-mesh."
-            )
-        print("Writing new fields to simulation mesh")
-        iteration = self.comm.project.current_iteration
-        if "validation" in iteration:
-            iteration = iteration[11:]  # We don't need a special mesh
-            if "it0000" not in iteration:
-                return  # No need to write opt fields
-        opt_model = os.path.join(self.comm.salvus_opt.models, f"{iteration}.h5")
-        simulation_mesh = self.comm.lasif.get_simulation_mesh(
-            event_name=None, iteration=iteration
-        )
-
-        sim_mesh_dir = os.path.dirname(simulation_mesh)
-        success_file = os.path.join(sim_mesh_dir, "success.txt")
-
-        if os.path.exists(simulation_mesh) and os.path.exists(success_file):
-            print("Mesh already exists, will not add fields")
-            return
-        else:
-            shutil.copy(
-                self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"][
-                    "domain_file"
-                ],
-                simulation_mesh,
-            )
-
-        with h5py.File(simulation_mesh, mode="r+") as f_new:
-            with h5py.File(opt_model, mode="r") as f:
-                dim_labels = (
-                    f["MODEL/data"]
-                    .attrs.get("DIMENSION_LABELS")[1][1:-1]
-                    .replace(" ", "")
-                    .split("|")
-                )
-                # This assumes the indices are the same in both files,
-                # which seems to be the case as far as DP could tell.
-                for param in self.comm.project.inversion_params:
-                    print("Writing field:", param)
-                    i = dim_labels.index(param)
-                    f_new["MODEL/data"][:, i, :] = f["MODEL/data"][:, i, :]
-
-        # When all fields are successfully copied write a file to indicate
-        # success to prevent the issue that we continue
-        # with the initial model when something here crashes unexpectedly.
-        with open(success_file, "w") as text_file:
-            text_file.write("All fields written successfully.")
 
     def sum_two_fields_on_a_mesh(
         self,

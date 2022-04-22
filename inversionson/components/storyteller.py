@@ -4,7 +4,7 @@ import shutil
 import toml
 import emoji
 from colorama import init
-from colorama import Fore, Style
+from colorama import Fore
 from typing import List, Union
 
 init()
@@ -289,37 +289,6 @@ class StoryTellerComponent(Component):
 
         self.markdown.add_paragraph(text=text)
 
-    def _get_misfit_reduction(self):
-        """
-        Compute misfit reduction between previous two iterations
-        """
-        # We start with misfit of previous iteration
-        # TODO: Something wrong going on here and needs fixing
-        prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
-        prev_it_dict = self.comm.project.get_old_iteration_info(prev_iter)
-
-        prev_total_misfit = 0.0
-        prev_cg_misfit = 0.0
-        for _i, event in enumerate(self.comm.lasif.list_events(iteration=prev_iter)):
-            prev_total_misfit += float(prev_it_dict["events"][str(_i)]["misfit"])
-            if event in prev_it_dict["new_control_group"]:
-                event_index = self.comm.project.get_key_number_for_event(
-                    event=event, iteration=prev_iter
-                )
-                prev_cg_misfit += float(prev_it_dict["events"][event_index]["misfit"])
-
-        current_total_misfit = 0.0
-        current_cg_misfit = 0.0
-        for key, value in self.comm.project.misfits.items():
-            current_total_misfit += float(value)
-            if key in self.comm.project.old_control_group:
-                current_cg_misfit += float(value)
-
-        tot_red = (prev_total_misfit - current_total_misfit) / prev_total_misfit
-        cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
-
-        return tot_red, cg_red
-
     def _add_table_of_events_and_misfits(self, verbose=None, task=None):
         """
         Include a table of events and corresponding misfits to
@@ -498,50 +467,21 @@ class StoryTellerComponent(Component):
             # with the first iteration
             # This is the absolute first iteration
             # We need to create all necessary files
-            iteration = self.comm.project.current_iteration
-            if iteration.startswith("it0000_model"):
-                iteration_number = -1
-            else:
-                iteration_number = 0
             self._create_story_file()
             self._start_entry_for_iteration()
             if (
                 self.comm.project.inversion_mode == "mini-batch"
-                or iteration_number == -1
             ):
                 self._write_list_of_all_events()
                 self._update_usage_of_events()
-                # self._add_image_of_data_coverage()
-                # self._add_image_of_event_misfits()
+
             self._add_table_of_events_and_misfits(task=task)
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_control_group()
                 self._update_event_quality()
-        if task == "compute_misfit":
-            first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
-            if "additional" in verbose:
-                self._report_acceptance_of_model()
-                self._update_usage_of_events()
-                # self._add_image_of_event_misfits()
-            else:
-                if first_try:
-                    self._start_entry_for_iteration()
-                    if self.comm.project.inversion_mode == "mini-batch":
-                        # self._add_image_of_data_coverage()
-                        print("Not making figures now")
-                else:
-                    self._report_shrinking_of_trust_region()
-            if self.comm.project.inversion_mode == "mini-batch":
-                self._add_table_of_events_and_misfits(verbose)
 
         if task == "compute_gradient":
             self._initiate_gradient_computation_task()
-
-        if task == "select_control_batch":
-            if verbose and "increase" in verbose:
-                self._report_increase_in_control_group_size()
-            self._report_control_group()
-            self._update_event_quality()
 
         if task == "finalize_iteration":
             if self.comm.project.inversion_mode == "mini-batch":

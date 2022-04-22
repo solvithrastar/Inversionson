@@ -4,7 +4,6 @@ from inversionson.optimizers.adam_opt import AdamOpt
 
 import os
 from salvus.opt import smoothing
-import pathlib
 
 
 class SalvusSmoothComponent(Component):

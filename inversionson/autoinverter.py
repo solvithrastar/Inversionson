@@ -1,5 +1,4 @@
 import os
-import shutil
 import emoji
 import toml
 import inspect
@@ -9,9 +8,7 @@ from pathlib import Path
 from colorama import init
 from colorama import Fore, Style
 from salvus.flow.api import get_site
-from inversionson import autoinverter_helpers as helpers
 from inversionson.tasks import TaskManager
-from inversionson import InversionsonError
 
 init()
 INTERPOLATION_SCRIPT_PATH = os.path.join(
@@ -156,7 +153,7 @@ def run(root=None):
         )
     )
     info = read_info_toml(root)
-    invert = AutoInverter(info)
+    AutoInverter(info)
 
 
 if __name__ == "__main__":

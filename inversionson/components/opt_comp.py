@@ -20,7 +20,6 @@ class SalvusOptComponent(Component):
 
     def __init__(self, communicator, component_name):
         super(SalvusOptComponent, self).__init__(communicator, component_name)
-        # self.path = self.comm.project.paths["salvus_opt"]
         self.path = self.comm.project.paths["inversion_root"]
         self.task_toml = os.path.join(self.path, "task.toml")
         self.models = os.path.join(self.path, "PHYSICAL_MODELS")

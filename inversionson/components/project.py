@@ -18,9 +18,7 @@ from .lasif_comp import LasifComponent
 from .multimesh_comp import MultiMeshComponent
 from .flow_comp import SalvusFlowComponent
 from .mesh_comp import SalvusMeshComponent
-from .opt_comp import SalvusOptComponent
 from .storyteller import StoryTellerComponent
-from .batch_comp import BatchComponent
 from .smooth_comp import SalvusSmoothComponent
 
 
@@ -227,28 +225,6 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need information on the parameters you keep in your mesh "
                 "for forward modelling. Key: modelling_parameters"
-            )
-
-        if "random_event_fraction" not in self.info.keys():
-            raise InversionsonError(
-                "We need information regarding how many events should be "
-                "randomly picked when all events have been used. "
-                "Key: random_event_fraction"
-            )
-
-        if (
-            self.info["random_event_fraction"] > 1
-            or self.info["random_event_fraction"] < 0
-            or not isinstance(self.info["random_event_fraction"], float)
-        ):
-            raise InversionsonError(
-                "random_event_fraction should be a float" "and lie between 0.0 and 1.0"
-            )
-
-        if "min_ctrl_group_size" not in self.info.keys():
-            raise InversionsonError(
-                "We need information regarding minimum control group size."
-                " Key: min_ctrl_group_size"
             )
 
         if "inversion_mode" not in self.info.keys():
@@ -466,12 +442,10 @@ class ProjectComponent(Component):
         These are wrappers around the main libraries used in the inversion.
         """
         LasifComponent(communicator=self.comm, component_name="lasif")
-        SalvusOptComponent(communicator=self.comm, component_name="salvus_opt")
         MultiMeshComponent(communicator=self.comm, component_name="multi_mesh")
         SalvusFlowComponent(communicator=self.comm, component_name="salvus_flow")
         SalvusMeshComponent(communicator=self.comm, component_name="salvus_mesher")
         StoryTellerComponent(communicator=self.comm, component_name="storyteller")
-        BatchComponent(communicator=self.comm, component_name="minibatch")
         SalvusSmoothComponent(communicator=self.comm, component_name="smoother")
 
     def arrange_params(self, parameters: list) -> list:
@@ -591,11 +565,7 @@ class ProjectComponent(Component):
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
         self.fast_mesh_dir = self.remote_inversionson_dir / "meshes"
-
-        self.initial_batch_size = self.info["initial_batch_size"]
-        self.random_event_fraction = self.info["random_event_fraction"]
-        self.min_ctrl_group_size = self.info["min_ctrl_group_size"]
-        self.maximum_grad_divergence_angle = self.info["max_angular_change"]
+        self.batch_size = self.info["batch_size"]
         self.dropout_probability = self.info["dropout_probability"]
         self.when_to_validate = self.info["inversion_monitoring"][
             "iterations_between_validation_checks"
@@ -609,9 +579,7 @@ class ProjectComponent(Component):
                 adam_opt = AdamOpt(self.comm)
                 self.current_iteration = adam_opt.iteration_name
             else:
-                self.current_iteration = (
-                    self.comm.salvus_opt.get_newest_iteration_name()
-                )
+                raise NotImplementedError("")
             print(f"Current Iteration: {self.current_iteration}")
             self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
         self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
@@ -638,14 +606,11 @@ class ProjectComponent(Component):
             os.makedirs(self.paths["iteration_tomls"])
         # self.paths["salvus_smoother"] = self.info["salvus_smoother"]
 
-        self.paths["control_group_toml"] = os.path.join(
-            self.paths["documentation"], "control_groups.toml"
-        )
 
     def create_iteration_toml(self, iteration: str):
         """
         Create the toml file for an iteration. This toml file is then updated.
-        To create the toml, we need the events and the control group
+        To create the toml, we need the events
 
         :param iteration: Name of iteration
         :type iteration: str
@@ -678,20 +643,6 @@ class ProjectComponent(Component):
         if self.meshes == "mono-mesh":
             it_dict["remote_simulation_mesh"] = None
 
-        last_control_group = []
-        if (
-            iteration != "it0000_model"
-            and not validation
-            and not self.AdamOpt
-            and self.inversion_mode == "mini-batch"
-        ):
-            ctrl_grps = toml.load(self.comm.project.paths["control_group_toml"])
-            prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
-            last_control_group = ctrl_grps[prev_iter]["new"]
-
-        if not validation and self.inversion_mode == "mini-batch":
-            it_dict["last_control_group"] = last_control_group
-            it_dict["new_control_group"] = []
         f_job_dict = {
             "name": "",
             "submitted": False,
@@ -730,24 +681,6 @@ class ProjectComponent(Component):
                 jobs = {"forward": f_job_dict}
                 if remote_interp:
                     jobs["model_interp"] = i_job_dict
-            if self.inversion_mode == "mini-batch" and not self.AdamOpt:
-                if not validation:
-                    jobs = {
-                        "forward": f_job_dict,
-                        "adjoint": a_job_dict,
-                        "smoothing": s_job_dict,
-                    }
-                    if remote_interp:
-                        jobs["model_interp"] = i_job_dict
-                        jobs["gradient_interp"] = i_job_dict
-                it_dict["events"][str(_i)] = {
-                    "name": event,
-                    "job_info": jobs,
-                }
-                # it_dict["events"][event] = {
-                #     "job_info": jobs,
-                # }
-            else:
                 if not validation:
                     jobs = {
                         "forward": f_job_dict,
@@ -756,7 +689,6 @@ class ProjectComponent(Component):
                     if remote_interp:
                         jobs["model_interp"] = i_job_dict
                         jobs["gradient_interp"] = i_job_dict
-                    # Only implemented in the AdamOpt case for now
                     if self.hpc_processing and not validation:
                         jobs["hpc_processing"] = f_job_dict
                 it_dict["events"][str(_i)] = {
@@ -766,8 +698,7 @@ class ProjectComponent(Component):
             if not validation:
                 it_dict["events"][str(_i)]["misfit"] = 0.0
                 it_dict["events"][str(_i)]["usage_updated"] = False
-        if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
-            it_dict["smoothing"] = s_job_dict
+        it_dict["smoothing"] = s_job_dict
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -798,40 +729,6 @@ class ProjectComponent(Component):
             raise InversionsonError(f"Method not implemented for type {new_value.type}")
         exec(command)
 
-    def update_control_group_toml(self, new=False, first=False):
-        """
-        A toml file for monitoring which control group is used in each
-        iteration.
-        Structure: dict[iteration] = {old: [], new: []}
-        :param new: Should the new control group be updated?
-        :type new: bool, optional
-        :param first: Does the toml need to be created?
-        :type first: bool, optional
-        """
-        iteration = self.current_iteration
-        print(f"Iteration: {iteration}")
-        if first:
-            cg_dict = {}
-            cg_dict[iteration] = {"old": [], "new": []}
-            with open(self.paths["control_group_toml"], "w") as fh:
-                toml.dump(cg_dict, fh)
-                return
-        else:
-            cg_dict = toml.load(self.paths["control_group_toml"])
-            if not new:
-                prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
-                cg_dict[iteration] = {}
-                cg_dict[iteration]["old"] = cg_dict[prev_iter]["new"]
-                if new not in cg_dict[iteration].keys():
-                    cg_dict[iteration]["new"] = []
-            if new:
-                if iteration not in cg_dict.keys():
-                    cg_dict[iteration] = {}
-                cg_dict[iteration]["new"] = self.new_control_group
-
-        with open(self.paths["control_group_toml"], "w") as fh:
-            toml.dump(cg_dict, fh)
-
     def update_iteration_toml(self, iteration="current", validation=False):
         """
         Use iteration parameters to update iteration toml file
@@ -855,11 +752,7 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 f"Iteration toml for iteration: {iteration} does not exists"
             )
-        if os.path.exists(self.paths["control_group_toml"]) and not validation:
-            control_group_dict = toml.load(self.paths["control_group_toml"])
-            control_group_dict = control_group_dict[iteration]
-        elif self.inversion_mode == "mini-batch" and not self.AdamOpt:
-            control_group_dict = {"old": [], "new": []}
+
         it_dict = {}
         it_dict["name"] = iteration
         it_dict["events"] = {}
@@ -867,11 +760,7 @@ class ProjectComponent(Component):
         if self.meshes == "mono-mesh":
             it_dict["remote_simulation_mesh"] = self.remote_mesh
 
-        # I need a way to figure out what the controlgroup is
         # This definitely needs improvement
-        if not (validation or self.AdamOpt) and self.inversion_mode == "mini-batch":
-            it_dict["last_control_group"] = control_group_dict["old"]
-            it_dict["new_control_group"] = control_group_dict["new"]
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             jobs = {"forward": self.forward_job[event]}
             if not validation:
@@ -882,22 +771,15 @@ class ProjectComponent(Component):
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.hpc_processing and not validation:
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
-            if self.inversion_mode == "mini-batch" and not self.AdamOpt:
-                if not validation:
-                    jobs["smoothing"] = self.smoothing_job[event]
-                it_dict["events"][str(_i)] = {
-                    "name": event,
-                    "job_info": jobs,
-                }
-            else:
-                it_dict["events"][str(_i)] = {
-                    "name": event,
-                    "job_info": jobs,
-                }
+
+            it_dict["events"][str(_i)] = {
+                "name": event,
+                "job_info": jobs,
+            }
             if not validation:
                 it_dict["events"][str(_i)]["misfit"] = self.misfits[event]
                 it_dict["events"][str(_i)]["usage_updated"] = self.updated[event]
-        if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
+        if not validation:
             it_dict["smoothing"] = self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
@@ -914,7 +796,7 @@ class ProjectComponent(Component):
             adam_opt = AdamOpt(self.comm)
             iteration = adam_opt.iteration_name
         else:
-            iteration = self.comm.salvus_opt.get_newest_iteration_name()
+            raise NotImplementedError("")
         if validation:
             iteration = f"validation_{iteration}"
         remote_interp = False
@@ -932,9 +814,6 @@ class ProjectComponent(Component):
         self.current_iteration = self.iteration_name
         self.events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
         if not validation:
-            if self.inversion_mode == "mini-batch" and not self.AdamOpt:
-                self.old_control_group = it_dict["last_control_group"]
-                self.new_control_group = it_dict["new_control_group"]
             self.adjoint_job = {}
             self.smoothing_job = {}
             self.misfits = {}
@@ -943,7 +822,7 @@ class ProjectComponent(Component):
         if remote_interp:
             self.model_interp_job = {}
             self.gradient_interp_job = {}
-        if self.hpc_processing and self.AdamOpt and not validation:
+        if self.hpc_processing and not validation:
             self.hpc_processing_job = {}
 
         if self.meshes == "mono-mesh":
@@ -963,10 +842,6 @@ class ProjectComponent(Component):
                 self.adjoint_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "adjoint"
                 ]
-                if self.inversion_mode == "mini-batch" and not self.AdamOpt:
-                    self.smoothing_job[event] = it_dict["events"][str(_i)]["job_info"][
-                        "smoothing"
-                    ]
             self.forward_job[event] = it_dict["events"][str(_i)]["job_info"]["forward"]
             if remote_interp:
                 self.model_interp_job[event] = it_dict["events"][str(_i)]["job_info"][
@@ -976,11 +851,11 @@ class ProjectComponent(Component):
                     self.gradient_interp_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["gradient_interp"]
-            if self.hpc_processing and self.AdamOpt and not validation:
+            if self.hpc_processing and not validation:
                 self.hpc_processing_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "hpc_processing"
                 ]
-        if (self.inversion_mode == "mono-batch" or self.AdamOpt) and not validation:
+        if not validation:
             self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:

@@ -1,7 +1,6 @@
 import inspect
 import os
 import toml
-import shutil
 
 from salvus.flow.api import get_site
 from inversionson.utils import sum_two_parameters_h5

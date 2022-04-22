@@ -99,13 +99,8 @@ class SalvusFlowComponent(Component):
                 elif sim_type == "hpc_processing":
                     job = self.comm.project.hpc_processing_job[event]["name"]
                 else:
-                    if (
-                        self.comm.project.inversion_mode == "mono-batch"
-                        or self.comm.project.optimizer == "adam"
-                    ):
-                        job = self.comm.project.smoothing_job["name"]
-                    else:
-                        job = self.comm.project.smoothing_job[event]["name"]
+                    job = self.comm.project.smoothing_job["name"]
+
         self.comm.project.update_iteration_toml()
         return job
 
@@ -227,9 +222,6 @@ class SalvusFlowComponent(Component):
                     f"Gradient interpolation job for event: {event} "
                     "has not been submitted"
                 )
-        interp_folder = os.path.join(
-            interp_folder, "GRADIENTS" if gradient else "MODELS", event
-        )
         site_name = self.comm.project.interpolation_site
         db_job = sapi._get_config()["db"].get_jobs(
             limit=1,
@@ -240,7 +232,7 @@ class SalvusFlowComponent(Component):
         job = s_job.Job(
             site=sapi.get_site(site_name=db_job.site.site_name),
             commands=self.comm.multi_mesh.get_interp_commands(
-                event, gradient, interp_folder=interp_folder
+                event, gradient
             ),
             job_type=db_job.job_type,
             job_info=db_job.info,

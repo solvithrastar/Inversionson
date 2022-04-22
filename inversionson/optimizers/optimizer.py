@@ -203,15 +203,7 @@ class Optimize(object):
             raise InversionsonError(f"Iteration {it_name} already exists")
 
         if events is None and not validation:
-            if self.comm.project.inversion_mode == "mini-batch":
-                print("Getting minibatch")
-                if it_name == "model_00000":
-                    first = True
-                else:
-                    first = False
-                events = self.comm.lasif.get_minibatch(first=first)
-            else:
-                events = self.comm.lasif.list_events()
+            events = self.comm.lasif.list_events()
         elif events is None and validation:
             events = self.comm.project.validation_dataset
         self.comm.lasif.set_up_iteration(it_name, events)

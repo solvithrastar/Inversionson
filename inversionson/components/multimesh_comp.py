@@ -1,4 +1,3 @@
-from numpy import source
 from inversionson import InversionsonError
 from salvus.flow.sites import job, remote_io_site
 import salvus.flow.api as sapi
@@ -29,7 +28,6 @@ class MultiMeshComponent(Component):
 
     def __init__(self, communicator, component_name):
         super(MultiMeshComponent, self).__init__(communicator, component_name)
-        self.physical_models = self.comm.salvus_opt.models
 
     def find_model_file(self, iteration: str):
         """
@@ -42,7 +40,7 @@ class MultiMeshComponent(Component):
             adam_opt = AdamOpt(self.comm)
             model = adam_opt.model_path
         else:
-            model = os.path.join(self.physical_models, iteration + ".h5")
+            raise NotImplementedError("The above should be made more general")
 
         if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
@@ -54,7 +52,7 @@ class MultiMeshComponent(Component):
                 if self.comm.project.optimizer == "adam":
                     it_number = adam_opt.iteration_number
                 else:
-                    it_number = self.comm.salvus_opt.get_number_of_newest_iteration()
+                    raise NotImplementedError("fix above to a general version of the optimizer")
                 old_it = it_number - self.comm.project.when_to_validate + 1
                 model = (
                     self.comm.salvus_mesher.average_meshes
@@ -116,7 +114,6 @@ class MultiMeshComponent(Component):
             job = self.construct_remote_interpolation_job(
                 event=event,
                 gradient=False,
-                interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
                 attribute=f'model_interp_job["{event}"]["name"]',
@@ -168,7 +165,6 @@ class MultiMeshComponent(Component):
             job = self.construct_remote_interpolation_job(
                 event=event,
                 gradient=True,
-                interp_folder=interp_folder,
             )
             self.comm.project.change_attribute(
                 attribute=f'gradient_interp_job["{event}"]["name"]',
@@ -232,7 +228,7 @@ class MultiMeshComponent(Component):
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
 
     def construct_remote_interpolation_job(
-        self, event: str, gradient=False, interp_folder=None
+        self, event: str, gradient=False
     ):
         """
         Construct a custom Salvus job which can be submitted to an HPC cluster
@@ -242,10 +238,6 @@ class MultiMeshComponent(Component):
         :type event: str
         :param gradient: Are we interpolating the gradient?, defaults to False
         :type gradient: bool, optional
-        :param interp_folder: A folder to save interpolation weights,
-            if interpolation has been done before, these weights can be stored,
-            defaults to None
-        :type interp_folder: str, optional
         """
 
         description = "Interpolation of "
@@ -276,7 +268,7 @@ class MultiMeshComponent(Component):
         int_job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
             commands=self.get_interp_commands(
-                event=event, gradient=gradient, interp_folder=interp_folder
+                event=event, gradient=gradient
             ),
             job_type="interpolation",
             job_description=description,
@@ -458,15 +450,11 @@ class MultiMeshComponent(Component):
         :param hpc_cluster: the cluster site object, defaults to None
         :type hpc_cluster: Salvus.site, optional
         """
-        gradient = True if "gradient" in str(toml_filename) else False
         if hpc_cluster is None:
             hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         remote_path = (
             pathlib.Path(self.comm.project.remote_mesh_dir) / event / toml_filename.name
         )
-        # if hpc_cluster.remote_exists(remote_path):
-        #     return remote_path
-        # else:
         if not hpc_cluster.remote_exists(remote_path.parent):
             hpc_cluster.remote_mkdir(remote_path.parent)
         hpc_cluster.remote_put(toml_filename, remote_path)
@@ -476,7 +464,6 @@ class MultiMeshComponent(Component):
         self,
         event: str,
         gradient: bool,
-        interp_folder: Union[str, pathlib.Path],
     ) -> list:
         """
         Get the interpolation commands needed to do remote interpolations.
@@ -566,25 +553,12 @@ class MultiMeshComponent(Component):
         Check to see if remote interpolation script is available.
         If not, create one and put it there
         """
-        # get_remote
-        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
-        # if hpc_cluster.config["site_type"] == "local":
         remote_script_path = os.path.join(
             self.comm.project.remote_inversionson_dir,
             "SCRIPTS",
             "interpolation.py",
         )
-        # else:
-        #     username = hpc_cluster.config["ssh_settings"]["username"]
-        #     remote_script_path = os.path.join(
-        #         "/users", username, "scripts", "interpolation_test.py"
-        #     )
-        # if not hpc_cluster.remote_exists(remote_script_path):
-        #     hpc_cluster.remote_put(
-        #         os.path.join(REMOTE_SCRIPT_PATHS, "interpolation.py"),
-        #         remote_script_path,
-        #     )
-        #     # self._make_remote_interpolation_script(hpc_cluster)
+
         return remote_script_path
 
     def get_remote_field_moving_script_path(self):
@@ -610,8 +584,6 @@ class MultiMeshComponent(Component):
         We see if it exists locally.
         If not, we create it locally and copy to cluster.
         """
-
-        # get_remote
         if hpc_cluster.config["site_type"] == "local":
             remote_script_dir = os.path.join(
                 self.comm.project.remote_diff_model_dir, "..", "scripts"

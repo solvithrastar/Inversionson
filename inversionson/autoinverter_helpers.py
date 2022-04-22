@@ -67,7 +67,6 @@ class RemoteJobListener(object):
         if events is None:
             if job_type == "smoothing" and (
                 self.comm.project.inversion_mode == "mono-batch"
-                or self.comm.project.AdamOpt
             ):
                 self.events = [None]
             else:
@@ -822,23 +821,7 @@ class ForwardHelper(object):
             # self.comm.project.update_iteration_toml(validation=True)
             # return
 
-        # If event is in control group, we look for newest window set for event
-        if (
-            iteration != "it0000_model"
-            and not self.comm.project.AdamOpt
-            and event in self.comm.project.old_control_group
-        ):
-
-            windows = self.comm.lasif.lasif_comm.project.paths["windows"]
-            window_sets = glob.glob(os.path.join(windows, "*" + event + "*"))
-            latest_windows = max(window_sets, key=os.path.getctime)
-            if not os.path.exists(os.path.join(windows, window_set_name + ".sqlite")):
-                shutil.copy(
-                    latest_windows,
-                    os.path.join(windows, window_set_name + ".sqlite"),
-                )
-        else:
-            self.comm.lasif.select_windows(window_set_name=window_set_name, event=event)
+        self.comm.lasif.select_windows(window_set_name=window_set_name, event=event)
 
     def __need_misfit_quantification(self, iteration, event, window_set):
         """
@@ -1437,10 +1420,7 @@ class AdjointHelper(object):
         elif sim_type == "gradient_interp":
             job_info = self.comm.project.gradient_interp_job[event]
         elif sim_type == "smoothing":
-            if self.comm.project.inversion_mode == "mini-batch":
-                job_info = self.comm.project.smoothing_job[event]
-            else:
-                job_info = self.comm.project.smoothing_job
+            job_info = self.comm.project.smoothing_job
         return job_info["submitted"], job_info["retrieved"]
 
     def __process_gradients(
@@ -1907,10 +1887,7 @@ class SmoothingHelper(object):
     def __submitted_retrieved(self, event: str, sim_type="smoothing"):
 
         if sim_type == "smoothing":
-            if (
-                self.comm.project.inversion_mode == "mini-batch"
-                and not self.comm.project.AdamOpt
-            ):
+            if event is not None:
                 job_info = self.comm.project.smoothing_job[event]
             else:
                 job_info = self.comm.project.smoothing_job
@@ -2036,10 +2013,7 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
             for event in smooth_job_listener.to_repost:
-                if (
-                    self.comm.project.inversion_mode == "mono-batch"
-                    or self.comm.project.AdamOpt
-                ):
+                if not smooth_individual:
                     attribute = 'smoothing_job["submitted"]'
                 else:
                     attribute = f'smoothing_job["{event}"]["submitted"]'
