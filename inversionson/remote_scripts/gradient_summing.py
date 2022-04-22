@@ -7,7 +7,7 @@ import os
 
 
 def sum_gradient(gradients: list, output_gradient: str,
-                 parameters: list, batch_average=False) -> bool:
+                 parameters: list, batch_average=False) -> list:
     """
     Sum a list of gradients. This function is called on the remote cluster,
     and expects to be able to use h5py and Python.
@@ -21,8 +21,8 @@ def sum_gradient(gradients: list, output_gradient: str,
     :param batch_average: Set to try to divide the sum by
     the number of gradients. Useful for stochastic methods.
     :type batch_average: bool
-    :return bool to indicate that function ran succesfully till the end
-    :rtype bool
+    :return gradient_norms: list of gradient norms
+    :rtype list
     """
     first = True
     tmp_file = "temo_gradient_sum.h5"
@@ -81,45 +81,38 @@ def sum_gradient(gradients: list, output_gradient: str,
 
 if __name__ == "__main__":
     """
-    Call with python name_of_script toml_filename
+    Script to perform gradient summing. Also writes a file with the norms
+    of each individual gradient.
+    Call script with python name_of_script info_filename
+
+    the info toml should contain a dict with keys:
+    -filenames
+    -output_gradient
+    -events_list
+    -parameters
+    -gradient_norms_path
+    -batch_average
+
+    Events list and filenames should have the same ordering as the files
+    that are summed.
     """
     toml_filename = sys.argv[1]
     info = toml.load(toml_filename)
-    gradient_filenames = info["filenames"]
-    parameters = info["parameters"]
-    output_gradient = info["output_gradient"]
-    event_list = info["event_list"]
-    if "batch_average" in info.keys():
-        batch_average = info["batch_average"]
-    else:
-        batch_average = False
 
-    norms_path = info["gradient_norms_path"]
-    print("Remote summing of gradients started...")
+    if os.path.exists(info["output_gradient"]):
+        os.remove(info["output_gradient"])
 
-    # clear the temporary file to avoid accidentally mixing up summed
-    # gradients from prior iterations.
-    if os.path.exists(output_gradient):
-        os.remove(output_gradient)
-
-    gradient_norms = sum_gradient(gradient_filenames, output_gradient,
-                                  parameters, batch_average)
+    gradient_norms = sum_gradient(info["filenames"], info["output_gradient"],
+                                  info["parameters"], info["batch_average"])
 
     gradient_norm_dict = {}
-    for i in range(len(event_list)):
-        gradient_norm_dict[event_list[i]] = gradient_norms[i]
+    for i in range(len(info["event_list"])):
+        gradient_norm_dict[info["event_list"][i]] = gradient_norms[i]
 
-    with open(norms_path, "w") as fh:
+    with open(info["gradient_norms_path"], "w") as fh:
         toml.dump(gradient_norm_dict, fh)
 
-    # I could add something here, to ensure that it ran successfully
-    print("Seems to have worked!")
-    # Set reference frame to spherical
-    print("Set reference frame")
-    with h5py.File(output_gradient, "r+") as f:
+    # Set reference frame to spherical. This is needed for smoothing later
+    with h5py.File(info["output_gradient"], "r+") as f:
         attributes = f["MODEL"].attrs
         attributes.modify("reference_frame", b"spherical")
-
-    # not sure if this is doing anything useful
-    with open(toml_filename, "w") as fh:
-        toml.dump(info, fh)

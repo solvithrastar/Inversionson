@@ -7,8 +7,10 @@ import shutil
 import h5py
 from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
-from inversionson.optimizers.regularization_helper import RegularizationHelper
+from inversionson.helpers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
+from inversionson.helpers.gradient_summer import GradientSummer
+from inversionson.autoinverter_helpers import SmoothingHelper
 
 
 class AdamOpt(Optimize):
@@ -588,11 +590,17 @@ class AdamOpt(Optimize):
         """
         if not self.task_dict["summing_completed"]:
             # This only interpolates and sums gradients
-            self.regularization(
-                smooth_individual=False,
-                sum_gradients=True,
-                smooth_update=True,
-                verbose=verbose,
+            smoothing_helper = SmoothingHelper(
+                comm=self.comm, events=self.comm.project.events_in_iteration)
+            smoothing_helper.monitor_interpolations()
+
+            grad_summer = GradientSummer(comm=self.comm)
+            grad_summer.sum_gradients(
+                events=self.comm.project.events_in_iteration,
+                output_location=self.raw_gradient_path,
+                batch_average=True,
+                sum_vpv_vph=True,
+                store_norms=True
             )
             self.task_dict["summing_completed"] = True
             self._update_task_file()
