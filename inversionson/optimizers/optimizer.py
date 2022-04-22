@@ -326,70 +326,11 @@ class Optimize(object):
         self.adjoint_helper.dispatch_adjoint_simulations(verbose=verbose)
         assert self.adjoint_helper.assert_all_simulations_dispatched()
 
-    def regularization(
-        self,
-        smooth_individual: bool = False,
-        sum_gradients: bool = True,
-        smooth_update: bool = False,
-        verbose=False,
-    ):
+    def regularization(self):
         """
-        This smooths, sums and interpolates gradients based on what is needed.
-
-        :param smooth_individual: Smooth individual gradients?, defaults to False
-        :type smooth_individual: bool, optional
-        :param sum_gradients: Sum before smoothing?, defaults to True
-        :type sum_gradients: bool, optional
-        :param smooth_update: Smooth update rather than gradient?, defaults to False
-        :type smooth_update: bool, optional
-        :param verbose: Do you want to print the details?, defaults to False
-        :type verbose: bool, optional
+        To be implemented
         """
-        interpolate = False
-        if self.comm.project.meshes == "multi-mesh":
-            interpolate = True
-            self.comm.lasif.move_gradient_to_cluster()
-        self.adjoint_helper = helpers.AdjointHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
-        )
-        self.adjoint_helper.process_gradients(
-            interpolate=interpolate,
-            smooth_individual=smooth_individual,
-            verbose=verbose,
-        )
-        assert self.adjoint_helper.assert_all_simulations_retrieved()
-
-        self.smoothing_helper = helpers.SmoothingHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
-        )
-        if sum_gradients:
-            gradient = (
-                self.comm.lasif.lasif_comm.project.paths["gradients"]
-                / f"ITERATION_{self.iteration_name}"
-                / "summed_gradient.h5"
-            )
-
-            if not os.path.exists(gradient):
-                if interpolate:
-                    self.smoothing_helper.monitor_interpolations(
-                        smooth_individual=smooth_individual, verbose=verbose
-                    )
-                self.smoothing_helper.sum_gradients()
-            if smooth_update:
-                return
-
-        self.smoothing_helper.dispatch_smoothing_simulations(
-            smooth_individual=smooth_individual, verbose=verbose
-        )
-        assert self.smoothing_helper.assert_all_simulations_dispatched(
-            smooth_individual=smooth_individual
-        )
-        self.smoothing_helper.retrieve_smooth_gradients(
-            smooth_individual=smooth_individual
-        )
-        assert self.smoothing_helper.assert_all_simulations_retrieved(
-            smooth_individual=smooth_individual
-        )
+        pass
 
     def update_model(self):
         """

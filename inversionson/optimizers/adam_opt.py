@@ -10,7 +10,7 @@ from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
-from inversionson.autoinverter_helpers import SmoothingHelper
+from inversionson.autoinverter_helpers import SmoothingHelper, AdjointHelper
 
 
 class AdamOpt(Optimize):
@@ -587,7 +587,18 @@ class AdamOpt(Optimize):
         to update the model.
         """
         if not self.task_dict["summing_completed"]:
-            # This only interpolates and sums gradients
+            if self.comm.project.meshes == "multi-mesh":
+                interpolate = True
+                self.comm.lasif.move_gradient_to_cluster()
+            adjoint_helper = AdjointHelper(
+                comm=self.comm, events=self.comm.project.events_in_iteration
+            )
+            adjoint_helper.process_gradients(
+                interpolate=interpolate,
+                smooth_individual=False,
+                verbose=verbose,
+            )
+            assert self.adjoint_helper.assert_all_simulations_retrieved()
             smoothing_helper = SmoothingHelper(
                 comm=self.comm, events=self.comm.project.events_in_iteration)
             smoothing_helper.monitor_interpolations()
