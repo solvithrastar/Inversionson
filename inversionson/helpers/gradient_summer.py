@@ -68,7 +68,7 @@ class GradientSummer(object):
         hpc_cluster = get_site(self.comm.project.site_name)
 
         remote_inversionson_dir = os.path.join(
-            self.comm.project.remote_diff_model_dir, "..", "summing_dir"
+            self.comm.project.remote_inversionson_dir, "SUMMING"
         )
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)

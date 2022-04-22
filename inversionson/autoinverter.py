@@ -97,9 +97,10 @@ class AutoInverter(object):
         remote_interp_path = self.comm.multi_mesh.find_interpolation_script()
         hpc_cluster.remote_put(INTERPOLATION_SCRIPT_PATH, remote_interp_path)
 
-        self.comm.lasif.move_gradient_to_cluster(
-            hpc_cluster=hpc_cluster, overwrite=False
-        )
+        if self.comm.project.meshes == "multi-mesh":
+            self.comm.lasif.move_gradient_to_cluster(
+                hpc_cluster=hpc_cluster, overwrite=False
+            )
 
     def run_inversion(self, n_iterations=1000, verbose=True):
         taskmanager = TaskManager(

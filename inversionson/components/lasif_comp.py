@@ -51,7 +51,7 @@ class LasifComponent(Component):
         :type name: str
         :return: True if lasif has the iteration
         """
-        iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
         if it_name.startswith("ITERATION_"):
             it_name = it_name.replace("ITERATION_", "")
         if isinstance(iterations, list):
@@ -415,7 +415,7 @@ class LasifComponent(Component):
         :param events: list of events used in iteration, defaults to []
         :type events: list, optional
         """
-        iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
         if isinstance(iterations, list):
             if name in iterations:
                 warnings.warn(f"Iteration {name} already exists", InversionsonWarning)
@@ -1058,7 +1058,7 @@ class LasifComponent(Component):
         :return: List of validation iterations
         :rtype: list
         """
-        iterations = lapi.list_iterations(self.lasif_comm, output=True)
+        iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
         if only_validation:
             return [x for x in iterations if "validation" in x]
         if not include_validation:

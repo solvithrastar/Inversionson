@@ -1791,7 +1791,7 @@ class SmoothingHelper(object):
         Monitor the status of the interpolations, as soon as one is done,
         the smoothing simulation is dispatched
         """
-        if self.comm.project.meshes == "multi-mesh":
+        if not self.comm.project.meshes == "multi-mesh":
             return
 
         events = self.events

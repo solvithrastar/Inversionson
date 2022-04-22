@@ -4,6 +4,7 @@ have in common. The class serves the purpose of making it easy to add
 a custom optimizer to Inversionson. Whenever the custom optimizer has a 
 task which works the same as in the base class. It should aim to use that one.
 """
+import sys
 from abc import abstractmethod as _abstractmethod
 from pathlib import Path
 import os
@@ -66,15 +67,16 @@ class Optimize(object):
                 f"{self.optimizer_name} optimizer in {self.config_file} \n"
                 f"Then reinitialize the {self.optimizer_name} optimizer."
             )
-            return
+            sys.exit()
         self._read_config()
 
         if self.initial_model == "":
-            raise InversionsonError(
+            print(
                 f"Please set config and provide initial model to "
                 f"{self.optimizer_name} optimizer in {self.config_file} \n"
                 f"Then reinitialize the {self.optimizer_name} optimizer."
             )
+            sys.exit()
 
         # Initialize folders if needed
         if not os.path.exists(self._get_path_for_iteration(0, self.model_path)):
@@ -95,6 +97,18 @@ class Optimize(object):
     def _initialize_derived_class_folders(self):
         """You need to make this yourself. Can do nothing, if no extra folders are
         required"""
+        pass
+
+    @_abstractmethod
+    def _init_directories(self):
+        pass
+
+    @_abstractmethod
+    def _issue_first_task(self):
+        pass
+
+    @_abstractmethod
+    def _read_task_file(self):
         pass
 
     def _write_initial_config(self):

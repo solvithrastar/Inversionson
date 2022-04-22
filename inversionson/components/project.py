@@ -657,16 +657,16 @@ class ProjectComponent(Component):
                 jobs = {"forward": f_job_dict}
                 if remote_interp:
                     jobs["model_interp"] = i_job_dict
-                if not validation:
-                    jobs = {
-                        "forward": f_job_dict,
-                        "adjoint": a_job_dict,
-                    }
-                    if remote_interp:
-                        jobs["model_interp"] = i_job_dict
-                        jobs["gradient_interp"] = i_job_dict
-                    if self.hpc_processing and not validation:
-                        jobs["hpc_processing"] = f_job_dict
+            if not validation:
+                jobs = {
+                    "forward": f_job_dict,
+                    "adjoint": a_job_dict,
+                }
+                if remote_interp:
+                    jobs["model_interp"] = i_job_dict
+                    jobs["gradient_interp"] = i_job_dict
+                if self.hpc_processing and not validation:
+                    jobs["hpc_processing"] = f_job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,

@@ -106,8 +106,8 @@ if __name__ == "__main__":
                                   info["parameters"], info["batch_average"])
 
     gradient_norm_dict = {}
-    for i in range(len(info["event_list"])):
-        gradient_norm_dict[info["event_list"][i]] = gradient_norms[i]
+    for i in range(len(info["events_list"])):
+        gradient_norm_dict[info["events_list"][i]] = gradient_norms[i]
 
     with open(info["gradient_norms_path"], "w") as fh:
         toml.dump(gradient_norm_dict, fh)
