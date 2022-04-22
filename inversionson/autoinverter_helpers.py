@@ -760,7 +760,7 @@ class ForwardHelper(object):
                     execute_with_mpi=False,
                 )
             ]
-            # commands = conda_command + commands
+            commands = conda_command + commands
 
         job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),

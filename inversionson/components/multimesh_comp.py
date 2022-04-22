@@ -557,7 +557,7 @@ class MultiMeshComponent(Component):
                     execute_with_mpi=False,
                 )
             ]
-            # commands = conda_command + commands
+            commands = conda_command + commands
 
         return commands
 
