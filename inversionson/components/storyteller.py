@@ -2,7 +2,12 @@ from lasif.components.component import Component
 import os
 import shutil
 import toml
+import emoji
+from colorama import init
+from colorama import Fore, Style
+from typing import List, Union
 
+init()
 from inversionson import InversionsonError
 
 
@@ -53,6 +58,7 @@ class StoryTellerComponent(Component):
         else:
             self._create_initial_events_quality_toml()
         self.markdown = MarkDown(self.story_file)
+        self.printer = PrettyPrinter()
 
     def _create_root_folder(self):
         """
@@ -714,3 +720,88 @@ class MarkDown(StoryTellerComponent):
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()
+
+
+class PrettyPrinter(object):
+    """
+    A class which makes printing in Inversionson pretty and consistant.
+
+    Not too dissimilar from the MarkDown class
+    """
+
+    def __init__(self):
+        self.stream = ""
+        self.color = Fore.WHITE
+        self.color_dict = self.create_color_dict()
+
+    def create_color_dict(self):
+        return {
+            "white": Fore.WHITE,
+            "black": Fore.BLACK,
+            "blue": Fore.BLUE,
+            "green": Fore.GREEN,
+            "red": Fore.RED,
+            "cyan": Fore.CYAN,
+            "magenta": Fore.MAGENTA,
+            "yellow": Fore.YELLOW,
+        }
+
+    def set_color(self, color: str):
+        self.color = self.color_dict[color.lower()]
+
+    def add_emoji(self, emoji_alias: str, vertical_line=True):
+        if not emoji_alias.startswith(":"):
+            emoji_alias = ":" + emoji_alias
+        if not emoji_alias.endswith(":"):
+            emoji_alias += ":"
+        self.stream += f"{emoji.emojize(emoji_alias, use_aliases=True)}"
+        self.stream += " | " if vertical_line else " "
+
+    def add_horizontal_line(self):
+        self.stream += "\n ============================== \n"
+
+    def add_message(self, message: str):
+        self.stream += message
+
+    def print(
+        self,
+        message: str,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+        color: str = None,
+    ):
+        """
+        A printing function which works with the stream and finally prints it and
+        resets the stream
+
+        :param message: The string to be printed
+        :type message: str
+        :param line_above: Print a line above?, defaults to False
+        :type line_above: bool, optional
+        :param line_below: Print a line below?, defaults to False
+        :type line_below: bool, optional
+        :param emoji_alias: An emoji at the beginning for good measure? It needs to be a string that
+            refers to an emoji, defaults to None
+        :type emoji_alias: Union[str, List[str]], optional
+        :param emoji_alias: Color to print with. Available colors are:
+            [white, black, red, cyan, yellow, magenta, green, blue], defaults to None
+        :type emoji_alias: str, optional
+        """
+        if color is not None:
+            self.set_color(color)
+        self.stream += f"{self.color} "
+        if line_above:
+            self.add_horizontal_line()
+        if emoji_alias is not None:
+            if isinstance(emoji_alias, list):
+                for _i, emo in enumerate(emoji_alias):
+                    vertical_line = True if _i == len(emoji_alias) - 1 else False
+                    self.add_emoji(emo, vertical_line=vertical_line)
+            else:
+                self.add_emoji(emoji_alias)
+        self.add_message(message)
+        if line_below:
+            self.add_horizontal_line()
+        print(self.stream)
+        self.stream = ""

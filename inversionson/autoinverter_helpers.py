@@ -1,15 +1,14 @@
 from typing import Dict, List
-import emoji
-from colorama import init
-from colorama import Fore
 import os
 import inspect
 import warnings
 import glob
 import shutil
+import emoji
 import toml
 import salvus.flow.api as sapi
 from tqdm import tqdm
+import time
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 from inversionson.utils import sleep_or_process
@@ -46,8 +45,6 @@ PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
     "window_and_calc_adj_src.py",
 )
 
-init()
-
 
 class RemoteJobListener(object):
     """
@@ -77,6 +74,22 @@ class RemoteJobListener(object):
                 self.events = self.comm.project.events_in_iteration
         else:
             self.events = events
+
+    def print(
+        self,
+        message: str,
+        color="white",
+        line_above=False,
+        line_below=False,
+        emoji_alias=None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def monitor_jobs(self, smooth_individual=False):
         """
@@ -124,15 +137,17 @@ class RemoteJobListener(object):
         status = self.comm.salvus_flow.get_job_status(event, self.job_type).name
         if status == "pending":
             if verbose:
-                print(f"Status = {status}, event: {event}")
+                self.print(f"Status = {status}, event: {event}")
         elif status == "running":
             if verbose:
-                print(f"Status = {status}, event: {event}")
+                self.print(f"Status = {status}, event: {event}")
         elif status in ["unknown", "failed"]:
-            print(f"{self.job_type} job for {event}, {status}, will resubmit")
+            self.print(f"{self.job_type} job for {event}, {status}, will resubmit")
             if reposts >= max_reposts:
-                print("No I've actually reposted this too often \n")
-                print("There must be something wrong.")
+                self.print(
+                    "No I've actually reposted this too often \n"
+                    "There must be something wrong."
+                )
                 raise InversionsonError("Too many reposts")
             self.to_repost.append(event)
             reposts += 1
@@ -141,7 +156,7 @@ class RemoteJobListener(object):
                 new_value=reposts,
             )
         elif status == "cancelled":
-            print("What to do here?")
+            self.print("What to do here?")
         elif status == "finished":
             return status
         else:
@@ -176,7 +191,7 @@ class RemoteJobListener(object):
             else:
                 if s.name in ["pending", "running"]:
                     if verbose:
-                        print(
+                        self.print(
                             f"Status = {s.name}, event: {event} "
                             f"for smoothing job {_i}/{len(status)}"
                         )
@@ -187,7 +202,7 @@ class RemoteJobListener(object):
                     continue
                 elif s.name in ("failed", "unknown"):
                     if i == 0:
-                        print(f"Job {s.name}, will resubmit event {event}")
+                        self.print(f"Job {s.name}, will resubmit event {event}")
                         self.to_repost.append(event)
                         reposts += 1
                         if reposts >= max_reposts:
@@ -207,7 +222,7 @@ class RemoteJobListener(object):
                         i += 1
 
                 elif s.name == "cancelled":
-                    print(f"Job cancelled for event {event}")
+                    self.print(f"Job cancelled for event {event}")
 
                 else:
                     warnings.warn(
@@ -216,11 +231,11 @@ class RemoteJobListener(object):
                     )
         if verbose:
             if running > 0:
-                print(f"{running}/{len(status)} of jobs running: {event}")
+                self.print(f"{running}/{len(status)} of jobs running: {event}")
             if pending > 0:
-                print(f"{pending}/{len(status)} of jobs pending: {event}")
+                self.print(f"{pending}/{len(status)} of jobs pending: {event}")
             if finished > 0:
-                print(f"{finished}/{len(status)} of jobs finished: {event}")
+                self.print(f"{finished}/{len(status)} of jobs finished: {event}")
         if len(params) == len(status):
             return "finished"
 
@@ -243,8 +258,12 @@ class RemoteJobListener(object):
         finished = len(self.events) - len(events_left)
         running = 0
         pending = 0
-        print(f"Checking Jobs for {self.job_type}:")
-        for event in tqdm(events_left):
+        self.print(
+            f"Checking Jobs for {self.job_type}:", line_above=True, emoji_alias=":ear:"
+        )
+        for event in tqdm(
+            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True)
+        ):
             if job_dict[event]["retrieved"]:
                 self.events_already_retrieved.append(event)
                 finished += 1
@@ -270,11 +289,11 @@ class RemoteJobListener(object):
                 running += 1
 
         if finished > 0:
-            print(f"{finished}/{len(events)} jobs finished")
+            self.print(f"{finished}/{len(events)} jobs finished", emoji_alias=None)
         if running > 0:
-            print(f"{running}/{len(events)} jobs running")
+            self.print(f"{running}/{len(events)} jobs running", emoji_alias=None)
         if pending > 0:
-            print(f"{pending}/{len(events)} jobs pending")
+            self.print(f"{pending}/{len(events)} jobs pending", emoji_alias=None)
 
         self.comm.project.update_iteration_toml()
 
@@ -306,7 +325,9 @@ class RemoteJobListener(object):
         else:
             events_left = list(set(events) - set(self.events_already_retrieved))
             finished = len(self.events) - len(events_left)
-            print("Monitoring Smoothing jobs")
+            self.print(
+                "Monitoring Smoothing jobs", line_above=True, emoji_alias=":ear:"
+            )
             for event in tqdm(events_left):
                 if job_dict[event]["retrieved"]:
                     finished += 1
@@ -321,19 +342,34 @@ class RemoteJobListener(object):
                     self.events_retrieved_now.append(event)
                     finished += 1
             self.comm.project.update_iteration_toml()
-            print("\n\n ============= Report ================= \n\n")
-            print(f"{finished}/{len(events)} jobs fully finished \n")
+            self.print("\n\n ============= Report ================= \n\n")
+            self.print(f"{finished}/{len(events)} jobs fully finished \n")
 
 
 class ForwardHelper(object):
     """
     Class which assist with everything related to the forward job
-
     """
 
     def __init__(self, comm, events):
         self.comm = comm
         self.events = events
+
+    def print(
+        self,
+        message: str,
+        color="yellow",
+        line_above=False,
+        line_below=False,
+        emoji_alias=None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def dispatch_forward_simulations(self, verbose=False):
         """
@@ -434,13 +470,13 @@ class ForwardHelper(object):
         :type mode: str
         """
         if self.comm.project.forward_job[event]["submitted"]:
-            print(
+            self.print(
                 f"Event {event} has already been submitted. "
                 "Will not do interpolation."
             )
             return
         if self.comm.project.forward_job[event]["interpolated"]:
-            print(
+            self.print(
                 f"Mesh for {event} has already been interpolated. "
                 "Will not do interpolation."
             )
@@ -457,7 +493,7 @@ class ForwardHelper(object):
 
         if mode == "remote":
             if self.comm.project.model_interp_job[event]["submitted"]:
-                print(
+                self.print(
                     f"Interpolation for event {event} has already been "
                     "submitted. Will not do interpolation."
                 )
@@ -510,9 +546,7 @@ class ForwardHelper(object):
             job_info = self.comm.project.hpc_processing_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
-    def __run_forward_simulation(
-        self, event: str, verbose=False
-    ):
+    def __run_forward_simulation(self, event: str, verbose=False):
         """
         Submit forward simulation to daint and possibly monitor aswell
 
@@ -535,9 +569,13 @@ class ForwardHelper(object):
         if submitted:
             return
         if verbose:
-            print(Fore.YELLOW + "\n ============================ \n")
-            print(emoji.emojize(":rocket: | Run forward simulation", use_aliases=True))
-            print(f"Event: {event}")
+            self.print(
+                "Run forward simulation", line_above=True, emoji_alias=":rocket:"
+            )
+            self.print(f"Event: {event}")
+            # print(Fore.YELLOW + "\n ============================ \n")
+            # print(emoji.emojize(":rocket: | Run forward simulation", use_aliases=True))
+            # print(f"Event: {event}")
 
         if simulation_created_remotely:
             w = self.comm.salvus_flow.construct_simulation_from_dict(event)
@@ -561,7 +599,7 @@ class ForwardHelper(object):
             ranks=self.comm.project.ranks,
         )
 
-        print(f"Submitted forward job for event: {event}")
+        self.print(f"Submitted forward job for event: {event}")
 
     def __compute_station_weights(self, event: str, verbose=False):
         """
@@ -576,16 +614,18 @@ class ForwardHelper(object):
             return
 
         if verbose:
-            print(Fore.RED + "\n =========================== \n")
-            print(
-                emoji.emojize(":trident: | Calculate station weights", use_aliases=True)
+            self.print(
+                "Calculate station weights",
+                color="red",
+                line_above=True,
+                emoji_alias=":trident:",
             )
         self.comm.lasif.calculate_station_weights(event)
 
     def __retrieve_seismograms(self, event: str, verbose=False):
         self.comm.salvus_flow.retrieve_outputs(event_name=event, sim_type="forward")
         if verbose:
-            print(f"Copied seismograms for event {event} to lasif folder")
+            self.print(f"Copied seismograms for event {event} to lasif folder")
 
     def __process_data(self, event: str):
         """
@@ -678,8 +718,9 @@ class ForwardHelper(object):
         info["minimum_period"] = self.comm.project.min_period
         info["maximum_period"] = self.comm.project.max_period
         info["start_time_in_s"] = self.comm.project.simulation_dict["start_time"]
-        info["receiver_json_path"] = os.path.join(remote_receiver_dir,
-                                                         f"{event}_receivers.json")
+        info["receiver_json_path"] = os.path.join(
+            remote_receiver_dir, f"{event}_receivers.json"
+        )
 
         toml_filename = f"{iteration}_{event}_adj_info.toml"
 
@@ -713,10 +754,13 @@ class ForwardHelper(object):
         ]
         # Allow to set conda environment first
         if self.comm.project.remote_conda_env:
-            conda_command = [remote_io_site.site_utils.RemoteCommand(
-                command=f"conda activate {self.comm.project.remote_conda_env}",
-                execute_with_mpi=False)]
-            commands = conda_command + commands
+            conda_command = [
+                remote_io_site.site_utils.RemoteCommand(
+                    command=f"conda activate {self.comm.project.remote_conda_env}",
+                    execute_with_mpi=False,
+                )
+            ]
+            # commands = conda_command + commands
 
         job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
@@ -737,7 +781,7 @@ class ForwardHelper(object):
             attribute=f'hpc_processing_job["{event}"]["submitted"]',
             new_value=True,
         )
-        print(f"HPC Processing job for event {event} submitted")
+        self.print(f"HPC Processing job for event {event} submitted")
         self.comm.project.update_iteration_toml()
 
     def __select_windows(self, event: str):
@@ -823,7 +867,7 @@ class ForwardHelper(object):
                 f"window set {window_set}. If you want it computed, "
                 f"change value in validation toml to 0.0"
             )
-            print(message)
+            self.print(message)
 
         return quantify_misfit
 
@@ -890,21 +934,27 @@ class ForwardHelper(object):
             return
 
         if verbose:
-            print(Fore.YELLOW + "\n ============================ \n")
-            print(emoji.emojize(":rocket: | Run adjoint simulation", use_aliases=True))
-            print(f"Event: {event}")
+            self.print(
+                "Run adjoint simulation", line_above=True, emoji_alias=":rocket:"
+            )
+            self.print(f"Event: {event}")
 
-        if (self.comm.project.meshes == "multi-mesh"
-                and self.comm.project.interpolation_mode == "remote"
-            ):
+        if (
+            self.comm.project.meshes == "multi-mesh"
+            and self.comm.project.interpolation_mode == "remote"
+        ):
             simulation_created_remotely = True
         else:
             simulation_created_remotely = False
         if simulation_created_remotely:
-            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation_from_dict(event)
+            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation_from_dict(
+                event
+            )
         else:
             adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
-            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
+            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
+                event, adj_src
+            )
 
         if (
             self.comm.project.remote_mesh is not None
@@ -942,12 +992,11 @@ class ForwardHelper(object):
         :type windows: bool
         """
         if verbose:
-            print(Fore.GREEN + "\n ===================== \n")
-            print(
-                emoji.emojize(
-                    ":floppy_disk: | Process data if needed",
-                    use_aliases=True,
-                )
+            self.print(
+                "Process data if needed",
+                line_above=True,
+                emoji_alias=":floppy_disk:",
+                color="green",
             )
 
         self.__process_data(event)
@@ -955,13 +1004,18 @@ class ForwardHelper(object):
         # Skip window selection in case of validation data
         if windows and not validation:
             if verbose:
-                print(Fore.WHITE + "\n ===================== \n")
-                print(emoji.emojize(":foggy: | Select windows", use_aliases=True))
+                self.print(
+                    "Select windows",
+                    color="white",
+                    line_above=True,
+                    emoji_alias=":foggy:",
+                )
             self.__select_windows(event)
 
         if verbose:
-            print(Fore.MAGENTA + "\n ==================== \n")
-            print(emoji.emojize(":zap: | Quantify Misfit", use_aliases=True))
+            self.print(
+                "Quantify Misfit", color="magenta", line_above=True, emoji_alias=":zap:"
+            )
 
         self.__misfit_quantification(
             event, window_set=window_set, validation=validation
@@ -974,20 +1028,28 @@ class ForwardHelper(object):
         Compute station weights
         """
         if verbose:
-            print(Fore.CYAN + "\n ============================= \n")
-            print(
-                emoji.emojize(
-                    ":globe_with_meridians: :point_right: "
-                    ":globe_with_meridians: | Interpolation Stage",
-                    use_aliases=True,
-                )
+            self.print(
+                "Interpolation Stage",
+                line_above=True,
+                emoji_alias=[
+                    ":globe_with_meridians:",
+                    ":point_right:",
+                    ":globe_with_meridians:",
+                ],
             )
-        print("Will dispatch all interpolation jobs \n")
+        self.print(
+            "Will dispatch all interpolation jobs",
+            emoji_alias=[
+                ":globe_with_meridians:",
+                ":point_right:",
+                ":globe_with_meridians:",
+            ],
+        )
         for _i, event in enumerate(self.events):
             if verbose:
-                print(f"Event {_i+1}/{len(self.events)}:  {event}")
+                self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
             self.__interpolate_model(event=event, mode="remote")
-        print("All interpolations have been dispatched")
+        self.print("All interpolations have been dispatched")
 
         int_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
@@ -995,9 +1057,7 @@ class ForwardHelper(object):
         while True:
             int_job_listener.monitor_jobs()
             for event in int_job_listener.events_retrieved_now:
-                self.__run_forward_simulation(
-                    event=event, verbose=verbose
-                )
+                self.__run_forward_simulation(event=event, verbose=verbose)
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',
@@ -1012,7 +1072,7 @@ class ForwardHelper(object):
                 self.comm.project.update_iteration_toml()
                 self.__interpolate_model(event, mode="remote")
             if len(int_job_listener.events_retrieved_now) > 0:
-                print(
+                self.print(
                     f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
@@ -1076,7 +1136,7 @@ class ForwardHelper(object):
                 self.comm.project.update_iteration_toml()
                 self.__interpolate_model(event, mode="remote")
             if len(int_job_listener.events_retrieved_now) > 0:
-                print(
+                self.print(
                     f"We dispatched {len(int_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
@@ -1092,39 +1152,40 @@ class ForwardHelper(object):
             Compute station weights
         """
         for event in self.events:
-            print(Fore.GREEN + "\n ============================= \n")
-            print(f"Event: {event}")
+            self.print(f"Event: {event}", emoji_alias=":rocket:")
             if self.comm.project.meshes == "multi_mesh":
                 if verbose:
-                    print(Fore.CYAN + "\n ============================= \n")
-                    print(
-                        emoji.emojize(
-                            ":globe_with_meridians: :point_right: "
-                            ":globe_with_meridians: | Interpolation Stage",
-                            use_aliases=True,
-                        )
+                    self.print(
+                        "Interpolation Stage",
+                        line_above=True,
+                        emoji_alias=[
+                            ":globe_with_meridians:",
+                            ":point_right:",
+                            ":globe_with_meridians:",
+                        ],
                     )
                 self.__interpolate_model(event=event, mode="local")
             self.__run_forward_simulation(event, verbose)
             self.__compute_station_weights(event, verbose)
-        print("All forward simulations have been dispatched")
+        self.print("All forward simulations have been dispatched")
 
     def __dispatch_validation_forwards_remote_interps(self, verbose):
         if verbose:
-            print(Fore.CYAN + "\n ============================= \n")
-            print(
-                emoji.emojize(
-                    ":globe_with_meridians: :point_right: "
-                    ":globe_with_meridians: | Interpolation Stage",
-                    use_aliases=True,
-                )
+            self.print(
+                "Interpolation Stage",
+                line_above=True,
+                emoji_alias=[
+                    ":globe_with_meridians:",
+                    ":point_right:",
+                    ":globe_with_meridians:",
+                ],
             )
-        print("Will dispatch all interpolation jobs \n")
+        self.print("Will dispatch all interpolation jobs")
         for _i, event in enumerate(self.events):
             if verbose:
-                print(f"Event {_i+1}/{len(self.events)}:  {event}")
+                self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
             self.__interpolate_model(event=event, mode="remote", validation=True)
-        print("All interpolations have been dispatched")
+        self.print("All interpolations have been dispatched")
 
         vint_job_listener = RemoteJobListener(
             comm=self.comm, job_type="model_interp", events=self.events
@@ -1132,9 +1193,7 @@ class ForwardHelper(object):
         while True:
             vint_job_listener.monitor_jobs()
             for event in vint_job_listener.events_retrieved_now:
-                self.__run_forward_simulation(
-                    event, verbose=verbose
-                )
+                self.__run_forward_simulation(event, verbose=verbose)
                 self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'model_interp_job["{event}"]["retrieved"]',
@@ -1149,7 +1208,7 @@ class ForwardHelper(object):
                 self.comm.project.update_iteration_toml()
                 self.__interpolate_model(event=event, mode="remote", validation=True)
             if len(vint_job_listener.events_retrieved_now) > 0:
-                print(
+                self.print(
                     f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
                     "simulations"
                 )
@@ -1167,15 +1226,16 @@ class ForwardHelper(object):
         for event in self.comm.project.validation_dataset:
             if self.comm.project.meshes == "multi-mesh":
                 if verbose:
-                    print(Fore.CYAN + "\n ============================= \n")
-                    print(
-                        emoji.emojize(
-                            ":globe_with_meridians: :point_right: "
-                            ":globe_with_meridians: | Interpolation Stage",
-                            use_aliases=True,
-                        )
+                    self.print(
+                        "Interpolation Stage",
+                        line_above=True,
+                        emoji_alias=[
+                            ":globe_with_meridians:",
+                            ":point_right:",
+                            ":globe_with_meridians:",
+                        ],
                     )
-                    print(f"{event} interpolation")
+                    self.print(f"{event} interpolation")
 
                 self.__interpolate_model(event, validation=True, verbose=verbose)
             self.__run_forward_simulation(event, verbose)
@@ -1236,7 +1296,7 @@ class ForwardHelper(object):
                 self.comm.project.update_iteration_toml()
                 self.__run_forward_simulation(event=event)
             if len(for_job_listener.events_retrieved_now) > 0:
-                print(
+                self.print(
                     f"Retrieved {len(for_job_listener.events_retrieved_now)} "
                     "seismograms"
                 )
@@ -1280,8 +1340,10 @@ class ForwardHelper(object):
                 hpc_proc_job_listener.to_repost = []
                 hpc_proc_job_listener.events_retrieved_now = []
 
-            if not for_job_listener.events_retrieved_now and not \
-                    hpc_proc_job_listener.events_retrieved_now:
+            if (
+                not for_job_listener.events_retrieved_now
+                and not hpc_proc_job_listener.events_retrieved_now
+            ):
                 sleep_or_process(self.comm)
 
             for_job_listener.to_repost = []
@@ -1300,6 +1362,22 @@ class AdjointHelper(object):
     def __init__(self, comm, events):
         self.comm = comm
         self.events = events
+
+    def print(
+        self,
+        message: str,
+        color="cyan",
+        line_above=False,
+        line_below=False,
+        emoji_alias=None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def dispatch_adjoint_simulations(self, verbose=False):
         """
@@ -1381,8 +1459,8 @@ class AdjointHelper(object):
             adj_job_listener.monitor_jobs()
             for event in adj_job_listener.events_retrieved_now:
                 if not (
-                        self.comm.project.meshes == "multi-mesh"
-                        and self.comm.project.interpolation_mode == "remote"
+                    self.comm.project.meshes == "multi-mesh"
+                    and self.comm.project.interpolation_mode == "remote"
                 ):
                     self.__cut_and_clip_gradient(event=event, verbose=verbose)
                 self.comm.project.change_attribute(
@@ -1415,7 +1493,7 @@ class AdjointHelper(object):
                 self.comm.project.update_iteration_toml()
                 self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
                 if len(adj_job_listener.events_retrieved_now) > 0:
-                    print(
+                    self.print(
                         f"Sent {len(adj_job_listener.events_retrieved_now)} "
                         "smoothing jobs to regularisation"
                     )
@@ -1444,8 +1522,10 @@ class AdjointHelper(object):
             ) == len(events):
                 break
 
-            if not adj_job_listener.events_retrieved_now \
-                    and not interp_job_listener.events_retrieved_now:
+            if (
+                not adj_job_listener.events_retrieved_now
+                and not interp_job_listener.events_retrieved_now
+            ):
                 sleep_or_process(self.comm)
 
             adj_job_listener.to_repost = []
@@ -1459,7 +1539,7 @@ class AdjointHelper(object):
         submitted, retrieved = self.__submitted_retrieved(event, "gradient_interp")
         if submitted:
             if verbose:
-                print(
+                self.print(
                     f"Interpolation for gradient {event} " "has already been submitted"
                 )
             return
@@ -1502,7 +1582,10 @@ class AdjointHelper(object):
         if submitted:
             return
         if verbose:
-            print(f"Event: {event}")
+            self.print(
+                "Run adjoint simulation", line_above=True, emoji_alias=":rocket:"
+            )
+            self.print(f"Event: {event}")
         adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
         w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
 
@@ -1531,7 +1614,7 @@ class AdjointHelper(object):
         submitted, _ = self.__submitted_retrieved(event, "smoothing")
         if submitted:
             if verbose:
-                print(f"Already submitted event {event} for smoothing")
+                self.print(f"Already submitted event {event} for smoothing")
             return
 
         if interpolate:
@@ -1539,11 +1622,11 @@ class AdjointHelper(object):
             _, retrieved = self.__submitted_retrieved(event, "gradient_interp")
             if not retrieved:
                 if verbose:
-                    print(f"Event {event} has not been interpolated")
+                    self.print(f"Event {event} has not been interpolated")
                 return
         if self.comm.project.inversion_mode == "mono-batch":
             self.comm.salvus_flow.retrieve_outputs(event_name=event, sim_type="adjoint")
-            print(f"Gradient for event {event} has been retrieved.")
+            self.print(f"Gradient for event {event} has been retrieved.")
         else:
             self.comm.smoother.run_remote_smoother(event)
 
@@ -1594,7 +1677,7 @@ class AdjointHelper(object):
         os.remove(toml_filename)
 
         # Call script
-        print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
+        # print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
 
 
 class SmoothingHelper(object):

@@ -104,7 +104,7 @@ class AutoInverter(object):
             hpc_cluster=hpc_cluster, overwrite=False
         )
 
-    def run_inversion(self, n_iterations=1000, verbose=False):
+    def run_inversion(self, n_iterations=1000, verbose=True):
         taskmanager = TaskManager(
             optimization_method=self.comm.project.optimizer, comm=self.comm
         )

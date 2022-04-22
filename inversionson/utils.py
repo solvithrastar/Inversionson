@@ -11,23 +11,49 @@ import os, sys
 import h5py
 import time
 
+
+def _print(
+    comm,
+    message,
+    color="white",
+    line_above=False,
+    line_below=False,
+    emoji_alias=":ear:",
+):
+    comm.storyteller.printer.print(
+        message=message,
+        color=color,
+        line_above=line_above,
+        line_below=line_below,
+        emoji_alias=emoji_alias,
+    )
+
+
 def sleep_or_process(comm):
     """
     This functions tries to process a random unprocessed event
     or sleeps if all are processed.
     """
-    if comm.project.random_event_processing \
-            and not comm.lasif.process_random_unprocessed_event():
-        print(f"Seems like there is nothing to do now "
-              f"I might as well process some random event.")
+    if (
+        comm.project.random_event_processing
+        and not comm.lasif.process_random_unprocessed_event()
+    ):
+        _print(
+            comm,
+            f"Seems like there is nothing to do now "
+            f"I might as well process some random event.",
+            emoji_alias=None,
+        )
     else:
-        print(f"Waiting {comm.project.sleep_time_in_s} seconds before trying again")
+        _print(
+            comm,
+            f"Waiting {comm.project.sleep_time_in_s} seconds before trying again",
+            emoji_alias=None,
+        )
         time.sleep(comm.project.sleep_time_in_s)
 
 
-def latlondepth_to_cartesian(
-    lat: float, lon: float, depth_in_km=0.0
-) -> np.ndarray:
+def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates
 
@@ -53,7 +79,7 @@ def latlondepth_to_cartesian(
 def find_parameters_in_dataset(dataset) -> list:
     """
     Figure out which parameter is in dataset and where
-    
+
     :param dataset: hdf5 dataset with a dimension labels
     :type dataset: hdf5 dataset
     :return: parameters
@@ -67,7 +93,7 @@ def find_parameters_in_dataset(dataset) -> list:
 def add_dimension_labels(mesh, parameters: list):
     """
     Label the dimensions in a newly created dataset
-    
+
     :param dataset: Loaded mesh as an hdf5 file
     :type dataset: hdf5 file
     :param parameters: list of parameters
@@ -86,7 +112,7 @@ def cut_source_region_from_gradient(
     Sources often show unreasonable sensitivities. This function
     brings the value of the gradient down to zero for that region.
     I recommend doing this before smoothing.
-    
+
     :param mesh: Path to the mesh
     :type mesh: str
     :param source_location: Source latitude, longitude and depth
@@ -134,7 +160,7 @@ def cut_receiver_regions_from_gradient(
     """
     Remove regions around receivers from gradients. Receivers often have an
     imprint on a model and this aims to fight that effect.
-    
+
     :param mesh: Path to a mesh with a gradient
     :type mesh: str
     :param receivers: key: receivers{'lat': , 'lon':}
@@ -200,7 +226,9 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
     gradient = h5py.File(mesh, "r+")
     data = gradient["MODEL/data"]
-    dim_labels = data.attrs.get("DIMENSION_LABELS")[1].decode()[1:-1].replace(" ", "").split("|")
+    dim_labels = (
+        data.attrs.get("DIMENSION_LABELS")[1].decode()[1:-1].replace(" ", "").split("|")
+    )
     indices = []
     for param in parameters:
         indices.append(dim_labels.index(param))
@@ -217,16 +245,13 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
 
 
 def get_h5_parameter_indices(filename, parameters):
-    """ Get indices in h5 file for parameters in filename
-    """
+    """Get indices in h5 file for parameters in filename"""
     with h5py.File(filename, "r") as h5:
         h5_data = h5["MODEL/data"]
         # Get dimension indices of relevant parameters
         # These should be constant for all gradients, so this is only done
         # once.
-        dim_labels = (
-            h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-        )
+        dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
         if not type(dim_labels) == str:
             dim_labels = dim_labels.decode()
         dim_labels = dim_labels.replace(" ", "").split("|")
@@ -237,30 +262,30 @@ def get_h5_parameter_indices(filename, parameters):
 
 
 def sum_two_parameters_h5(filename, parameters):
-        """sum two parameters in h5 file. Mostly used for summing VPV and VPH"""
-        if not os.path.exists(filename):
-            raise Exception("only works on existing files.")
+    """sum two parameters in h5 file. Mostly used for summing VPV and VPH"""
+    if not os.path.exists(filename):
+        raise Exception("only works on existing files.")
 
-        indices = get_h5_parameter_indices(filename, parameters)
-        indices.sort()
+    indices = get_h5_parameter_indices(filename, parameters)
+    indices.sort()
 
-        if len(indices) != 2:
-            raise Exception("Only implemented for 2 fields.")
+    if len(indices) != 2:
+        raise Exception("Only implemented for 2 fields.")
 
-        with h5py.File(filename, "r+") as h5:
-            dat = h5["MODEL/data"]
-            data_copy = dat[:,:,:].copy()
-            par_sum = data_copy[:, indices[0], :] + data_copy[:, indices[1], :]
-            data_copy[:, indices[0], :] = par_sum
-            data_copy[:, indices[1], :] = par_sum
+    with h5py.File(filename, "r+") as h5:
+        dat = h5["MODEL/data"]
+        data_copy = dat[:, :, :].copy()
+        par_sum = data_copy[:, indices[0], :] + data_copy[:, indices[1], :]
+        data_copy[:, indices[0], :] = par_sum
+        data_copy[:, indices[1], :] = par_sum
 
-            dat[:, indices, :] = data_copy[:, indices, :]
+        dat[:, indices, :] = data_copy[:, indices, :]
 
 
 def sum_gradients(mesh: str, gradients: list):
     """
     Sum the parameters on gradients for a list of events in an iteration
-    
+
     :param mesh: Path to a mesh to be used to store the summed gradients on
     make sure it exists and is of the same dimensions as the others.
     :type mesh: str
@@ -279,9 +304,7 @@ def sum_gradients(mesh: str, gradients: list):
         grad = UnstructuredMesh.from_h5(gradient)
         for field in fields:
             if _i == 0:
-                m.attach_field(
-                    field, np.zeros_like(grad.element_nodal_fields[field])
-                )
+                m.attach_field(field, np.zeros_like(grad.element_nodal_fields[field]))
             m.element_nodal_fields[field] += grad.element_nodal_fields[field]
 
     m.write_h5(mesh)

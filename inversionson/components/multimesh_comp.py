@@ -260,11 +260,12 @@ class MultiMeshComponent(Component):
             remote_processed_dir = os.path.join(
                 self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
             )
-            proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s" \
-                            f"_to_{int(self.comm.project.max_period)}s.h5"
+            proc_filename = (
+                f"preprocessed_{int(self.comm.project.min_period)}s"
+                f"_to_{int(self.comm.project.max_period)}s.h5"
+            )
             remote_proc_file_name = f"{event}_{proc_filename}"
-            remote_proc_path = os.path.join(remote_processed_dir,
-                                            remote_proc_file_name)
+            remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
 
             if not hpc_cluster.remote_exists(remote_proc_path):
                 wall_time += self.comm.project.remote_data_proc_wall_time
@@ -285,7 +286,7 @@ class MultiMeshComponent(Component):
         )
         return int_job
 
-    def prepare_interpolation_toml(self, gradient, event):
+    def prepare_interpolation_toml(self, gradient, event, hpc_cluster=None):
         toml_name = "gradient_interp.toml" if gradient else "model_interp.toml"
         toml_filename = (
             self.comm.project.inversion_root / "INTERPOLATION" / event / toml_name
@@ -296,9 +297,14 @@ class MultiMeshComponent(Component):
 
         remote_weights_path = os.path.join(
             self.comm.project.remote_inversionson_dir,
-            "INTERPOLATION_WEIGHTS", tag, event)
+            "INTERPOLATION_WEIGHTS",
+            tag,
+            event,
+        )
 
-        if os.path.exists(toml_filename):  # if exists, we can update the important parameters. and skip the rest.
+        if os.path.exists(
+            toml_filename
+        ):  # if exists, we can update the important parameters. and skip the rest.
             information = toml.load(toml_filename)
         else:
             information = {}
@@ -316,109 +322,123 @@ class MultiMeshComponent(Component):
         # Provide information for cut and clipping
         if gradient:
             information["cutout_radius_in_km"] = self.comm.project.cut_source_radius
-            information["source_location"] = self.comm.lasif.get_source(event_name=event)
+            information["source_location"] = self.comm.lasif.get_source(
+                event_name=event
+            )
             information["clipping_percentile"] = self.comm.project.clip_gradient
             information["parameters"] = self.comm.project.inversion_params
+        else:
+            proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_to_{int(self.comm.project.max_period)}s.h5"
+            remote_proc_path = f"{event}_{proc_filename}"
+            if hpc_cluster is None:
+                hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
+            remote_processed_dir = os.path.join(
+                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
+            )
+            remote_proc_path = os.path.join(remote_processed_dir, remote_proc_path)
 
-        proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_to_{int(self.comm.project.max_period)}s.h5"
-        remote_proc_file_name = f"{event}_{proc_filename}"
-        hpc_cluster = get_site(self.comm.project.site_name)
-        remote_processed_dir = os.path.join(
-            self.comm.project.remote_inversionson_dir, "PROCESSED_DATA")
+            if not hpc_cluster.remote_exists(remote_processed_dir):
+                hpc_cluster.remote_mkdir(remote_processed_dir)
 
-        if not hpc_cluster.remote_exists(remote_processed_dir):
-            hpc_cluster.remote_mkdir(remote_processed_dir)
+            processing_info = {
+                "minimum_period": self.comm.project.min_period,
+                "maximum_period": self.comm.project.max_period,
+                "npts": self.comm.project.simulation_dict["number_of_time_steps"],
+                "dt": self.comm.project.time_step,
+                "start_time_in_s": self.comm.project.start_time,
+                "asdf_input_filename": "raw_event_data.h5",
+                "asdf_output_filename": remote_proc_path,
+                "preprocessing_tag": self.comm.lasif.lasif_comm.waveforms.preprocessing_tag,
+            }
+            information["processing_info"] = processing_info
 
+            remote_receiver_dir = os.path.join(
+                self.comm.project.remote_inversionson_dir, "RECEIVERS"
+            )
+            if not hpc_cluster.remote_exists(remote_receiver_dir):
+                hpc_cluster.remote_mkdir(remote_receiver_dir)
+            information["receiver_json_path"] = os.path.join(
+                remote_receiver_dir, f"{event}_receivers.json"
+            )
 
-        processing_info = {"minimum_period": self.comm.project.min_period,
-                           "maximum_period": self.comm.project.max_period,
-                           "npts": self.comm.project.simulation_dict["number_of_time_steps"],
-                           "dt": self.comm.project.time_step,
-                           "start_time_in_s": self.comm.project.start_time,
-                           "asdf_input_filename": "raw_event_data.h5",
-                           "asdf_output_filename": remote_proc_path,
-                           "preprocessing_tag": self.comm.lasif.lasif_comm.waveforms.preprocessing_tag,
-                           }
-        information["processing_info"] = processing_info
-
-        remote_receiver_dir = os.path.join(
-            self.comm.project.remote_inversionson_dir, "RECEIVERS"
-        )
-        if not hpc_cluster.remote_exists(remote_receiver_dir):
-            hpc_cluster.remote_mkdir(remote_receiver_dir)
-        information["receiver_json_path"] = os.path.join(remote_receiver_dir,
-                                                         f"{event}_receivers.json")
-
-        # If we have a dict already, we can just update it with the proper
-        # remote mesh files and also we don't need to create the simulation
-        # dict again in the interpolation job.
-        local_simulation_dict = (
+            # If we have a dict already, we can just update it with the proper
+            # remote mesh files and also we don't need to create the simulation
+            # dict again in the interpolation job.
+            local_simulation_dict = (
                 self.comm.lasif.lasif_comm.project.paths["salvus_files"]
                 / f"SIMULATIONS_DICTS"
                 / event
                 / "simulation_dict.toml"
-        )
-        # Only create simulation dict when we don't have it yet.
-        information["create_simulation_dict"] = False \
-            if os.path.exists(local_simulation_dict) else True
-
-        if not gradient:
-            if self.comm.project.ellipticity:
-                information["ellipticity"] = 0.0033528106647474805
-            if self.comm.project.topography["use"]:
-                information["mesh_info"]["topography"] = self.comm.project.topography
-            if self.comm.project.ocean_loading["use"]:
-                information["mesh_info"][
-                    "ocean_loading"
-                ] = self.comm.project.ocean_loading
-            source_info = self.comm.lasif.get_source(event_name=event)
-            if isinstance(source_info, list):
-                source_info = source_info[0]
-            source_info["side_set"] = (
-                "r1_ol" if self.comm.project.ocean_loading["use"] and not
-                self.comm.project.meshes == "multi-mesh" else "r1"
             )
-            source_info["stf"] = str(
-                self.comm.project.remote_inversionson_dir
-                / "SOURCE_TIME_FUNCTIONS"
-                / self.comm.project.current_iteration
-                / "stf.h5"
+            # Only create simulation dict when we don't have it yet.
+            information["create_simulation_dict"] = (
+                False if os.path.exists(local_simulation_dict) else True
             )
-            information["source_info"] = source_info
 
-            if not os.path.exists(toml_filename) and not self.comm.project.remote_data_processing: # this is a slow step, so let's skip it if we can
-                receivers = self.comm.lasif.get_receivers(event_name=event)
-                information["receiver_info"] = receivers
-            if self.comm.project.absorbing_boundaries:
+            if not gradient:
+                if self.comm.project.ellipticity:
+                    information["ellipticity"] = 0.0033528106647474805
+                if self.comm.project.topography["use"]:
+                    information["mesh_info"][
+                        "topography"
+                    ] = self.comm.project.topography
+                if self.comm.project.ocean_loading["use"]:
+                    information["mesh_info"][
+                        "ocean_loading"
+                    ] = self.comm.project.ocean_loading
+                source_info = self.comm.lasif.get_source(event_name=event)
+                if isinstance(source_info, list):
+                    source_info = source_info[0]
+                source_info["side_set"] = (
+                    "r1_ol"
+                    if self.comm.project.ocean_loading["use"]
+                    and not self.comm.project.meshes == "multi-mesh"
+                    else "r1"
+                )
+                source_info["stf"] = str(
+                    self.comm.project.remote_inversionson_dir
+                    / "SOURCE_TIME_FUNCTIONS"
+                    / self.comm.project.current_iteration
+                    / "stf.h5"
+                )
+                information["source_info"] = source_info
+
                 if (
-                    "inner_boundary"
-                    in self.comm.lasif.lasif_comm.project.domain.get_side_set_names()
-                ):
-                    side_sets = ["inner_boundary"]
+                    not os.path.exists(toml_filename)
+                    and not self.comm.project.remote_data_processing
+                ):  # this is a slow step, so let's skip it if we can
+                    receivers = self.comm.lasif.get_receivers(event_name=event)
+                    information["receiver_info"] = receivers
+                if self.comm.project.absorbing_boundaries:
+                    if (
+                        "inner_boundary"
+                        in self.comm.lasif.lasif_comm.project.domain.get_side_set_names()
+                    ):
+                        side_sets = ["inner_boundary"]
+                    else:
+                        side_sets = [
+                            "r0",
+                            "t0",
+                            "t1",
+                            "p0",
+                            "p1",
+                        ]
                 else:
-                    side_sets = [
-                        "r0",
-                        "t0",
-                        "t1",
-                        "p0",
-                        "p1",
-                    ]
-            else:
-                side_sets = []
+                    side_sets = []
 
-            information["simulation_info"] = {
-                "end_time": self.comm.project.end_time,
-                "time_step": self.comm.project.time_step,
-                "start_time": self.comm.project.start_time,
-                "minimum_period": self.comm.lasif.lasif_comm.project.simulation_settings[
-                    "minimum_period_in_s"
-                ],
-                "attenuation": self.comm.project.attenuation,
-                "absorbing_boundaries": self.comm.project.absorbing_boundaries,
-                "side_sets": side_sets,
-                "absorbing_boundary_length": self.comm.project.abs_bound_length
-                * 1000.0,
-            }
+                information["simulation_info"] = {
+                    "end_time": self.comm.project.end_time,
+                    "time_step": self.comm.project.time_step,
+                    "start_time": self.comm.project.start_time,
+                    "minimum_period": self.comm.lasif.lasif_comm.project.simulation_settings[
+                        "minimum_period_in_s"
+                    ],
+                    "attenuation": self.comm.project.attenuation,
+                    "absorbing_boundaries": self.comm.project.absorbing_boundaries,
+                    "side_sets": side_sets,
+                    "absorbing_boundary_length": self.comm.project.abs_bound_length
+                    * 1000.0,
+                }
 
         with open(toml_filename, "w") as fh:
             toml.dump(information, fh)
@@ -477,50 +497,67 @@ class MultiMeshComponent(Component):
             validation=validation,
         )
         interpolation_script = self.find_interpolation_script()
+        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         interpolation_toml = self.prepare_interpolation_toml(
-            gradient=gradient, event=event
+            gradient=gradient, event=event, hpc_cluster=hpc_cluster
         )
         remote_toml = self.move_toml_to_hpc(
-            toml_filename=interpolation_toml, event=event
+            toml_filename=interpolation_toml,
+            event=event,
+            hpc_cluster=hpc_cluster,
         )
 
-        commands = [remote_io_site.site_utils.RemoteCommand(
-            command=f"cp {remote_toml} ./interp_info.toml",
-            execute_with_mpi=False,
-        ), remote_io_site.site_utils.RemoteCommand(
-            command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
-            execute_with_mpi=False,
-        ), remote_io_site.site_utils.RemoteCommand(
-            command=f"cp {interpolation_script} ./interpolate.py",
-            execute_with_mpi=False,
-        ), remote_io_site.site_utils.RemoteCommand(
-            command="mkdir output", execute_with_mpi=False
-        ), remote_io_site.site_utils.RemoteCommand(
-            command="python interpolate.py ./interp_info.toml",
-            execute_with_mpi=False,
-        )]
+        commands = [
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {remote_toml} ./interp_info.toml",
+                execute_with_mpi=False,
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {mesh_to_interpolate_from} ./from_mesh.h5",
+                execute_with_mpi=False,
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command=f"cp {interpolation_script} ./interpolate.py",
+                execute_with_mpi=False,
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command="mkdir output", execute_with_mpi=False
+            ),
+            remote_io_site.site_utils.RemoteCommand(
+                command="python interpolate.py ./interp_info.toml",
+                execute_with_mpi=False,
+            ),
+        ]
 
-        if self.comm.project.remote_data_processing:
+        if self.comm.project.remote_data_processing and not gradient:
             hpc_cluster = get_site(self.comm.project.site_name)
             remote_processed_dir = os.path.join(
-                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA")
+                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
+            )
             proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_to_{int(self.comm.project.max_period)}s.h5"
             remote_proc_file_name = f"{event}_{proc_filename}"
-            remote_proc_path = os.path.join(remote_processed_dir,
-                                            remote_proc_file_name)
+            remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
 
             if not hpc_cluster.remote_exists(remote_proc_path):
-                raw_file = os.path.join(self.comm.project.remote_raw_data_dir, f"{event}.h5")
-                copy_data_command = [remote_io_site.site_utils.RemoteCommand(
-                    command=f"cp {raw_file} raw_event_data.h5",
-                    execute_with_mpi=False)]
+                raw_file = os.path.join(
+                    self.comm.project.remote_raw_data_dir, f"{event}.h5"
+                )
+                copy_data_command = [
+                    remote_io_site.site_utils.RemoteCommand(
+                        command=f"cp {raw_file} raw_event_data.h5",
+                        execute_with_mpi=False,
+                    )
+                ]
                 commands = copy_data_command + commands
 
         if self.comm.project.remote_conda_env:
-            conda_command = [remote_io_site.site_utils.RemoteCommand(
-                command=f"conda activate {self.comm.project.remote_conda_env}",
-                execute_with_mpi=False)]
-            commands = conda_command + commands
+            conda_command = [
+                remote_io_site.site_utils.RemoteCommand(
+                    command=f"conda activate {self.comm.project.remote_conda_env}",
+                    execute_with_mpi=False,
+                )
+            ]
+            # commands = conda_command + commands
 
         return commands
 

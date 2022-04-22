@@ -623,13 +623,16 @@ class SalvusFlowComponent(Component):
             os.makedirs(destination.parent)
 
         if not os.path.exists(destination):
-            remote_dict = interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
-            hpc_cluster.remote_get(remotepath=remote_dict,
-                                   localpath=destination)
+            remote_dict = (
+                interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
+            )
+            hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
 
         sim_dict = toml.load(destination)
         remote_mesh = interp_job.stdout_path.parent / "output" / "mesh.h5"
-        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
+        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
+            "domain_settings"
+        ]["domain_file"]
         for key in ["mesh", "model", "geometry"]:
             sim_dict["domain"][key]["filename"] = local_dummy_mesh
 
@@ -663,13 +666,16 @@ class SalvusFlowComponent(Component):
 
         if os.path.exists(destination):
             os.remove(destination)
-        remote_dict = hpc_proc_job.stdout_path.parent / "output" / "adjoint_simulation_dict.toml"
-        hpc_cluster.remote_get(remotepath=remote_dict,
-                               localpath=destination)
+        remote_dict = (
+            hpc_proc_job.stdout_path.parent / "output" / "adjoint_simulation_dict.toml"
+        )
+        hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
 
         adjoint_sim_dict = toml.load(destination)
         remote_mesh = adjoint_sim_dict["domain"]["mesh"]["filename"]
-        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
+        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
+            "domain_settings"
+        ]["domain_file"]
         for key in ["mesh", "model", "geometry"]:
             adjoint_sim_dict["domain"][key]["filename"] = local_dummy_mesh
 
@@ -774,13 +780,15 @@ class SalvusFlowComponent(Component):
             wall_time = self.comm.project.wall_time * 1.5
         else:
             wall_time = self.comm.project.wall_time
-
+        start_submit = time.time()
         job = sapi.run_async(
             site_name=site,
             input_file=simulation,
             ranks=ranks,
             wall_time_in_seconds=wall_time,
         )
+        end_submit = time.time()
+        print(f"Only submitting took {end_submit - start_submit:.3f} seconds")
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
         if hpc_cluster.config["site_type"] == "local":
             job.wait(poll_interval_in_seconds=10)
@@ -817,7 +825,7 @@ class SalvusFlowComponent(Component):
             )
         self.comm.project.update_iteration_toml()
         end = time.time()
-        print(f"Submitting took {end - start} seconds")
+        print(f"Submitting took {end - start:.3f} seconds")
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
         """
