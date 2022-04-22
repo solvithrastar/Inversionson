@@ -208,9 +208,6 @@ class Optimize(object):
         """
         it_name = self.iteration_name if it_name is None else it_name
         self.comm.project.change_attribute("current_iteration", it_name)
-        it_toml = os.path.join(
-            self.comm.project.paths["iteration_tomls"], it_name + ".toml"
-        )
         validation = "validation" in it_name
 
         if self.comm.lasif.has_iteration(it_name):
@@ -237,7 +234,6 @@ class Optimize(object):
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
 
         self.comm.lasif.upload_stf(iteration=it_name)
-        # Control group complications (update_control_group) should be done inside specific optimizer.
 
     def run_forward(self, verbose: bool = False):
         """

@@ -9,21 +9,10 @@ from inversionson.optimizers.adam_opt import AdamOpt
 
 
 class TaskManager(object):
-    def __init__(self, optimization_method: str, comm):
+    def __init__(self, comm):
         self.comm = comm
-        self.optimization = self._get_optimizer(optimization_method, self.comm)
+        self.optimization = self.comm.project.get_optimizer()
 
-    def _get_optimizer(self, optimization_method: str, comm: object):
-        """
-        This creates an instance of the optimization class which is
-        picked by the user.
-        """
-        if optimization_method.lower() == "adam":
-            return AdamOpt(comm=comm)
-        else:
-            raise InversionsonError(
-                f"Optimization method {optimization_method} not defined"
-            )
 
     def _time_for_validation(self) -> bool:
         validation = False

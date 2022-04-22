@@ -103,9 +103,7 @@ class AutoInverter(object):
             )
 
     def run_inversion(self, n_iterations=1000, verbose=True):
-        taskmanager = TaskManager(
-            optimization_method=self.comm.project.optimizer, comm=self.comm
-        )
+        taskmanager = TaskManager(comm=self.comm)
         print("Moving important files to cluster")
         self.move_files_to_cluster()
         n_tasks = taskmanager.get_n_tasks()

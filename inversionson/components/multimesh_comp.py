@@ -10,8 +10,6 @@ import lasif.api as lapi
 from salvus.flow.api import get_site
 import pathlib
 import toml
-from typing import Union
-from inversionson.optimizers.adam_opt import AdamOpt
 
 REMOTE_SCRIPT_PATHS = os.path.join(
     os.path.dirname(
@@ -36,11 +34,8 @@ class MultiMeshComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        if self.comm.project.optimizer == "adam":
-            adam_opt = AdamOpt(self.comm)
-            model = adam_opt.model_path
-        else:
-            raise NotImplementedError("The above should be made more general")
+        optimizer = self.comm.project.get_optimizer()
+        model = optimizer.model_path
 
         if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
@@ -49,10 +44,7 @@ class MultiMeshComponent(Component):
                 and iteration != "it0000_model"
                 and iteration != "model_00000"
             ):
-                if self.comm.project.optimizer == "adam":
-                    it_number = adam_opt.iteration_number
-                else:
-                    raise NotImplementedError("fix above to a general version of the optimizer")
+                it_number = optimizer.iteration_number
                 old_it = it_number - self.comm.project.when_to_validate + 1
                 model = (
                     self.comm.salvus_mesher.average_meshes

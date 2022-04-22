@@ -1,10 +1,5 @@
 from pathlib import Path
 import os
-import toml
-import numpy as np
-import glob
-import shutil
-import h5py
 from inversionson import InversionsonError, autoinverter_helpers as helpers
 from inversionson.optimizers.optimizer import Optimize
 
