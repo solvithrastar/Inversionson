@@ -52,11 +52,8 @@ class MultiMeshComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        if self.comm.project.optimizer == "adam":
-            adam_opt = AdamOpt(self.comm)
-            model = adam_opt.model_path
-        else:
-            raise NotImplementedError("The above should be made more general")
+        optimizer = self.comm.project.get_optimizer()
+        model = optimizer.model_path
 
         if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
@@ -65,10 +62,7 @@ class MultiMeshComponent(Component):
                 and iteration != "it0000_model"
                 and iteration != "model_00000"
             ):
-                if self.comm.project.optimizer == "adam":
-                    it_number = adam_opt.iteration_number
-                else:
-                    raise NotImplementedError("fix above to a general version of the optimizer")
+                it_number = optimizer.iteration_number
                 old_it = it_number - self.comm.project.when_to_validate + 1
                 model = (
                     self.comm.salvus_mesher.average_meshes
@@ -248,9 +242,7 @@ class MultiMeshComponent(Component):
             )
             self.comm.salvus_mesher.write_xdmf(master_disc_gradient)
 
-    def construct_remote_interpolation_job(
-        self, event: str, gradient=False
-    ):
+    def construct_remote_interpolation_job(self, event: str, gradient=False):
         """
         Construct a custom Salvus job which can be submitted to an HPC cluster
         The job can either do an interpolation of model or gradient
@@ -288,9 +280,7 @@ class MultiMeshComponent(Component):
 
         int_job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
-            commands=self.get_interp_commands(
-                event=event, gradient=gradient
-            ),
+            commands=self.get_interp_commands(event=event, gradient=gradient),
             job_type="interpolation",
             job_description=description,
             job_info={},

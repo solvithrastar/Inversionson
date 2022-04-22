@@ -2,7 +2,6 @@ from __future__ import absolute_import
 import shutil
 
 from lasif.components.component import Component
-from inversionson.optimizers.adam_opt import AdamOpt
 import lasif.api as lapi
 from lasif.utils import write_custom_stf
 import os
@@ -298,17 +297,14 @@ class LasifComponent(Component):
         """
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-        if self.comm.project.optimizer == "adam":
-            adam_opt = AdamOpt(self.comm)
-            iteration = adam_opt.iteration_name
-            if validation:
-                iteration = f"validation_{iteration}"
-                local_model = self.comm.multi_mesh.find_model_file(iteration)
-            else:
-                local_model = adam_opt.model_path
-        else:
-            iteration = self.comm.project.current_iteration
+
+        optimizer = self.comm.project.get_optimizer()
+        iteration = optimizer.iteration_name
+        if validation:
+            iteration = f"validation_{iteration}"
             local_model = self.comm.multi_mesh.find_model_file(iteration)
+        else:
+            local_model = optimizer.model_path
 
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
@@ -381,20 +377,14 @@ class LasifComponent(Component):
 
         # If we use mono-mesh we copy the salvus opt mesh here.
         if self.comm.project.meshes == "mono-mesh":
-            if self.comm.project.optimizer == "adam":
-                adam_opt = AdamOpt(self.comm)
-                model = adam_opt.model_path
-                # copy to lasif project and also move to cluster
-                simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=None)
-                shutil.copy(model, simulation_mesh)
-                self._move_model_to_cluster(
-                    hpc_cluster=hpc_cluster, overwrite=False, validation=validation
-                )
-            else:
-                self.comm.salvus_mesher.write_new_opt_fields_to_simulation_mesh()
-                self._move_model_to_cluster(
-                    hpc_cluster=hpc_cluster, overwrite=False, validation=validation
-                )
+            optimizer = self.comm.project.get_optimizer()
+            model = optimizer.model_path
+            # copy to lasif project and also move to cluster
+            simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=None)
+            shutil.copy(model, simulation_mesh)
+            self._move_model_to_cluster(
+                hpc_cluster=hpc_cluster, overwrite=False, validation=validation
+            )
 
             return
         if self.comm.project.interpolation_mode == "remote":
@@ -521,92 +511,6 @@ class LasifComponent(Component):
                 / iteration
                 / "stf.h5",
             )
-
-    # TODO: Write find_gradient for Pathlib
-    def find_gradient(
-        self,
-        iteration: str,
-        event: str,
-        summed=False,
-        smooth=False,
-        inversion_grid=False,
-        just_give_path=False,
-    ) -> str:
-        """
-        Find the path to a gradient produced by an adjoint simulation.
-
-        :param iteration: Name of iteration
-        :type iteration: str
-        :param event: Name of event, None if mono-batch
-        :type event: str
-        :param summed: Do you want it to be a sum of many gradients,
-        defaults to False
-        :type summed: bool
-        :param smooth: Do you want the smoothed gradient, defaults to False
-        :type smooth: bool
-        :param inversion_grid: Do you want the gradient on inversion
-            discretization?, defaults to False
-        :type inversion_grid: bool
-        :param just_give_path: If True, the gradient does not have to exist,
-        defaults to False
-        :type just_give_path: bool
-        :return: Path to a gradient
-        :rtype: str
-        """
-        gradients = self.lasif_comm.project.paths["gradients"]
-        if (
-            self.comm.project.inversion_mode == "mini-batch"
-            and not self.comm.project.optimizer == "adam"
-        ):
-            if smooth:
-                gradient = os.path.join(
-                    gradients,
-                    f"ITERATION_{iteration}",
-                    event,
-                    "smooth_gradient.h5",
-                )
-                if inversion_grid:
-                    if self.comm.project.meshes == "mono-mesh":
-                        raise InversionsonError(
-                            "Inversion grid only exists for multi-mesh"
-                        )
-                    gradient = os.path.join(
-                        gradients,
-                        f"ITERATION_{iteration}",
-                        event,
-                        "smooth_grad_master.h5",
-                    )
-        elif (
-            self.comm.project.inversion_mode == "mono-batch"
-            or self.comm.project.optimizer == "adam"
-        ):
-            if summed:
-                if smooth:
-                    gradient = os.path.join(
-                        gradients,
-                        f"ITERATION_{iteration}",
-                        "smooth_gradient.h5",
-                    )
-                else:
-                    gradient = os.path.join(
-                        gradients,
-                        f"ITERATION_{iteration}",
-                        "summed_gradient.h5",
-                    )
-            else:
-                gradient = os.path.join(
-                    gradients,
-                    f"ITERATION_{iteration}",
-                    event,
-                    "gradient.h5",
-                )
-
-        if os.path.exists(gradient):
-            return gradient
-        if just_give_path:
-            return gradient
-        else:
-            raise ValueError(f"File: {gradient} does not exist.")
 
     def plot_iteration_events(self) -> str:
         """
@@ -750,11 +654,8 @@ class LasifComponent(Component):
             )
         else:
             if "validation" in iteration and "it0000" and "00000" not in iteration:
-                if self.comm.project.optimizer == "adam":
-                    adam_opt = AdamOpt(self.comm)
-                    new_it_num = adam_opt.iteration_number
-                else:
-                    new_it_num = self.comm.salvus_opt.get_number_of_newest_iteration()
+                optimizer = self.comm.project.get_optimizer()
+                new_it_num = optimizer.iteration_number
                 old_it_num = new_it_num - self.comm.project.when_to_validate + 1
                 return os.path.join(
                     self.comm.salvus_mesher.average_meshes,

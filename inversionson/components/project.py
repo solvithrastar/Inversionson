@@ -30,7 +30,6 @@ class ProjectComponent(Component):
         a running inversion can be restarted although this is done.
         """
         self.info = information_dict
-        self.AdamOpt = True
         self.sleep_time_in_s = 30
         self.random_event_processing = False
         self.__comm = Communicator()
@@ -100,6 +99,16 @@ class ProjectComponent(Component):
 
     def get_communicator(self):
         return self.__comm
+
+    def get_optimizer(self):
+        """
+        This creates an instance of the optimization class which is
+        picked by the user.
+        """
+        if self.optimizer == "adam":
+            return AdamOpt(comm=self.comm)
+        else:
+            raise InversionsonError(f"Optimization method {self.optimizer} not defined")
 
     def _validate_inversion_project(self):
         """
@@ -581,7 +590,12 @@ class ProjectComponent(Component):
                 self.current_iteration = adam_opt.iteration_name
             else:
                 raise NotImplementedError("")
-            self.print(f"Current Iteration: {self.current_iteration}", line_above=True, line_below=True, emoji_alias=":date:")
+            self.print(
+                f"Current Iteration: {self.current_iteration}",
+                line_above=True,
+                line_below=True,
+                emoji_alias=":date:",
+            )
 
             self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
         self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
@@ -630,69 +644,38 @@ class ProjectComponent(Component):
             )
             shutil.copyfile(iteration_toml, backup)
 
-        it_dict = {}
-        it_dict["name"] = iteration
-        it_dict["events"] = {}
-
+        it_dict = dict(name=iteration, events={})
         if self.meshes == "mono-mesh":
             it_dict["remote_simulation_mesh"] = None
 
-        f_job_dict = {
-            "name": "",
-            "submitted": False,
-            "retrieved": False,
-            "reposts": 0,
-        }
-        if remote_interp:
-            i_job_dict = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False,
-                "reposts": 0,
-            }
-        if validation:
-            f_job_dict["windows_selected"] = False
-        if not validation:
-            a_job_dict = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False,
-                "reposts": 0,
-            }
-            s_job_dict = {
-                "name": "",
-                "submitted": False,
-                "retrieved": False,
-                "reposts": 0,
-            }
+        job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
+        s_job_dict = job_dict.copy()
+
         if self.meshes == "multi-mesh":
-            f_job_dict["interpolated"] = False
-            if not validation:
-                a_job_dict["interpolated"] = False
+            s_job_dict["interpolated"] = False
 
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             if validation:
-                jobs = {"forward": f_job_dict}
+                jobs = {"forward": s_job_dict}
                 if remote_interp:
-                    jobs["model_interp"] = i_job_dict
+                    jobs["model_interp"] = job_dict
             if not validation:
                 jobs = {
-                    "forward": f_job_dict,
-                    "adjoint": a_job_dict,
+                    "forward": s_job_dict,
+                    "adjoint": s_job_dict,
                 }
                 if remote_interp:
-                    jobs["model_interp"] = i_job_dict
-                    jobs["gradient_interp"] = i_job_dict
+                    jobs["model_interp"] = job_dict
+                    jobs["gradient_interp"] = job_dict
                 if self.hpc_processing and not validation:
-                    jobs["hpc_processing"] = f_job_dict
+                    jobs["hpc_processing"] = job_dict
                 it_dict["events"][str(_i)] = {
                     "name": event,
                     "job_info": jobs,
                 }
             if not validation:
-                it_dict["events"][str(_i)]["misfit"] = 0.0
+                it_dict["events"][str(_i)]["misfit"] = float(0.0)
                 it_dict["events"][str(_i)]["usage_updated"] = False
-        it_dict["smoothing"] = s_job_dict
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -747,9 +730,7 @@ class ProjectComponent(Component):
                 f"Iteration toml for iteration: {iteration} does not exists"
             )
 
-        it_dict = {}
-        it_dict["name"] = iteration
-        it_dict["events"] = {}
+        it_dict = toml.load(iteration_toml)
 
         if self.meshes == "mono-mesh":
             it_dict["remote_simulation_mesh"] = self.remote_mesh
@@ -771,10 +752,8 @@ class ProjectComponent(Component):
                 "job_info": jobs,
             }
             if not validation:
-                it_dict["events"][str(_i)]["misfit"] = self.misfits[event]
+                it_dict["events"][str(_i)]["misfit"] = float(self.misfits[event])
                 it_dict["events"][str(_i)]["usage_updated"] = self.updated[event]
-        if not validation:
-            it_dict["smoothing"] = self.smoothing_job
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
@@ -786,11 +765,9 @@ class ProjectComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        if self.optimizer == "adam":
-            adam_opt = AdamOpt(self.comm)
-            iteration = adam_opt.iteration_name
-        else:
-            raise NotImplementedError("")
+        optimizer = self.get_optimizer()
+        iteration = optimizer.iteration_name
+
         if validation:
             iteration = f"validation_{iteration}"
         remote_interp = False
@@ -849,8 +826,6 @@ class ProjectComponent(Component):
                 self.hpc_processing_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "hpc_processing"
                 ]
-        if not validation:
-            self.smoothing_job = it_dict["smoothing"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:
         """

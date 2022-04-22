@@ -321,15 +321,11 @@ class SalvusMeshComponent(Component):
         for field in fields.keys():
             new_fields[field] = np.zeros_like(fields[field])
         # m.element_nodal_fields = {}
-        if self.comm.project.optimizer == "adam":
-            adam_opt = AdamOpt(self.comm)
+        optimizer = self.comm.project.get_optimizer()
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
-            if self.comm.project.optimizer == "adam":
-                model_path = adam_opt.get_path_for_iteration(
-                    iteration, adam_opt.model_path
-                )
-            else:
-                raise NotImplementedError("")
+            model_path = optimizer.get_path_for_iteration(
+                iteration, optimizer.model_path
+            )
             m_tmp = UnstructuredMesh.from_h5(model_path)
             for field_name, field in new_fields.items():
                 field += m_tmp.element_nodal_fields[field_name]

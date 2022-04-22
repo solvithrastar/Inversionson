@@ -43,7 +43,6 @@ class StoryTellerComponent(Component):
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
-        self.events_quality_toml = os.path.join(self.root, "events_quality.toml")
         self.validation_toml = os.path.join(self.root, "validation.toml")
         if os.path.exists(self.validation_toml):
             self.validation_dict = toml.load(self.validation_toml)
@@ -53,10 +52,6 @@ class StoryTellerComponent(Component):
             self.events_used = toml.load(self.events_used_toml)
         else:
             self._create_initial_events_used_toml()
-        if os.path.exists(self.events_quality_toml):
-            self.events_quality = toml.load(self.events_quality_toml)
-        else:
-            self._create_initial_events_quality_toml()
         self.markdown = MarkDown(self.story_file)
         self.printer = PrettyPrinter()
 
@@ -133,17 +128,6 @@ class StoryTellerComponent(Component):
         with open(self.events_used_toml, "w+") as fh:
             toml.dump(self.events_used, fh)
 
-    def _create_initial_events_quality_toml(self):
-        """
-        Initialize the toml files which keeps track of usage of events
-        """
-        all_events = self.comm.lasif.list_events()
-        self.events_quality = {}
-        for event in all_events:
-            self.events_quality[event] = 0.0
-        with open(self.events_quality_toml, "w+") as fh:
-            toml.dump(self.events_quality, fh)
-
     def _update_list_of_events(self):
         """
         In order to be able to add events to inversion we
@@ -156,12 +140,9 @@ class StoryTellerComponent(Component):
             return
         else:
             for event in new:
-                self.events_quality[event] = 0.0
                 self.events_used[event] = 0
             with open(self.events_used_toml, "w") as fh:
                 toml.dump(self.events_used, fh)
-            with open(self.events_quality_toml, "w") as fh:
-                toml.dump(self.events_quality, fh)
             with open(self.all_events, "a") as fh:
                 fh.writelines(f"{event}\n" for event in new)
 
@@ -183,16 +164,6 @@ class StoryTellerComponent(Component):
         with open(self.events_used_toml, "w") as fh:
             toml.dump(self.events_used, fh)
 
-    def _update_event_quality(self):
-        """
-        Keep track of event quality, which is based on removal order of
-        batch gradients in control group selection.
-        """
-        for key, val in self.comm.project.event_quality.items():
-            self.events_quality[key] = val
-        with open(self.events_quality_toml, "w") as fh:
-            toml.dump(self.events_quality, fh)
-
     def _start_entry_for_iteration(self):
         """
         Start a new section in the story file
@@ -201,12 +172,9 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            if self.comm.project.optimizer == "adam":
-                iteration_number = int(
-                    self.comm.project.current_iteration.split("_")[-1].lstrip("0")
-                )
-            else:
-                iteration_number = int(iteration.split("_")[0][2:].lstrip("0"))
+            iteration_number = int(
+                self.comm.project.current_iteration.split("_")[-1].lstrip("0")
+            )
         self.markdown.add_header(header_style=2, text=f"Iteration: {iteration_number}")
         text = "Here you can read all about what happened in iteration "
         text += f"{iteration_number}."
@@ -473,7 +441,6 @@ class StoryTellerComponent(Component):
                 self.comm.project.inversion_mode == "mini-batch"
             ):
                 self._write_list_of_all_events()
-                self._update_usage_of_events()
 
             self._add_table_of_events_and_misfits(task=task)
             if self.comm.project.inversion_mode == "mini-batch":
@@ -487,7 +454,6 @@ class StoryTellerComponent(Component):
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
                 self._update_list_of_events()
-            if self.comm.project.optimizer == "adam":
                 self._update_usage_of_events()
             self._backup_files()
 
