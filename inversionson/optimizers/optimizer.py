@@ -32,7 +32,6 @@ class Optimize(object):
     # Derived classes should override this
     optimizer_name = "BaseClass for optimizers. Don't instantiate. If you see this..."
 
-
     def __init__(self, comm):
 
         # This init is only called by derived classes 
@@ -44,6 +43,7 @@ class Optimize(object):
             Path(self.comm.project.paths["inversion_root"]) / "OPTIMIZATION"
         )
 
+        self.parameters = self.comm.project.inversion_params
         if not os.path.exists(self.opt_folder):
             os.mkdir(self.opt_folder)
             

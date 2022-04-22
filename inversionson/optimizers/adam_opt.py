@@ -105,7 +105,6 @@ class AdamOpt(Optimize):
             "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
             "gradient_scaling_factor": 1e17,
             "epsilon": 1e-1,
-            "parameters": ["VSV", "VSH", "VPV", "VPH"],
             "initial_model": "",
             "max_iterations": 1000,
         }
@@ -146,7 +145,6 @@ class AdamOpt(Optimize):
             self.max_iterations = config["max_iterations"]
         else:
             self.max_iterations = None
-        self.parameters = config["parameters"]
 
     def _init_directories(self):
         """
