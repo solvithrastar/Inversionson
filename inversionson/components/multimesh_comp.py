@@ -10,7 +10,7 @@ import lasif.api as lapi
 from salvus.flow.api import get_site
 import pathlib
 import toml
-from typing import Union
+from typing import Union, List
 from inversionson.optimizers.adam_opt import AdamOpt
 
 REMOTE_SCRIPT_PATHS = os.path.join(
@@ -28,6 +28,22 @@ class MultiMeshComponent(Component):
 
     def __init__(self, communicator, component_name):
         super(MultiMeshComponent, self).__init__(communicator, component_name)
+
+    def print(
+        self,
+        message: str,
+        color: str = None,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def find_model_file(self, iteration: str):
         """
@@ -124,7 +140,9 @@ class MultiMeshComponent(Component):
                 attribute=f'model_interp_job["{event}"]["submitted"]',
                 new_value=True,
             )
-            print(f"Interpolation job for event {event} submitted")
+            self.print(
+                f"Interpolation job for event {event} submitted", ":white_check_mark:"
+            )
         else:
             simulation_mesh = lapi.get_simulation_mesh(
                 self.comm.lasif.lasif_comm, event, iteration
@@ -175,7 +193,10 @@ class MultiMeshComponent(Component):
                 attribute=f'gradient_interp_job["{event}"]["submitted"]',
                 new_value=True,
             )
-            print(f"Interpolation job for event {event} submitted")
+            self.print(
+                f"Interpolation job for event {event} submitted",
+                emoji_alias=":white_check_mark:",
+            )
             self.comm.project.update_iteration_toml()
         else:
             gradient = self.comm.lasif.find_gradient(iteration, event, smooth=smooth)
@@ -598,7 +619,7 @@ class MultiMeshComponent(Component):
         if not hpc_cluster.remote_exists(remote_script_dir):
             hpc_cluster.remote_mkdir(remote_script_dir)
 
-        print("New interpolation script will be generated")
+        self.print("New interpolation script will be generated")
         if not os.path.exists(local_script):
             interp_script = f"""import multi_mesh.api
 fm = "from_mesh.h5"

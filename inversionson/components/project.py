@@ -11,6 +11,7 @@ import pathlib
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
 from inversionson.optimizers.adam_opt import AdamOpt
+from typing import Union, List
 
 from lasif.components.communicator import Communicator
 from lasif.components.component import Component
@@ -40,6 +41,22 @@ class ProjectComponent(Component):
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
         self.remote_gradient_processing = True
+
+    def print(
+        self,
+        message: str,
+        color: str = None,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def _read_config_file(self) -> dict:
         """
@@ -564,7 +581,8 @@ class ProjectComponent(Component):
                 self.current_iteration = adam_opt.iteration_name
             else:
                 raise NotImplementedError("")
-            print(f"Current Iteration: {self.current_iteration}")
+            self.print(f"Current Iteration: {self.current_iteration}", line_above=True, line_below=True, emoji_alias=":date:")
+
             self.event_quality = toml.load(self.comm.storyteller.events_quality_toml)
         self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
         self.modelling_params = self.arrange_params(self.info["modelling_parameters"])

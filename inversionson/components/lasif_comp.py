@@ -11,7 +11,7 @@ import warnings
 import toml
 import pathlib
 from salvus.flow.api import get_site
-from typing import List, Dict
+from typing import List, Dict, Union
 
 
 class LasifComponent(Component):
@@ -26,6 +26,22 @@ class LasifComponent(Component):
         # Store if some event might not processing
         self.everything_processed = False
         self.validation_data_processed = False
+
+    def print(
+        self,
+        message: str,
+        color: str = None,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def _find_project_comm(self):
         """
@@ -136,8 +152,11 @@ class LasifComponent(Component):
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        if "validation" in iteration and "it0000" not in iteration\
-                and "00000" not in iteration:
+        if (
+            "validation" in iteration
+            and "it0000" not in iteration
+            and "00000" not in iteration
+        ):
             validation = True
         if iteration in ["validation_it0000_model", "validation_model_00000"]:
             iteration = iteration[11:]  # Just use the same as the initial model
@@ -230,11 +249,13 @@ class LasifComponent(Component):
         """
         if event is None:
             if gradient:
-                print("Moving example gradient to cluster")
+                self.print(
+                    "Moving example gradient to cluster", emoji_alias=":package:"
+                )
                 self._move_gradient_to_cluster(hpc_cluster)
             else:
                 # This happens when we want to move the model to the cluster
-                print("Moving model to cluster")
+                self.print("Moving model to cluster", emoji_alias=":package:")
                 self._move_model_to_cluster(hpc_cluster)
             return
         has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
@@ -254,7 +275,9 @@ class LasifComponent(Component):
         if not hpc_cluster.remote_exists(path_to_mesh.parent):
             hpc_cluster.remote_mkdir(path_to_mesh.parent)
         if not hpc_cluster.remote_exists(path_to_mesh):
-            print(f"Moving mesh for event {event} to cluster")
+            self.print(
+                f"Moving mesh for event {event} to cluster", emoji_alias=":package:"
+            )
             hpc_cluster.remote_put(event_mesh, path_to_mesh)
         # else:
         #     print(f"Mesh for event {event} already on cluster")
@@ -299,7 +322,10 @@ class LasifComponent(Component):
             if overwrite:
                 hpc_cluster.remote_put(local_model, path_to_mesh)
             else:
-                print(f"Model for iteration {iteration} already on cluster")
+                self.print(
+                    f"Model for iteration {iteration} already on cluster",
+                    ":white_check_mark:",
+                )
                 return
         else:
             if not hpc_cluster.remote_exists(path_to_mesh.parent):
@@ -326,7 +352,9 @@ class LasifComponent(Component):
         )
 
         if has and not overwrite:
-            print("Empty gradient already on cluster")
+            self.print(
+                "Empty gradient already on cluster", emoji_alias=":white_check_mark:"
+            )
             return
 
         local_grad = self.lasif_comm.project.paths["models"] / "GRADIENT" / "mesh.h5"
@@ -395,15 +423,17 @@ class LasifComponent(Component):
                 event_xdmf = event_mesh[:-2] + "xdmf"
                 event_iteration_xdmf = event_iteration_mesh[:-2] + "xdmf"
                 shutil.copy(event_xdmf, event_iteration_xdmf)
-                print(
+                self.print(
                     f"Mesh for event: {event} has been moved to correct path for "
-                    f"iteration: {iteration} and is ready for interpolation."
+                    f"iteration: {iteration} and is ready for interpolation.",
+                    emoji_alias=":package:",
                 )
             else:
-                print(
+                self.print(
                     f"Mesh for event: {event} already exists in the "
                     f"correct path for iteration {iteration}. "
-                    f"Will not move new one."
+                    f"Will not move new one.",
+                    emoji_alias=":white_check_mark",
                 )
 
     def set_up_iteration(self, name: str, events=[]):
@@ -753,7 +783,10 @@ class LasifComponent(Component):
         weight_set_name = event
         # If set exists, we don't recalculate it
         if self.lasif_comm.weights.has_weight_set(weight_set_name):
-            print(f"Weight set already exists for event {event}")
+            self.print(
+                f"Weight set already exists for event {event}",
+                emoji_alias=":white_check_mark:",
+            )
             return
 
         lapi.compute_station_weights(self.lasif_comm, weight_set=event, events=[event])
@@ -792,14 +825,16 @@ class LasifComponent(Component):
             "stf.h5",
         )
         if os.path.exists(adjoint_path) and not validation:
-            print(f"Adjoint source exists for event: {event} ")
-            print(
+            self.print(
+                f"Adjoint source exists for event: {event} ",
+                emoji_alias=":white_check_mark:",
+            )
+            self.print(
                 "Will not be recalculated. If you want them "
                 f"calculated, delete file: {adjoint_path}"
             )
         elif validation:
-            misfit = self.lasif_comm.adj_sources.\
-                calculate_validation_misfits_multiprocessing(
+            misfit = self.lasif_comm.adj_sources.calculate_validation_misfits_multiprocessing(
                 event, iteration
             )
         else:
@@ -841,10 +876,9 @@ class LasifComponent(Component):
             # )
         else:
             misfit = self.comm.project.misfits[event]
-            print(f"Misfit for {event} has already been computed. ")
-            print(
-                "If you want it recomputed, change it to 0.0 in the iteration "
-                "toml file"
+            self.print(
+                f"Misfit for {event} has already been computed.",
+                emoji_alias=":white_check_mark:",
             )
         return misfit
 
@@ -869,7 +903,7 @@ class LasifComponent(Component):
         Write the iteration's misfit into a toml file.
         TODO: I might want to add this to make it do more statistics
         """
-        print("Writing Misfit")
+        self.print("Writing Misfit")
         iteration = self.comm.project.current_iteration
         misfit_path = os.path.join(
             self.lasif_root,
@@ -881,7 +915,7 @@ class LasifComponent(Component):
             if details and "compute additional" in details:
                 # Reason for this that I have to append to path in this
                 # specific case.
-                print("Misfit file exists, will append additional events")
+                self.print("Misfit file exists, will append additional events")
                 # Need to see if the misfit is already in there or not
                 misfits = toml.load(misfit_path)
                 append = False
@@ -892,14 +926,14 @@ class LasifComponent(Component):
                     else:
                         append = True
                 if not append:
-                    print(
+                    self.print(
                         "Misfit already exists. If you want it rewritten, "
                         "delete the misfit toml in the lasif_project"
                     )
                     return
-                print("Misfit file exists, will append additional events")
+                self.print("Misfit file exists, will append additional events")
             else:
-                print(
+                self.print(
                     "Misfit already exists. If you want it rewritten, "
                     "delete the misfit toml in the lasif_project"
                 )
@@ -961,8 +995,10 @@ class LasifComponent(Component):
         events_in_iteration = self.comm.project.events_in_iteration
         events = self.comm.lasif.list_events()
         validation_events = self.comm.project.validation_dataset
-        msg = f"Seems like there is nothing to do now. " \
-              f"I might as well process some random event."
+        msg = (
+            f"Seems like there is nothing to do now. "
+            f"I might as well process some random event."
+        )
         if not self.everything_processed:
             self.everything_processed = True
             # First give the most urgent events a try.
@@ -972,8 +1008,8 @@ class LasifComponent(Component):
                     if self._already_processed(event):
                         continue
                     else:
-                        print(msg)
-                        print(f"Processing validation {event}...")
+                        self.print(msg)
+                        self.print(f"Processing validation {event}...")
                         self.validation_data_processed = False
                         lapi.process_data(self.lasif_comm, events=[event])
                         return True
@@ -981,8 +1017,8 @@ class LasifComponent(Component):
                 if self._already_processed(event):
                     continue
                 else:
-                    print(msg)
-                    print(f"Processing current iteration {event}...")
+                    self.print(msg)
+                    self.print(f"Processing {event} from current iteration...")
                     self.everything_processed = False
                     lapi.process_data(self.lasif_comm, events=[event])
                     return True
@@ -990,8 +1026,8 @@ class LasifComponent(Component):
                 if self._already_processed(event):
                     continue
                 else:
-                    print(msg)
-                    print(f"Processing random other {event}...")
+                    self.print(msg)
+                    self.print(f"Processing random other {event}...")
                     self.everything_processed = False
                     lapi.process_data(self.lasif_comm, events=[event])
                     return True
@@ -1017,7 +1053,10 @@ class LasifComponent(Component):
         )
 
         if os.path.exists(path) and not validation:
-            print(f"Window set for event {event} exists.")
+            self.print(
+                f"Window set for event {event} exists.",
+                emoji_alias=":white_check_mark:",
+            )
             return
 
         lapi.select_windows_multiprocessing(

@@ -7,6 +7,8 @@ from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
 from inversionson.optimizers.adam_opt import AdamOpt
+import toml
+from typing import Union, List
 
 from lasif.components.component import Component
 
@@ -27,6 +29,22 @@ class SalvusMeshComponent(Component):
         self.meshes = Path(self.comm.project.lasif_root) / "MODELS"
         self.event_meshes = self.meshes / "EVENT_MESHES"
         self.average_meshes = self.meshes / "AVERAGE_MESHES"
+
+    def print(
+        self,
+        message: str,
+        color: str = None,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = ":globe_with_meridians:",
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def create_mesh(self, event: str):
         """
@@ -174,11 +192,11 @@ class SalvusMeshComponent(Component):
             side_sets=side_sets,
         )
         if has_field and not overwrite:
-            print(f"Field: {field_name} already exists on mesh")
+            self.print(f"Field: {field_name} already exists on mesh")
             return
         attach_field = True
         if not os.path.exists(to_mesh):
-            print(f"Mesh {to_mesh} does not exist. Will create new one.")
+            self.print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
             tm = UnstructuredMesh.from_h5(to_mesh)
             # tm.element_nodal_fields = {}
@@ -193,7 +211,7 @@ class SalvusMeshComponent(Component):
             field = fm.global_strings[field_name]
             tm.attach_global_variable(name=field_name, data=field)
             tm.write_h5(to_mesh)
-            print(f"Attached field {field_name} to mesh {to_mesh}")
+            self.print(f"Attached field {field_name} to mesh {to_mesh}")
             return
         elif elemental:
             # if field_name in tm.elemental_fields.keys():
@@ -208,7 +226,7 @@ class SalvusMeshComponent(Component):
                     element_ids=fm.side_sets[side_set][0],
                     side_ids=fm.side_sets[side_set][1],
                 )
-                print(f"Attached side set {side_set} to mesh {to_mesh}")
+                self.print(f"Attached side set {side_set} to mesh {to_mesh}")
             attach_field = False
 
         else:
@@ -219,7 +237,7 @@ class SalvusMeshComponent(Component):
             field = fm.element_nodal_fields[field_name]
         if attach_field:
             tm.attach_field(field_name, field)
-            print(f"Attached field {field_name} to mesh {to_mesh}")
+            self.print(f"Attached field {field_name} to mesh {to_mesh}")
         tm.write_h5(to_mesh)
 
     def write_xdmf(self, filename: str):
@@ -285,6 +303,8 @@ class SalvusMeshComponent(Component):
         full_path = self.average_meshes / folder_name / "mesh.h5"
         if not os.path.exists(full_path.parent):
             os.makedirs(full_path.parent)
+        if os.path.exists(full_path):
+            return full_path
 
         # We copy the newest mesh from SALVUS_OPT to LASIF and write the
         # average fields onto those.
@@ -318,7 +338,7 @@ class SalvusMeshComponent(Component):
             field /= len(range(iteration_range[0], iteration_range[1] + 1))
             m.attach_field(field_name, field)
         m.write_h5(full_path)
-        print(
+        self.print(
             f"Wrote and average model of iteration {iteration_range[0]} to"
             f" iteration {iteration_range[1]} onto mesh: {full_path}"
         )
@@ -417,7 +437,7 @@ class SalvusMeshComponent(Component):
         :param mesh: Path to mesh
         :type mesh: str
         """
-        print("Filling inversion parameters with zeros before interpolation")
+        self.print("Filling inversion parameters with zeros before interpolation")
         m = UnstructuredMesh.from_h5(mesh)
         parameters = self.comm.project.inversion_params
         zero_nodal = np.zeros_like(m.element_nodal_fields[parameters[0]])

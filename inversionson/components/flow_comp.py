@@ -5,6 +5,7 @@ import numpy as np
 import json
 import pathlib
 import toml
+from typing import Union, List
 
 from lasif.components.component import Component
 from salvus.flow.sites import job as s_job
@@ -20,6 +21,22 @@ class SalvusFlowComponent(Component):
 
     def __init__(self, communicator, component_name):
         super(SalvusFlowComponent, self).__init__(communicator, component_name)
+
+    def print(
+        self,
+        message: str,
+        color: str = None,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def _get_job_name(
         self, event: str, sim_type: str, new=True, iteration="current"
@@ -686,7 +703,7 @@ class SalvusFlowComponent(Component):
         :return: Simulation object
         :rtype: object
         """
-        print("Constructing Adjoint Simulation now")
+        self.print("Constructing Adjoint Simulation now", emoji_alias=":wrench:")
 
         remote_interp = False
         if (
@@ -780,7 +797,11 @@ class SalvusFlowComponent(Component):
             wall_time_in_seconds=wall_time,
         )
         end_submit = time.time()
-        print(f"Only submitting took {end_submit - start_submit:.3f} seconds")
+        self.print(
+            f"Only submitting took {end_submit - start_submit:.3f} seconds",
+            emoji_alias=":hourglass:",
+            color="magenta",
+        )
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
         if hpc_cluster.config["site_type"] == "local":
             job.wait(poll_interval_in_seconds=10)
@@ -817,7 +838,11 @@ class SalvusFlowComponent(Component):
             )
         self.comm.project.update_iteration_toml()
         end = time.time()
-        print(f"Submitting took {end - start:.3f} seconds")
+        self.print(
+            f"Submitting took {end - start:.3f} seconds",
+            emoji_alias=":hourglass:",
+            color="magenta",
+        )
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
         """
@@ -878,7 +903,10 @@ class SalvusFlowComponent(Component):
                 job = self.get_job(event=event, sim_type=sim_type)
                 job.delete()
             except:
-                print(f"Could not delete job {sim_type} for event {event}")
+                self.print(
+                    f"Could not delete job {sim_type} for event {event}",
+                    emoji_alias=":hankey:",
+                )
 
     def submit_smoothing_job(self, event: str, simulation, par):
         """
