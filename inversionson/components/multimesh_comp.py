@@ -11,7 +11,6 @@ from salvus.flow.api import get_site
 import pathlib
 import toml
 from typing import Union, List
-from inversionson.optimizers.adam_opt import AdamOpt
 
 REMOTE_SCRIPT_PATHS = os.path.join(
     os.path.dirname(

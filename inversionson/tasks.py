@@ -2,17 +2,12 @@
 A class with a collection of tasks that need to be done as a part of an inversion.
 Created to have an easily accessible collection of methods which different optimizers have in common.
 """
-from typing import List, Dict
-import inversionson.autoinverter_helpers as helper
-from inversionson import InversionsonError
-from inversionson.optimizers.adam_opt import AdamOpt
 
 
 class TaskManager(object):
     def __init__(self, comm):
         self.comm = comm
         self.optimization = self.comm.project.get_optimizer()
-
 
     def _time_for_validation(self) -> bool:
         validation = False
