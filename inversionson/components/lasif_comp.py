@@ -301,11 +301,12 @@ class LasifComponent(Component):
         optimizer = self.comm.project.get_optimizer()
         iteration = optimizer.iteration_name
         if validation:
+            print("It's validation!")
             iteration = f"validation_{iteration}"
             local_model = self.comm.multi_mesh.find_model_file(iteration)
         else:
             local_model = optimizer.model_path
-
+        print("Do I have it?")
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
             interpolate_to=False,
@@ -324,9 +325,14 @@ class LasifComponent(Component):
                 )
                 return
         else:
+            self.print("I'm here with LASIF!!")
             if not hpc_cluster.remote_exists(path_to_mesh.parent):
+                self.print("Making the directory")
+                self.print(f"Directory is: {path_to_mesh.parent}")
                 hpc_cluster.remote_mkdir(path_to_mesh.parent)
+            self.print(f"Path to mesh is: {path_to_mesh}")
             hpc_cluster.remote_put(local_model, path_to_mesh)
+            self.print("Did it")
 
     def move_gradient_to_cluster(self, hpc_cluster=None, overwrite: bool = False):
         """

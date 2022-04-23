@@ -44,11 +44,3 @@ class TaskManager(object):
     def get_n_tasks(self):
         return len(self.optimization.available_tasks)
 
-
-"""
-I think this will mostly include basic information.
-There can be an inform task object method that gives info
-And then there can be the actual tasks in there.
-Whether it actually needs the info, I'm not sure. We'll see.
-It would be good if the status can somehow be saved on the go.
-"""

@@ -54,9 +54,9 @@ variable = ""
 
 [HPC]
 # Fast directory where inversionson can keep files that need to be used often. Same place as where your jobs are run.
-inversionson_fast_dir = "/scratch/snx3000/username/INVERSIONSON"
+inversionson_fast_dir = "scratch/snx3000/username/INVERSIONSON"
 # It's possible to upload meshes to this directory and then they will always be used rather than creating one.
-remote_mesh_directory = "/path_to_directory_containing_meshes"
+remote_mesh_directory = "path_to_directory_containing_meshes_and_models"
 # This conda environment will be activated before running the interpolation and hpc processing jobs.
 remote_conda_environment = "salvus"
 

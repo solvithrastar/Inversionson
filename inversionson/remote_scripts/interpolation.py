@@ -6,7 +6,10 @@ import shutil
 import pathlib
 import h5py
 from inversionson.hpc_processing.utils import build_or_get_receiver_info
-from inversionson.hpc_processing.cut_and_clip import cut_source_region_from_gradient, clip_gradient
+from inversionson.hpc_processing.cut_and_clip import (
+    cut_source_region_from_gradient,
+    clip_gradient,
+)
 
 # Here we should handle all the looking at the different mesh folders.
 # If the mesh does not exist on scratch, we check on non-scratch.
@@ -14,8 +17,13 @@ from inversionson.hpc_processing.cut_and_clip import cut_source_region_from_grad
 # This needs to be implemented on Monday/Saturday/Tuesday
 
 
-def cut_and_clip(gradient_filename, source_location, parameters,
-                 radius_to_cut_in_km, clipping_percentile):
+def cut_and_clip(
+    gradient_filename,
+    source_location,
+    parameters,
+    radius_to_cut_in_km,
+    clipping_percentile,
+):
     """
     Cut and clip
     Needs the below keys in infp:
@@ -27,8 +35,7 @@ def cut_and_clip(gradient_filename, source_location, parameters,
     """
 
     cut_source_region_from_gradient(
-        gradient_filename, source_location,
-        radius_to_cut=radius_to_cut_in_km
+        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km
     )
 
     print("Source cut completed successfully.")
@@ -50,6 +57,7 @@ def process_data(processing_info):
     """
 
     from inversionson.hpc_processing.data_processing import preprocessing_function_asdf
+
     preprocessing_function_asdf(processing_info)
 
 
@@ -86,9 +94,7 @@ def create_mesh(mesh_info, source_info):
             sm.ocean.ocean_layer_density = 1025.0
         if "topography" in mesh_info.keys():
             sm.topography.topography_file = mesh_info["topography"]["remote_path"]
-            sm.topography.topography_varname = mesh_info["topography"][
-                "variable"
-            ]
+            sm.topography.topography_varname = mesh_info["topography"]["variable"]
         sm.source.latitude = float(source_info["latitude"])
         sm.source.longitude = float(source_info["longitude"])
         sm.refinement.lateral_refinements.append(
@@ -254,8 +260,9 @@ if __name__ == "__main__":
         if info["data_processing"]:
             asdf_file_path = processing_info["asdf_output_filename"]
             receiver_json_file = info["receiver_json_path"]
-            receiver_info = build_or_get_receiver_info(receiver_json_file,
-                                                       asdf_file_path)
+            receiver_info = build_or_get_receiver_info(
+                receiver_json_file, asdf_file_path
+            )
         else:
             receiver_info = info["receiver_info"]
 
@@ -281,9 +288,13 @@ if __name__ == "__main__":
     # Also clip the gradient here. We prefer not to use the login node anymore
     # for this if we have a job anyway.
     if info["gradient"]:
-        cut_and_clip("./to_mesh.h5", info["source_location"],
-                     info["parameters"], info["cutout_radius_in_km"],
-                     info["clipping_percentile"])
+        cut_and_clip(
+            "./to_mesh.h5",
+            info["source_location"],
+            info["parameters"],
+            info["cutout_radius_in_km"],
+            info["clipping_percentile"],
+        )
 
     shutil.move("./to_mesh.h5", "./output/mesh.h5")
     if not info["gradient"] and info["create_simulation_dict"]:

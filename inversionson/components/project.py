@@ -193,13 +193,20 @@ class ProjectComponent(Component):
                 "We need to know the location where the meshes are stored"
                 ". Key: HPC.remote_mesh_directory"
             )
+        if not self.info["HPC"]["remote_mesh_directory"].startswith("/"):
+            raise InversionsonError(
+                "The remote mesh/model dir needs to be a legit absolute path"
+            )
         if "inversionson_fast_dir" not in self.info["HPC"].keys():
             raise InversionsonError(
                 "We need to know the location where to quickly access files used in "
                 "simualations"
                 ". Key: HPC.inversionson_fast_dir"
             )
-
+        if not self.info["HPC"]["inversionson_fast_dir"].startswith("/"):
+            raise InversionsonError(
+                "The inversionson fast directory needs to be a legit absolute path"
+            )
         if "site_name" not in self.info["HPC"]["wave_propagation"].keys():
             raise InversionsonError(
                 "We need information on the site where jobs are submitted. "
@@ -568,6 +575,7 @@ class ProjectComponent(Component):
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
         self.smoothing_tensor_order = self.info["Smoothing"]["tensor_order"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
+
         self.remote_inversionson_dir = pathlib.Path(
             self.info["HPC"]["inversionson_fast_dir"]
         )
@@ -575,7 +583,7 @@ class ProjectComponent(Component):
         self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
-        self.fast_mesh_dir = self.remote_inversionson_dir / "meshes"
+        self.fast_mesh_dir = self.remote_inversionson_dir / "MESHES"
         self.batch_size = self.info["batch_size"]
         self.when_to_validate = self.info["inversion_monitoring"][
             "iterations_between_validation_checks"

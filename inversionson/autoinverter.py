@@ -3,6 +3,7 @@ import emoji
 import toml
 import inspect
 import sys
+from typing import List, Union
 
 from pathlib import Path
 from colorama import init
@@ -31,13 +32,34 @@ def _find_project_comm(info):
 
 
 class AutoInverter(object):
-    def __init__(self, info_dict: dict, manual_mode=False, verbose=False):
+    def __init__(self, info_dict: dict, manual_mode=False, verbose=True):
         self.info = info_dict
-        print(Fore.RED + "Will make communicator now")
         self.comm = _find_project_comm(self.info)
-        print(Fore.GREEN + "All Good, let's go")
+        self.print(
+            message="All Good, let's go!",
+            line_above=True,
+            line_below=True,
+            emoji_alias=":gun:",
+            color="white",
+        )
         if not manual_mode:
             self.run_inversion(verbose=verbose)
+
+    def print(
+        self,
+        message: str,
+        color: str = "white",
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     def move_files_to_cluster(self):
         """
@@ -68,7 +90,10 @@ class AutoInverter(object):
             if hpc_cluster.remote_exists(
                 self.comm.project.ocean_loading["remote_path"]
             ):
-                print("Remote Bathymetry file is already uploaded")
+                self.print(
+                    "Remote Bathymetry file is already uploaded",
+                    emoji_alias=":white_check_mark:",
+                )
             else:
                 if not hpc_cluster.remote_exists(
                     Path(self.comm.project.ocean_loading["remote_path"]).parent
@@ -82,7 +107,10 @@ class AutoInverter(object):
                 )
         if self.comm.project.topography["use"]:
             if hpc_cluster.remote_exists(self.comm.project.topography["remote_path"]):
-                print("Remote Topography file is already uploaded")
+                self.print(
+                    "Remote Topography file is already uploaded",
+                    emoji_alias=":white_check_mark:",
+                )
             else:
                 if not hpc_cluster.remote_exists(
                     Path(self.comm.project.topography["remote_path"]).parent
@@ -104,7 +132,7 @@ class AutoInverter(object):
 
     def run_inversion(self, n_iterations=1000, verbose=True):
         taskmanager = TaskManager(comm=self.comm)
-        print("Moving important files to cluster")
+        self.print("Moving important files to cluster", emoji_alias=":package:")
         self.move_files_to_cluster()
         n_tasks = taskmanager.get_n_tasks()
         n_tasks *= n_iterations

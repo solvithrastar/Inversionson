@@ -243,12 +243,23 @@ class Optimize(object):
             else:
                 interp_site = None
             self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
+            self.print(
+                f"Moving mesh to {self.comm.project.interpolation_site}",
+                emoji_alias=":package:",
+            )
             self.comm.lasif.move_mesh(
                 event=None, iteration=it_name, hpc_cluster=interp_site
             )
         elif self.comm.project.meshes == "mono-mesh" and move_meshes:
+            self.print(
+                f"Moving mesh to {self.comm.project.interpolation_site}",
+                emoji_alias=":package:",
+            )
             self.comm.lasif.move_mesh(event=None, iteration=it_name)
-
+        self.print(
+            f"Uploading source time function to {self.comm.project.site_name}",
+            emoji_alias=":package:",
+        )
         self.comm.lasif.upload_stf(iteration=it_name)
 
     def run_forward(self, verbose: bool = False):

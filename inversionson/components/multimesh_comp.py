@@ -135,7 +135,8 @@ class MultiMeshComponent(Component):
                 new_value=True,
             )
             self.print(
-                f"Interpolation job for event {event} submitted", ":white_check_mark:"
+                f"Interpolation job for event {event} submitted",
+                emoji_alias=":white_check_mark:",
             )
         else:
             simulation_mesh = lapi.get_simulation_mesh(

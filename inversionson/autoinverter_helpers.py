@@ -1665,6 +1665,22 @@ class SmoothingHelper(object):
         self.comm = comm
         self.events = events
 
+    def print(
+        self,
+        message: str,
+        color="red",
+        line_above=False,
+        line_below=False,
+        emoji_alias=None,
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
+
     def __remote_summing(self, events, verbose=False):
         """
         Sum gradients on remote for mono-batch case in preparation for.
@@ -1732,7 +1748,7 @@ class SmoothingHelper(object):
         os.remove(toml_filename)
 
         # Call script
-        print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
+        self.print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
         doc_path = os.path.join(
             self.comm.project.paths["inversion_root"], "DOCUMENTATION"
         )
@@ -1826,10 +1842,11 @@ class SmoothingHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__dispatch_raw_gradient_interpolation(event=event, verbose=verbose)
-            print(
-                f"Dispatched {len(int_job_listener.events_retrieved_now)} "
-                "Smoothing jobs"
-            )
+            if smooth_individual:
+                self.print(
+                    f"Dispatched {len(int_job_listener.events_retrieved_now)} "
+                    "Smoothing jobs"
+                )
             if len(int_job_listener.events_retrieved_now) + len(
                 int_job_listener.events_already_retrieved
             ) == len(events):
@@ -1861,7 +1878,10 @@ class SmoothingHelper(object):
             just_give_path=True,
         )
         if os.path.exists(grad_mesh):
-            print("Gradient has already been summed. Moving on")
+            self.print(
+                "Gradient has already been summed. Moving on",
+                emoji_alias=":white_check_mark:",
+            )
             return
         gradients = []
         for event in events:
@@ -1901,14 +1921,17 @@ class SmoothingHelper(object):
             if retrieved:
                 sub_ret = "retrieved"
             if verbose:
-                print(f"Event {event} has been {sub_ret}. Moving on.")
+                self.print(
+                    f"Event {event} has been {sub_ret}. Moving on.",
+                    emoji_alias=":white_check_mark:",
+                )
             return
         if event is None:
             self.comm.smoother.run_remote_smoother(event=event)
             return
         if not interpolate:
             if verbose:
-                print(f"Submitting smoothing for {event}")
+                self.print(f"Submitting smoothing for {event}")
             self.comm.smoother.run_remote_smoother(event)
 
         if interpolate:
@@ -1943,11 +1966,11 @@ class SmoothingHelper(object):
                 )
             else:
                 if retrieved:
-                    print(f"I'm running the remote smoother now for event {event}")
+                    self.print(f"I'm running the remote smoother now for event {event}")
                     self.comm.smoother.run_remote_smoother(event)
                 else:
                     if verbose:
-                        print(
+                        self.print(
                             f"Event {event} is being interpolated," " can't smooth yet"
                         )
 
@@ -2016,12 +2039,12 @@ class SmoothingHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
-                print(f"Dispatching smoothing simulation via repost: {event}")
+                self.print(f"Dispatching smoothing simulation via repost: {event}")
                 self.__dispatch_smoothing_simulation(
                     event=event, interpolate=interpolate, verbose=verbose
                 )
             if len(smooth_job_listener.events_retrieved_now) > 0:
-                print(
+                self.print(
                     f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
                     "smoothing jobs"
                 )
