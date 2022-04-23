@@ -6,8 +6,6 @@ import os
 from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-from inversionson.optimizers.adam_opt import AdamOpt
-import toml
 from typing import Union, List
 
 from lasif.components.component import Component
