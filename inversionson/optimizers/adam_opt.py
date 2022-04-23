@@ -300,7 +300,7 @@ class AdamOpt(Optimize):
     def _compute_raw_update(self):
         """Computes the raw update"""
 
-        print("Adam: Computing raw update...")
+        self.print("Adam: Computing raw update...", line_above=True)
         # Read task toml
 
         iteration_number = self.task_dict["iteration_number"] + 1
@@ -376,7 +376,7 @@ class AdamOpt(Optimize):
         update = self.alpha * m_t / (np.sqrt(v_t) + e)
 
         max_upd = np.max(np.abs(update))
-        print(f"Max raw model update: {max_upd}")
+        self.print(f"Max raw model update: {max_upd}")
         if max_upd > 3.0 * self.alpha:
             raise Exception("Raw update seems a bit large")
         if np.sum(np.isnan(update)) > 1:
@@ -396,7 +396,7 @@ class AdamOpt(Optimize):
         """
         Apply the smoothed update.
         """
-        print("Adam: Applying smooth update...")
+        self.print("Adam: Applying smooth update...", line_above=True)
 
         raw_update = self.get_h5_data(self.raw_update_path)
         max_raw_update = np.max(np.abs(raw_update))
@@ -425,12 +425,12 @@ class AdamOpt(Optimize):
         update_scaling_fac = min(update_scaling_fac_norm,
                                  update_scaling_fac_alpha,
                                  update_scaling_fac_peak)
-        print("update_scaling_fac_norm", update_scaling_fac_norm,
+        self.print("update_scaling_fac_norm", update_scaling_fac_norm,
               "update_scaling_fac_alpha", update_scaling_fac_alpha,
               "update_scaling_fac_peak", update_scaling_fac_peak,
               )
 
-        print(f"Recaling based on lowest rescaling fac: {update_scaling_fac},"
+        self.print(f"Recaling based on lowest rescaling fac: {update_scaling_fac},"
               f"New maximum update is: {max_upd * update_scaling_fac}")
 
         update *= update_scaling_fac
@@ -502,7 +502,7 @@ class AdamOpt(Optimize):
         if self.comm.lasif.has_iteration(it_name):
             raise InversionsonError(f"Iteration {it_name} already exists")
 
-        print("Picking data for iteration")
+        self.print("Picking data for iteration")
         events = self._pick_data_for_iteration(validation=validation)
 
         super().prepare_iteration(
@@ -564,21 +564,21 @@ class AdamOpt(Optimize):
             self.task_dict["forward_submitted"] = True
             self._update_task_file()
         else:
-            print("Forwards already submitted")
+            self.print("Forwards already submitted")
 
         if not self.task_dict["misfit_completed"]:
             self.compute_misfit(adjoint=True, window_selection=True, verbose=verbose)
             self.task_dict["misfit_completed"] = True
             self._update_task_file()
         else:
-            print("Misfit already computed")
+            self.print("Misfit already computed")
 
         if not self.task_dict["gradient_completed"]:
             super().compute_gradient(verbose=verbose)
             self.task_dict["gradient_completed"] = True
             self._update_task_file()
         else:
-            print("Gradients already computed")
+            self.print("Gradients already computed")
         self.finish_task()
 
     def update_model(self, verbose):
@@ -617,35 +617,35 @@ class AdamOpt(Optimize):
             self.task_dict["summing_completed"] = True
             self._update_task_file()
         else:
-            print("Summing already done")
+            self.print("Summing already done")
 
         if not self.task_dict["raw_update_completed"]:
             self._update_model(raw=True, smooth=False, verbose=verbose)
             self.task_dict["raw_update_completed"] = True
             self._update_task_file()
         else:
-            print("Raw updating already completed")
+            self.print("Raw updating already completed")
 
         if not self.task_dict["smoothing_completed"]:
             self.perform_smoothing()
             self.task_dict["smoothing_completed"] = True
             self._update_task_file()
         else:
-            print("Smoothing already done")
+            self.print("Smoothing already done")
 
         if not self.task_dict["smooth_update_completed"]:
             self._update_model(raw=False, smooth=True, verbose=verbose)
             self.task_dict["smooth_update_completed"] = True
             self._update_task_file()
         else:
-            print("Smooth updating already completed")
+           self.print("Smooth updating already completed")
 
         if not self.task_dict["iteration_finalized"]:
             self._finalize_iteration(verbose=verbose)
             self.task_dict["iteration_finalized"] = True
             self._update_task_file()
         else:
-            print("Iteration already finalized")
+            self.print("Iteration already finalized")
 
         self.finish_task()
 
@@ -654,7 +654,7 @@ class AdamOpt(Optimize):
         This function computes the validation misfits.
         """
         if self.task_dict["validated"]:
-            print("Validation misfit already computed")
+            self.print("Validation misfit already computed")
             return
 
         it_name = f"validation_{self.iteration_name}"
@@ -678,12 +678,12 @@ class AdamOpt(Optimize):
         Look at which task is the current one and call the function which does it.
         """
         task_name = self.task_dict["task"]
-        print(f"Current task is: {task_name}")
+        self.print(f"Current task is: {task_name}", line_above=True)
 
         if task_name == "prepare_iteration":
             if not self.task_dict["finished"]:
                 if self.comm.lasif.has_iteration(self.iteration_name):
-                    print(
+                    self.print(
                         f"Iteration {self.iteration_name} exists. Will load its attributes"
                     )
                     self.comm.project.get_iteration_attributes(validation=False)
@@ -691,26 +691,26 @@ class AdamOpt(Optimize):
                 else:
                     self.prepare_iteration(validation=False)
             else:
-                print("Iteration already prepared")
+                self.print("Iteration already prepared")
         elif task_name == "compute_gradient":
             if not self.task_dict["finished"]:
                 self.comm.project.get_iteration_attributes(validation=False)
                 self.compute_gradient(verbose=verbose)
             else:
-                print("Gradient already computed")
+                self.print("Gradient already computed")
         elif task_name == "update_model":
             if not self.task_dict["finished"]:
                 self.comm.project.get_iteration_attributes(validation=False)
                 self.update_model(verbose=verbose)
             else:
-                print("Model already updated")
+                self.print("Model already updated")
         else:
             raise InversionsonError(f"Task {task_name} is not recognized by AdamOpt")
 
     def get_new_task(self):
         if self.task_dict["finished"]:
             self._write_new_task()
-            print(f"New task is: {self.task_dict['task']}")
+            self.print(f"New task is: {self.task_dict['task']}", line_above=True)
         else:
             raise InversionsonError(f"Task: {self.task_dict['task']} is not finished.")
 

@@ -11,7 +11,7 @@ import os
 import glob
 import h5py
 import toml
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from salvus.flow.api import get_site
 from inversionson import InversionsonError, autoinverter_helpers as helpers
 
@@ -20,22 +20,22 @@ class Optimize(object):
 
     # Derived classes should add to this
     available_tasks = [
-            "prepare_iteration",
-            "run_forward",
-            "compute_misfit",
-            "compute_validation_misfit",
-            "compute_gradient",
-            "regularization",
-            "update_model",
-            "documentation",
-        ]
+        "prepare_iteration",
+        "run_forward",
+        "compute_misfit",
+        "compute_validation_misfit",
+        "compute_gradient",
+        "regularization",
+        "update_model",
+        "documentation",
+    ]
 
     # Derived classes should override this
     optimizer_name = "BaseClass for optimizers. Don't instantiate. If you see this..."
 
     def __init__(self, comm):
 
-        # This init is only called by derived classes 
+        # This init is only called by derived classes
 
         self.current_task = self.read_current_task()
 
@@ -47,7 +47,7 @@ class Optimize(object):
         self.parameters = self.comm.project.inversion_params
         if not os.path.exists(self.opt_folder):
             os.mkdir(self.opt_folder)
-            
+
         # These folders are universally needed
         self.model_dir = self.opt_folder / "MODELS"
         self.task_dir = self.opt_folder / "TASKS"
@@ -91,7 +91,23 @@ class Optimize(object):
         self.tmp_model_path = self.opt_folder / "tmp_model.h5"
         self._read_task_file()
 
-        # Once this exits, continue with the derived class __init__(). 
+        # Once this exits, continue with the derived class __init__().
+
+    def print(
+        self,
+        message: str,
+        color: str = "magenta",
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = ":chart_with_downwards_trend:",
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
 
     @_abstractmethod
     def _initialize_derived_class_folders(self):
