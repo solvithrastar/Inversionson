@@ -1653,7 +1653,7 @@ class AdjointHelper(object):
         os.remove(toml_filename)
 
         # Call script
-        # print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
+        print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
 
 
 class SmoothingHelper(object):
