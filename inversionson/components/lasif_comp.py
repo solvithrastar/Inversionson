@@ -163,7 +163,7 @@ class LasifComponent(Component):
             if interpolate_to:
                 mesh = (
                     self.comm.project.remote_inversionson_dir
-                    / "meshes"
+                    / "MESHES"
                     / "standard_gradient"
                     / "mesh.h5"
                 )
@@ -251,7 +251,7 @@ class LasifComponent(Component):
                 self.print(
                     "Moving example gradient to cluster", emoji_alias=":package:"
                 )
-                self._move_gradient_to_cluster(hpc_cluster)
+                self.move_gradient_to_cluster(hpc_cluster)
             else:
                 # This happens when we want to move the model to the cluster
                 self.print("Moving model to cluster", emoji_alias=":package:")
