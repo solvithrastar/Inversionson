@@ -425,12 +425,12 @@ class AdamOpt(Optimize):
         update_scaling_fac = min(update_scaling_fac_norm,
                                  update_scaling_fac_alpha,
                                  update_scaling_fac_peak)
-        self.print("update_scaling_fac_norm", update_scaling_fac_norm,
-              "update_scaling_fac_alpha", update_scaling_fac_alpha,
-              "update_scaling_fac_peak", update_scaling_fac_peak,
+        print("Update scaling factor norm:", update_scaling_fac_norm,
+              "Update scaling factor alpha:", update_scaling_fac_alpha,
+              "Update scaling factor peak:", update_scaling_fac_peak,
               )
 
-        self.print(f"Recaling based on lowest rescaling fac: {update_scaling_fac},"
+        self.print(f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
               f"New maximum update is: {max_upd * update_scaling_fac}")
 
         update *= update_scaling_fac

@@ -106,7 +106,7 @@ class GradientSummer(object):
         print("Remote summing of gradients started...")
         hpc_cluster.run_ssh_command(
             f"python {remote_script} {remote_toml}")
-        print("Remote summing completed...")
+        print("Remote summing completed.")
 
         if store_norms:
             doc_path = os.path.join(
