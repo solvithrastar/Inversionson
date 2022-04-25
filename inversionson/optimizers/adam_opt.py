@@ -447,10 +447,13 @@ class AdamOpt(Optimize):
         # Normalize the model and prevent division by zero in the outer core.
         theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
 
-        # only add perturbation decay at this stage
-        theta_new = theta_prev - update - self.perturbation_decay * theta_prev
+        # Make sure that the model is only updated where theta is non_zero
+        theta_new = np.zeros_like(theta_0)
+        theta_new[theta_0 != 0] = \
+            theta_prev[theta_0 != 0] - update[theta_0 != 0] - \
+            self.perturbation_decay * theta_prev[theta_0 != 0]
 
-        # remove normalization from updated model and write physical model
+        # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
         shutil.copy(
             self.model_path,
