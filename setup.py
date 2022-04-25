@@ -44,6 +44,7 @@ setup_config = dict(
         "pyasdf",
         "toml",
         "numpy",
+        "numexpr"
         "pytest",
         "flask",
         "flask-cache",
