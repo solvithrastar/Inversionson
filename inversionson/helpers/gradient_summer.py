@@ -1,6 +1,7 @@
 import inspect
 import os
 import toml
+from typing import Union, List
 
 from salvus.flow.api import get_site
 from inversionson.utils import sum_two_parameters_h5
@@ -28,8 +29,30 @@ class GradientSummer(object):
         """
         self.comm = comm
 
-    def sum_gradients(self, events, output_location, batch_average=True,
-                       sum_vpv_vph=True, store_norms=True):
+    def print(
+        self,
+        message: str,
+        color: str = "green",
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = ":bowtie:",
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
+
+    def sum_gradients(
+        self,
+        events,
+        output_location,
+        batch_average=True,
+        sum_vpv_vph=True,
+        store_norms=True,
+    ):
         """
         Sum gradients on the HPC.
 
@@ -50,8 +73,7 @@ class GradientSummer(object):
 
         for event in self.comm.project.events_in_iteration:
             if self.comm.project.meshes == "multi-mesh":
-                job = self.comm.salvus_flow.get_job(event,
-                                                    "gradient_interp")
+                job = self.comm.salvus_flow.get_job(event, "gradient_interp")
                 gradient_path = os.path.join(
                     str(job.stderr_path.parent), "output/mesh.h5"
                 )
@@ -73,25 +95,24 @@ class GradientSummer(object):
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
-        remote_output_path = os.path.join(remote_inversionson_dir,
-                                          "summed_gradient.h5")
+        remote_output_path = os.path.join(remote_inversionson_dir, "summed_gradient.h5")
         remote_norms_path = os.path.join(
             remote_inversionson_dir, f"{iteration}_gradient_norms.toml"
         )
 
         # copy summing script to hpc
-        remote_script = os.path.join(remote_inversionson_dir,
-                                     "gradient_summing.py")
+        remote_script = os.path.join(remote_inversionson_dir, "gradient_summing.py")
         if not hpc_cluster.remote_exists(remote_script):
             hpc_cluster.remote_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
 
-        info = dict(filenames=gradient_paths,
-                    parameters=self.comm.project.inversion_params,
-                    output_gradient=remote_output_path,
-                    events_list=events,
-                    gradient_norms_path=remote_norms_path,
-                    batch_average=batch_average,
-                    )
+        info = dict(
+            filenames=gradient_paths,
+            parameters=self.comm.project.inversion_params,
+            output_gradient=remote_output_path,
+            events_list=events,
+            gradient_norms_path=remote_norms_path,
+            batch_average=batch_average,
+        )
 
         toml_filename = f"gradient_sum.toml"
         with open(toml_filename, "w") as fh:
@@ -103,17 +124,15 @@ class GradientSummer(object):
         os.remove(toml_filename)
 
         # Call script
-        print("Remote summing of gradients started...")
-        hpc_cluster.run_ssh_command(
-            f"python {remote_script} {remote_toml}")
-        print("Remote summing completed...")
+        self.print("Remote summing of gradients started...")
+        hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}")
+        self.print("Remote summing completed...")
 
         if store_norms:
             doc_path = os.path.join(
                 self.comm.project.paths["inversion_root"], "DOCUMENTATION"
             )
-            norm_dict_toml = os.path.join(doc_path,
-                                          f"{iteration}_gradient_norms.toml")
+            norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
 
             hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
             all_norms_path = os.path.join(doc_path, "all_norms.toml")

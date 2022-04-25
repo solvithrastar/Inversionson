@@ -1,5 +1,6 @@
 import os
 import toml
+from typing import Union, List
 
 from pathlib import Path
 from salvus.flow import api as sapi
@@ -33,7 +34,8 @@ class RegularizationHelper(object):
         self.max_reposts = 3
         self.iteration_name = iteration_name
         self.regularization_folder = (
-            Path(self.comm.project.paths["inversion_root"]) / "OPTIMIZATION"
+            Path(self.comm.project.paths["inversion_root"])
+            / "OPTIMIZATION"
             / "REGULARIZATION"
         )
         if not os.path.exists(self.regularization_folder):
@@ -41,17 +43,33 @@ class RegularizationHelper(object):
         self._write_tasks(tasks)
         self.tasks = toml.load(self._get_iteration_toml_filename())
 
+    def print(
+        self,
+        message: str,
+        color: str = "green",
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = ":cop:",
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
+
     def _get_iteration_toml_filename(self):
-        return self.regularization_folder / (self.iteration_name +
-                                             "_regularization.toml")
+        return self.regularization_folder / (
+            self.iteration_name + "_regularization.toml"
+        )
 
     def _write_tasks(self, tasks):
         """
         This function writes the tasks to file or updates the task file.
         """
         # Write initial toml if there is no task toml yet
-        base_dict = dict(job_name="", submitted=False, retrieved=False,
-                         reposts=0)
+        base_dict = dict(job_name="", submitted=False, retrieved=False, reposts=0)
         if not os.path.exists(self._get_iteration_toml_filename()):
             for task_dict in tasks.values():
                 task_dict.update(base_dict)
@@ -71,13 +89,15 @@ class RegularizationHelper(object):
                 toml.dump(existing_tasks, fh)
 
     def dispatch_smoothing_tasks(self):
+        self.print("Dispatching Smoothing Tasks")
         for task_name, task_dict in self.tasks.items():
             if not task_dict["submitted"] and task_dict["reposts"] < self.max_reposts:
                 sims = self.comm.smoother.get_sims_for_smoothing_task(
                     reference_model=task_dict["reference_model"],
                     model_to_smooth=task_dict["model_to_smooth"],
                     smoothing_lengths=task_dict["smoothing_lengths"],
-                    smoothing_parameters=task_dict["smoothing_parameters"])
+                    smoothing_parameters=task_dict["smoothing_parameters"],
+                )
 
                 job = sapi.run_many_async(
                     input_files=sims,
@@ -89,16 +109,19 @@ class RegularizationHelper(object):
                 self.tasks[task_name]["job_name"] = job.job_array_name
                 self._write_tasks(self.tasks)
             elif task_dict["reposts"] >= self.max_reposts:
-                raise Exception("Too many reposts in smoothing, "
-                                "please check the time steps and the inputs."
-                                "and reset the number of reposts in the toml file.")
+                raise Exception(
+                    "Too many reposts in smoothing, "
+                    "please check the time steps and the inputs."
+                    "and reset the number of reposts in the toml file."
+                )
 
     def update_task_status_and_retrieve(self):
         for task_dict in self.tasks.values():
             if task_dict["retrieved"]:
                 continue
-            job = sapi.get_job_array(job_array_name=task_dict["job_name"],
-                                     site_name=self.site_name)
+            job = sapi.get_job_array(
+                job_array_name=task_dict["job_name"], site_name=self.site_name
+            )
             status = job.update_status(force_update=True)
             finished = True
             for _i, s in enumerate(status):
@@ -125,7 +148,7 @@ class RegularizationHelper(object):
         return True
 
     def monitor_tasks(self):
-        print("Monitoring smoothing jobs...")
+        self.print("Monitoring smoothing jobs...")
         self.dispatch_smoothing_tasks()
         self.update_task_status_and_retrieve()  # Start with retrieval to skip loop
         while not self.all_retrieved():
