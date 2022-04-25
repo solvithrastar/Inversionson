@@ -494,19 +494,12 @@ class ForwardHelper(object):
                 )
                 return
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-            if hpc_cluster.config["site_type"] == "local":
-                interp_folder = os.path.join(
-                    self.comm.project.remote_diff_model_dir, "..", "MODELS", event
-                )
-            else:
-                username = hpc_cluster.config["ssh_settings"]["username"]
-                interp_folder = os.path.join(
-                    "/scratch/snx3000",
-                    username,
-                    "INTERPOLATION_WEIGHTS",
-                    "MODELS",
-                    event,
-                )
+            interp_folder = os.path.join(
+                self.comm.project.remote_inversionson_dir,
+                "INTERPOLATION_WEIGHTS",
+                "MODELS",
+                event,
+            )
             if not hpc_cluster.remote_exists(interp_folder):
                 hpc_cluster.remote_mkdir(interp_folder)
 
@@ -1522,17 +1515,14 @@ class AdjointHelper(object):
         hpc_cluster = get_site(self.comm.project.interpolation_site)
         if hpc_cluster.config["site_type"] == "local":
             interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir,
-                "..",
+                self.comm.project.remote_inversionson_dir,
                 "INTERPOLATION_WEIGHTS",
                 "GRADIENTS",
                 event,
             )
         else:
-            username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
-                "/scratch/snx3000",
-                username,
+                self.comm.project.remote_inversionson_dir,
                 "INTERPOLATION_WEIGHTS",
                 "GRADIENTS",
                 event,
@@ -1942,17 +1932,14 @@ class SmoothingHelper(object):
                 hpc_cluster = get_site(self.comm.project.interpolation_site)
                 if hpc_cluster.config["site_type"] == "local":
                     interp_folder = os.path.join(
-                        self.comm.project.remote_diff_model_dir,
-                        "..",
+                        self.comm.project.remote_inversionson_dir,
                         "INTERPOLATION_WEIGHTS",
                         "GRADIENTS",
                         event,
                     )
                 else:
-                    username = hpc_cluster.config["ssh_settings"]["username"]
                     interp_folder = os.path.join(
-                        "/scratch/snx3000",
-                        username,
+                        self.comm.project.remote_inversionson_dir,
                         "INTERPOLATION_WEIGHTS",
                         "GRADIENTS",
                         event,
@@ -1982,17 +1969,14 @@ class SmoothingHelper(object):
         hpc_cluster = get_site(self.comm.project.interpolation_site)
         if hpc_cluster.config["site_type"] == "local":
             interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir,
-                "..",
+                self.comm.project.remote_inversionson_dir,
                 "INTERPOLATION_WEIGHTS",
                 "GRADIENTS",
                 event,
             )
         else:
-            username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
-                "/scratch/snx3000",
-                username,
+                self.comm.project.remote_inversionson_dir,
                 "INTERPOLATION_WEIGHTS",
                 "GRADIENTS",
                 event,
