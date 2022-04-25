@@ -11,6 +11,7 @@ import pathlib
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
 from inversionson.optimizers.adam_opt import AdamOpt
+from inversionson.optimizers.sgd_with_momentum import SGDM
 from typing import Union, List
 
 from lasif.components.communicator import Communicator
@@ -107,6 +108,8 @@ class ProjectComponent(Component):
         """
         if self.optimizer == "adam":
             return AdamOpt(comm=self.comm)
+        if self.optimizer == "sgdm":
+            return SGDM(comm=self.comm)
         else:
             raise InversionsonError(f"Optimization method {self.optimizer} not defined")
 
