@@ -6,11 +6,12 @@ import glob
 import shutil
 import h5py
 from inversionson import InversionsonError
+from inversionson.helpers.interpolation_helper import InterpolationListener
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
-from inversionson.autoinverter_helpers import SmoothingHelper, AdjointHelper
+from inversionson.helpers.autoinverter_helpers import AdjointHelper
 
 
 class SGDM(Optimize):
@@ -538,9 +539,9 @@ class SGDM(Optimize):
                 verbose=verbose,
             )
             assert adjoint_helper.assert_all_simulations_retrieved()
-            smoothing_helper = SmoothingHelper(
+            interp_listener = InterpolationListener(
                 comm=self.comm, events=self.comm.project.events_in_iteration)
-            smoothing_helper.monitor_interpolations()
+            interp_listener.monitor_interpolations()
 
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(

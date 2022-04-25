@@ -11,9 +11,10 @@ import os
 import glob
 import h5py
 import toml
-from typing import List, Tuple, Union
+from typing import List, Union
 from salvus.flow.api import get_site
-from inversionson import InversionsonError, autoinverter_helpers as helpers
+from inversionson import InversionsonError
+from inversionson.helpers import autoinverter_helpers as helpers
 
 
 class Optimize(object):

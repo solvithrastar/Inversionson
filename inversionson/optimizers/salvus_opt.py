@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-from inversionson import InversionsonError, autoinverter_helpers as helpers
+from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
 
 
