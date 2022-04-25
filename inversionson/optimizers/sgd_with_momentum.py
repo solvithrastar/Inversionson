@@ -307,7 +307,7 @@ class SGDM(Optimize):
 
 
         v_t = (
-            self.beta * self.get_h5_data(self.first_moment_path)
+            self.beta * self.get_h5_data(self.moment_path)
             + (1 - self.beta) * g_t
         )
 
