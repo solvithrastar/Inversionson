@@ -605,20 +605,16 @@ class ProjectComponent(Component):
             it_dict["remote_simulation_mesh"] = None
 
         job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
-        s_job_dict = job_dict.copy()
-
-        if self.meshes == "multi-mesh":
-            s_job_dict["interpolated"] = False
 
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             if validation:
-                jobs = {"forward": s_job_dict}
+                jobs = {"forward": job_dict}
                 if remote_interp:
                     jobs["model_interp"] = job_dict
             if not validation:
                 jobs = {
-                    "forward": s_job_dict,
-                    "adjoint": s_job_dict,
+                    "forward": job_dict,
+                    "adjoint": job_dict,
                 }
                 if remote_interp:
                     jobs["model_interp"] = job_dict
