@@ -71,7 +71,7 @@ class AutoInverter(object):
         if not hpc_cluster.remote_exists(self.comm.project.remote_inversionson_dir):
             hpc_cluster.remote_mkdir(self.comm.project.remote_inversionson_dir)
         for directory in [
-            "DIFF_MODELS",
+            "DIFFUSION_MODELS",
             "SOURCE_TIME_FUNCTIONS",
             "INTERPOLATION_WEIGHTS",
             "MESHES",
