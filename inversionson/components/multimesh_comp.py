@@ -319,6 +319,7 @@ class MultiMeshComponent(Component):
             "min_period": self.comm.project.min_period,
             "elems_per_quarter": self.comm.project.elem_per_quarter,
             "interpolation_weights": remote_weights_path,
+            "elems_per_wavelength": self.comm.project.elem_per_wavelength,
         }
         if not gradient and self.comm.project.remote_data_processing:
             information["data_processing"] = True

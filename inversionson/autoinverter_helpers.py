@@ -1632,9 +1632,6 @@ class AdjointHelper(object):
         if not hpc_cluster.remote_exists(remote_script):
             hpc_cluster.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
 
-        if self.comm.project.cut_receiver_radius > 0.0:
-            raise InversionsonError("Remote receiver cutting not implemented yet.")
-
         info = {}
         info["filename"] = str(gradient_path)
         info["cutout_radius_in_km"] = self.comm.project.cut_source_radius

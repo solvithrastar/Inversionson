@@ -1,19 +1,13 @@
 inversion_path = "{INVERSION_PATH}"
 lasif_root = "{INVERSION_PATH}/LASIF_PROJECT"
-inversion_id = "MY_INVERSION"
-# Pick between mini-batch and mono-batch
-inversion_mode = "mini-batch"
 # Pick between 'multi-mesh' or 'mono-mesh'
 meshes = "multi-mesh"
-# Currently only 'Adam' available
+# Currently only 'Adam' and 'SGDM' available
 optimizer = "Adam"
-# Either local or remote
-interpolation_mode = "remote"
 inversion_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO",]
 modelling_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "QMU", "ETA",]
 batch_size = 3
 cut_source_region_from_gradient_in_km = 100.0
-cut_receiver_region_from_gradient_in_km = 0.0
 # Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be cut
 clip_gradient = 1.0
 # You specify the length of the absorbing boundaries in the lasif config
@@ -22,19 +16,8 @@ absorbing_boundaries = true
 [Meshing]
 # Only used for multi-mesh. Needs to be higher for more complex models.
 elements_per_azimuthal_quarter = 4
+elements_per_wavelength = 1.7
 ellipticity = true
-
-[Smoothing]
-timestep = 1e-5
-tensor_order = 2 # The tensor order used in in the diffusion simulations. This may be set to 1 to make smoothing faster at the cost of lower, but likely acceptable precision.
-
-[inversion_monitoring]
-# If you want to check misfit of validation set every few iterations you give a number N here if you want to do a validation check every N iterations. Put 0 if you do not want to perform a validation check.
-iterations_between_validation_checks = 0
-# A validation dataset is used to monitor state of inversion, it is used to tune parameters such as smoothing lengths. It is not used in the inversion in any other way. This parameter is optional. If you keep the above parameter at zero, you can still reserve sources for validation without it happening automatically.
-validation_dataset = []
-# A test dataset is not used at all in the inversion and can only be used at the end of an inversion to test how reliable the inversion actually was. The only thing Inveversionson does with these events is to make sure they are not used in inversion. This parameter is optional.
-test_dataset = []
 
 [Meshing.ocean_loading]
 use = false
@@ -47,6 +30,14 @@ use = false
 file = ""
 remote_path = ""
 variable = ""
+
+[inversion_monitoring]
+# If you want to check misfit of validation set every few iterations you give a number N here if you want to do a validation check every N iterations. Put 0 if you do not want to perform a validation check.
+iterations_between_validation_checks = 0
+# A validation dataset is used to monitor state of inversion, it is used to tune parameters such as smoothing lengths. It is not used in the inversion in any other way. This parameter is optional. If you keep the above parameter at zero, you can still reserve sources for validation without it happening automatically.
+validation_dataset = []
+# A test dataset is not used at all in the inversion and can only be used at the end of an inversion to test how reliable the inversion actually was. The only thing Inveversionson does with these events is to make sure they are not used in inversion. This parameter is optional.
+test_dataset = []
 
 [HPC]
 # Fast directory where inversionson can keep files that need to be used often. Same place as where your jobs are run.
@@ -77,7 +68,6 @@ wall_time = 1000
 ranks = 24
 
 [HPC.interpolation]
-site_name = "daint"
 model_wall_time = 300
 gradient_wall_time = 900
 

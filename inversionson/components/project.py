@@ -121,10 +121,6 @@ class ProjectComponent(Component):
         """
         import pathlib
 
-        allowed_interp_modes = ["local", "remote"]
-        if "inversion_id" not in self.info.keys():
-            raise ValueError("The inversion needs a name, Key: inversion_id")
-
         if "inversion_path" not in self.info.keys():
             raise InversionsonError(
                 "We need a given path for the inversion root directory."
@@ -138,19 +134,6 @@ class ProjectComponent(Component):
                 "Key: meshes"
             )
 
-        if "interpolation_mode" not in self.info.keys():
-            raise InversionsonError(
-                "We need information on how you want to interpolate "
-                "between meshes, local or remote. "
-                "If you use mono-mesh, just put 'local'"
-                "Key: interpolation_mode "
-            )
-
-        if self.info["interpolation_mode"] not in allowed_interp_modes:
-            raise InversionsonError(
-                f"The allowable model_interpolation_modes are: "
-                f" {allowed_interp_modes}"
-            )
         if "HPC" not in self.info.keys():
             raise InversionsonError(
                 "We need information regarding your computational resources."
@@ -166,28 +149,27 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "We need specific computational info on diffusion_equation"
             )
-        if self.info["interpolation_mode"] == "remote":
-            if "interpolation" not in self.info["HPC"].keys():
-                raise InversionsonError(
-                    "We need to know some info on your remote interpolations"
-                )
+        if "interpolation" not in self.info["HPC"].keys():
+            raise InversionsonError(
+                "We need to know some info on your remote interpolations"
+            )
 
-            if "model_wall_time" not in self.info["HPC"]["interpolation"].keys():
-                raise InversionsonError(
-                    "We need to know the wall time of your model "
-                    " interpolations. Key: HPC.interpolation.model_wall_time"
-                )
+        if "model_wall_time" not in self.info["HPC"]["interpolation"].keys():
+            raise InversionsonError(
+                "We need to know the wall time of your model "
+                " interpolations. Key: HPC.interpolation.model_wall_time"
+            )
 
-            if "gradient_wall_time" not in self.info["HPC"]["interpolation"].keys():
-                raise InversionsonError(
-                    "We need to know the wall time of your model "
-                    " interpolations. Key: HPC.interpolation.gradient_wall_time"
-                )
-            if "wall_time" not in self.info["HPC"]["processing"].keys():
-                raise InversionsonError(
-                    "We need to know the wall time for the remote processing. "
-                    "Key: HPC.processing.wall_time"
-                )
+        if "gradient_wall_time" not in self.info["HPC"]["interpolation"].keys():
+            raise InversionsonError(
+                "We need to know the wall time of your model "
+                " interpolations. Key: HPC.interpolation.gradient_wall_time"
+            )
+        if "wall_time" not in self.info["HPC"]["processing"].keys():
+            raise InversionsonError(
+                "We need to know the wall time for the remote processing. "
+                "Key: HPC.processing.wall_time"
+            )
         if "remote_mesh_directory" not in self.info["HPC"].keys():
             raise InversionsonError(
                 "We need to know the location where the meshes are stored"
@@ -249,16 +231,6 @@ class ProjectComponent(Component):
                 "for forward modelling. Key: modelling_parameters"
             )
 
-        if "inversion_mode" not in self.info.keys():
-            raise InversionsonError(
-                "We need information on inversion mode. mini-batch or normal"
-            )
-
-        if self.info["inversion_mode"] not in ["mini-batch", "mono-batch"]:
-            raise InversionsonError(
-                "Only implemented inversion modes are mini-batch or mono-batch"
-            )
-
         if "meshes" not in self.info.keys():
             raise InversionsonError(
                 "We need to know what sorts of meshes you use. "
@@ -273,12 +245,12 @@ class ProjectComponent(Component):
         if "optimizer" not in self.info.keys():
             raise InversionsonError(
                 "We need to know what type of optimization you want. "
-                "The available ones are 'Adam'"
+                "The available ones are 'Adam' and 'SGDM'"
                 "Key: optimizer"
             )
 
-        if self.info["optimizer"].lower() not in ["adam"]:
-            raise InversionsonError("We only accept 'adam'")
+        if self.info["optimizer"].lower() not in ["adam", "sgdm"]:
+            raise InversionsonError("We only accept 'adam' and 'sgdm'")
 
         # Smoothing
         if "Smoothing" not in self.info.keys():
@@ -317,6 +289,11 @@ class ProjectComponent(Component):
                     "Elements per azimuthal quarter need to be an integer."
                 )
 
+            if "elements_per_wavelength" not in self.info["Meshing"].keys():
+                raise InversionsonError(
+                    "We need to know how many elements you need per wavelength "
+                    "Key: Meshing.elements_per_wavelength"
+                )
             if "ellipticity" not in self.info["Meshing"].keys():
                 raise InversionsonError(
                     "We need a boolean value regarding ellipticity "
@@ -488,29 +465,27 @@ class ProjectComponent(Component):
         # Inversion attributes
         self.inversion_root = pathlib.Path(self.info["inversion_path"])
         self.lasif_root = pathlib.Path(self.info["lasif_root"])
-        self.inversion_id = self.info["inversion_id"]
-        self.inversion_mode = self.info["inversion_mode"]
+        self.inversion_mode = "mini-batch"
         self.meshes = self.info["meshes"]
         self.optimizer = self.info["optimizer"].lower()
         self.elem_per_quarter = self.info["Meshing"]["elements_per_azimuthal_quarter"]
+        self.elem_per_wavelength = self.info["Meshing"]["elements_per_wavelength"]
         self.topography = self.info["Meshing"]["topography"]
         self.ellipticity = self.info["Meshing"]["ellipticity"]
         self.ocean_loading = self.info["Meshing"]["ocean_loading"]
-        self.interpolation_mode = self.info["interpolation_mode"]
+        self.interpolation_mode = "remote"
         self.cut_source_radius = self.info["cut_source_region_from_gradient_in_km"]
-        self.cut_receiver_radius = self.info["cut_receiver_region_from_gradient_in_km"]
         self.clip_gradient = self.info["clip_gradient"]
         self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
         self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
         self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
-        if self.interpolation_mode == "remote":
-            self.model_interp_wall_time = self.info["HPC"]["interpolation"][
-                "model_wall_time"
-            ]
-            self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
-                "gradient_wall_time"
-            ]
-            self.interpolation_site = self.info["HPC"]["interpolation"]["site_name"]
+        self.model_interp_wall_time = self.info["HPC"]["interpolation"][
+            "model_wall_time"
+        ]
+        self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
+            "gradient_wall_time"
+        ]
+        self.interpolation_site = self.site_name
 
         self.remote_data_processing = self.info["HPC"]["remote_data_processing"]["use"]
         self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"][
@@ -522,8 +497,6 @@ class ProjectComponent(Component):
         self.smoothing_site_name = self.site_name
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
-        self.smoothing_timestep = self.info["Smoothing"]["timestep"]
-        self.smoothing_tensor_order = self.info["Smoothing"]["tensor_order"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
 
         self.remote_inversionson_dir = pathlib.Path(

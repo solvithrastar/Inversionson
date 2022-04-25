@@ -82,7 +82,7 @@ def create_mesh(mesh_info, source_info):
         sm = SmoothieSEM()
         sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = float(mesh_info["min_period"])
-        sm.basic.elements_per_wavelength = 1.7
+        sm.basic.elements_per_wavelength = float(mesh_info["elems_per_wavelength"])
         sm.basic.number_of_lateral_elements = int(mesh_info["elems_per_quarter"])
         sm.advanced.tensor_order = 4
         if "ellipticity" in mesh_info.keys():

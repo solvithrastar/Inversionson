@@ -1,9 +1,13 @@
 # Inversionson
 
+**Inversionson** is a workflow manager which fully automates FWI workflows, optimizing for both computational- and human time.
+In collaboration with [Salvus](https://mondaic.com), it makes working with a combination of local machines and HPC clusters easy.
+Setting up a large-scale seismic inversion and running it has never been easier and more efficient.
+
 There exists an [open-access paper about Inversionson](https://eartharxiv.org/repository/view/2132/). If you use Inversionson, please consider citing it:
 
 ```bibtex
-@misc{thrastarson2021inversionson,
+@article{thrastarson2021inversionson,
   title={Inversionson: Fully Automated Seismic Waveform Inversions},
   author={Thrastarson, Solvi and van Herwaarden, Dirk-Philip and Fichtner, Andreas},
   year={2021},
@@ -13,16 +17,18 @@ There exists an [open-access paper about Inversionson](https://eartharxiv.org/re
 }
 ```
 
-Inversionson is a workflow manager which automatically performs a Full-waveform inversion(FWI) of seismic data. It has built in support for various types of FWI workflows:
-* A standard workflow like for example in [Krischer et al, 2018](https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2017JB015289)
-* The dynamic mini-batch workflow described by [van Herwaarden et al, 2020](https://academic.oup.com/gji/article/221/2/1427/5743423)
-* The wavefield-adapted mesh workflow described by [Thrastarson et al, 2020](https://academic.oup.com/gji/article/221/3/1591/5721256) 
-* A combination of dynamic mini-batches and wavefield adapted meshes.
+The paper describes workflows which were supported in [v0.0.1](https://github.com/solvithrastar/Inversionson/releases/tag/v0.0.1-minibatch) of Inversionson.
+In the latest version, we have made some changes.
+In the previous version, we used optimization routines from Salvus, but we have now stopped supporting them and created a basis for implementing our own optimization routines within Inversionson.
+This release includes two versions of the [Adam](https://arxiv.org/abs/1412.6980) optimization method. More details on that later.
+We plan on adding more optimization routines in the future, as we have built a basis to be able to do so relatively easily.
 
-It has built in support for using a validation dataset, which is a dataset that is not explicitly a part of the inversion but is reserved for monitoring the inversion procedure with an independent dataset.
+Inversionson has built in support for using a validation dataset, which is a dataset that is not explicitly a part of the inversion but is reserved for monitoring the inversion procedure with an independent dataset.
 The validation dataset can be used to tune regularization for example. There is also support for reserving a test dataset to compute misfit for at the end of the inversion process.
 
-The inversion will be automatically documented in an easily readable MarkDown file. By setting some environment variables regarding Twilio, Inversionson can send you a WhatsApp message after each iteration.
+The design principle of Inversionson is that it runs on a machine that can in principle be a laptop, but ideally it's a desktop machine.
+This machine only serves as a controller and does not do any heavy computations. It submits jobs to HPC clusters to do everything that would normally take time.
+This is done in order to make the workflow as parallel as possible, and it saves a lot of time.
 
 ## Central Libraries
 
@@ -38,76 +44,52 @@ and finally install Salvus into the same environment.
 
 ## Usage
 
-Using Inversionson may seem a bit complicated at first, but once you get it working, it tends to run pretty smoothly. There are plans to make initializing an Inversionson project a much smoother process but that has not been done yet. The following is a description of how one can start an automatic FWI, using Inversionson.
+Inversionson is designed to work in a way that initializing the project is the only thing that a user needs to spend time on.
 
 A process which should get your project going:
 
-1. Create the directory where you want to host your project.
-1. Use LASIF to initialize a LASIF project or copy an existing project in here.
-    * Finish setting up the LASIF project (define domain, download data, define frequency range of synthetics)
-1. Create a directory called `SALVUS_OPT` inside the Inversionson project directory
-    * This directory is where the L-BFGS optimization routine will be carried out.
-    * Move into this directory
-1. Inside the `SALVUS_OPT` directory you need to run this code:
-    ```bash
-    <Path to your Salvus binary> invert -x $PWD
-    ```
-    where `<Path to your Salvus binary>` is the path to the Salvus core binary (typically `~/Salvus/bin/salvus`),
-    _not_ the `salvus` command available in `PATH` which is typically SalvusFlow. If you do
-    ```bash
-    ~/Salvus/bin/salvus --help
-    ```
-    you should get
-    ```
-    ...
-    Subcommands:
-    compute                     Run a simulation
-    invert                      Solve an inverse problem
-    ```
-1. Salvus opt should now have created some files. The most important for now is `inversion.toml` which you need to edit a bit:
-    * You need to fill in some fields there, like initial model, parameters to invert for and whether you want to use batches of data or full gradients.
-    * It's hard to assist with this file as it really depends on what you want to do but feel free to contact me if you are having troubles.
-    * An important aspect is that there are commented fields which you need to uncomment when using the mini-batch method. You need to give information on control group ratio and initial batch size and then you need to give the name of one of the events in your project at the bottom of the file.
-    * Make sure to check the path to the model file (the `initial-model` key).
+1. Create the directory where you want to host your project (we do not recommend having this the same directory as the Inversionson code base).
+1. Use LASIF to initialize a LASIF project or copy an existing project in here  `lasif init_project LASIF_PROJECT`.
+    * Finish setting up the LASIF project (define domain, download data)
+    * Inside LASIF, you need to figure out simulation parameters, such as frequency range, time step and length of simulations
 
-1. Now create a file called `run_salvus_opt.sh` which has only one line in it:
-    ```bash
-    <Path to your Salvus binary> invert -i ./inversion.toml
-    ```
-1. Now run
-    ```bash
-    sh run_salvus_opt.sh
-    ```
 1. Now go back to the folder of the Inversionson project and run:
     ```bash
     python -m inversionson.autoinverter
     ```
-    This will just create a file named `inversion_info.toml` in the project root, and exit.
+    * This will just create a file named `inversion_info.toml` in the project root, and exit.
 1. Fill in the relevant fields in the `inversion_info.toml` file properly. The file contains comments to explain the fields but some of them will be further explained here.
-    * __inversion_mode__: Can be either "mini-batch" (dynamic mini-batches) or "mono-batch" (full gradients)
+    * __inversion_path__: Absolute path to the root Inversion folder. This is set automatically
+    * __lasif_root__: The path to the LASIF project
     * __meshes__: Can be either "multi-mesh" (wavefield adapted meshes) or "mono-mesh" (same mesh for every simulation, defined by LASIF domain file)
-    * __interpolation_mode__: If you use "multi-mesh" this makes your interpolations happen either "local" or "remote". "remote" is the faster option.
+    * __optimizer__: The optimization method. Can either be Adam or SGDM for stochastic gradient descent with momentum.
     * __inversion_parameters__: Parameters to invert for. Make sure these are the same ones as in the `inversion.toml` file in the `SALVUS_OPT` directory.
     * __modelling_parameters__: The parameters on the meshes you use for simulations.
-    * __random_event_fraction__: Only relevant for "mini-batch" mode. Describes how many of the events selected in each batch are random, vs how many are selected based on spatial coverage.
-    * __Meshing.ocean_loading.use__: Make True if you have ocean loading on your mesh. If you are using multi-mesh, you also need to supply a file and a parameter name to use.
-    * __min_ctrl_group_size__: The minimum number of events used in control group, again only relevant for "mini-batch" mode.
-    * __max_angular_change__: Used to decide how many events make it to the control group for the coming iteration in "mini-batch" mode.
-    * __dropout_probability__: A form of regularization. Events in control group can be randomly dropped out with this probability so they don't get stuck there.
-    * __initial_batch_size__: Make sure it's the same as in `inversion.toml` in "mini-batch" mode.
+    * __batch_size__: The number of events to use per iteration. If you don't want this to be stochastic, just put the size of the dataset you want to use.
     * __cut_source_region_from_gradient_in_km__: Gradients become unphysical next to the source and it can be good to cut the region out.
-    * __cut_receiver_region_from_gradient_in_km__: The same except receivers, and not nearly as bad of an unphysical effect. This is currently quite slow and I would recommend just putting 0.0 here.
     * __clip_gradient__: You can clip gradient at some percentile so that the highest/lowest values are removed. 1.0 doesn't clip at all.
-    * __absorbing_boundaries__: This is only a True/False flag, the actual absorbing boundaries are configured in the `lasif_config.toml`
-    * __elements_per_azimuthal_quarter__: Only relevant for "multi-mesh". Decides how many elements are used to sample the azimuthal dimension. See paper.
-    * __smoothing_mode__: isotropic or anisotropic. It's always model dependent and can be either direction dependent or not.
-    * __smoothing_lengths__: How many wavelengths to smooth. If anisotropic the three values are: radial, lat, lon. For isotropic, only input one value.
+    * __absorbing_boundaries__: A true/false flag whether the absorbing boundaries specified in LASIF should be used.
+    * __Meshing.elements_per_azimuthal_quarter__: Only relevant for "multi-mesh". Decides how many elements are used to sample the azimuthal dimension. See paper.
+    * __Meshing.elements_per_wavelength__: Only relevant for "multi-mesh". Decides how many elements are used per wavelength in the wavefield-adapted meshes
+    * __Meshing.ellipticity__: Only relevant for "multi-mesh". Do you want ellipticity in your mesh.
+    * __Meshing.ocean_loading__: Make `use` True if you have ocean loading on your mesh. If you are using multi-mesh, you also need to supply a file and a parameter name to use as well as where you want this to be stored on the HPC cluster.
+    * __Meshing.topography__: Make `use` True if you have topography on your mesh. If you are using multi-mesh, you also need to supply a file and a parameter name to use as well as where you want this to be stored on the HPC cluster.
+    * __inversion_monitoring__: We recommend using a validation dataset to monitor the state of the inversion. 
     * __iterations_between_validation_checks__: When using a validation dataset, this decides with how many iterations are between each validation check. The models between checks are averaged. 0 means no check.
     * __validation_dataset__: Just a list of events in your LASIF project that you want to reserve for validation checks and will not be used in the inversion. Input event names.
-    * __test_dataset__: Same principle as with the validation_dataset
+    * __test_dataset__: Same principle as with the validation_dataset except that it is never used in the inversion.
     * __HPC.wave_propagation__: Settings regarding wavefield simulations. Inversionson asks for double that walltime in adjoint runs as they are more expensive
     * __HPC.diffusion_equation__: Settings regarding the smoothing computations.
     * __HPC.interpolation__: Settings regarding remote interpolations
+    * __HPC.processing__: Settings regarding the processing of the results from the forward jobs
+
+1. Run Inversionson again using
+    ```bash
+    python -m inversionson.autoinverter
+    ```
+    * This time, the optimization configurations are created under `OPTIMIZATION/opt_config.toml`
+    * These settings need to be filled out before the inversion. The details of the parameters depend on the selected optimizer.
+    * Once these are filled in, you are ready to go.
 
 1. Run Inversionson again using
     ```bash
@@ -116,4 +98,22 @@ A process which should get your project going:
     * This time it should already start the actual inversion process.
     * I would recommend running Inversionson with [tmux](https://tmuxcheatsheet.com/) as it keeps your shell running although you loose a connection with your computer or accidentally close your terminal window.
 
+## Optimizers
+
+Currently Inversionson comes with two optimizers.
+We recommend reading up on them before starting, but the default parameters should give pretty good results.
+
+Here we provide good resources for reading up on the optimizers.
+
+### Adam
+
+- [Original Adam Publication](https://arxiv.org/abs/1412.6980)
+- [Adam weight decay](https://towardsdatascience.com/why-adamw-matters-736223f31b5d)
+
+### Stochastic Gradient Descent with Momentum
+
+- [Blog Post](https://towardsdatascience.com/stochastic-gradient-descent-with-momentum-a84097641a5d)
+- [Qian 1999](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.57.5612&rep=rep1&type=pdf)
+
 For any questions feel free to contact soelvi.thrastarson@erdw.ethz.ch
+

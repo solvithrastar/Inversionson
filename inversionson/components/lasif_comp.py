@@ -320,7 +320,7 @@ class LasifComponent(Component):
             else:
                 self.print(
                     f"Model for iteration {iteration} already on cluster",
-                    ":white_check_mark:",
+                    emoji_alias=":white_check_mark:",
                 )
                 return
         else:
