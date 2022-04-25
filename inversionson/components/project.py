@@ -532,9 +532,9 @@ class ProjectComponent(Component):
             os.mkdir(self.paths["documentation"] / "BACKUP")
 
         optimizer = self.get_optimizer()
-        self.smoothing_tensor_order = optimizer.get_tensor_order(
-            optimizer.initial_model
-        )
+        self.smoothing_tensor_order = optimizer.get_tensor_order(optimizer.initial_model)
+        self.smoothing_timestep = optimizer.smoothing_timestep
+
         if not first:
             self.current_iteration = optimizer.iteration_name
             self.print(

@@ -92,6 +92,7 @@ class SGDM(Optimize):
             "gradient_scaling_factor": 1e17,
             "initial_model": "",
             "max_iterations": 1000,
+            "smoothing_timestep": 1.0e-5,
         }
         with open(self.config_file, "w") as fh:
             toml.dump(config, fh)
@@ -110,6 +111,7 @@ class SGDM(Optimize):
         self.initial_model = config["initial_model"]
         self.alpha = config["alpha"]
         self.beta = config["beta"]  # decay factor for first moments
+        self.smoothing_timestep = config["smoothing_timestep"]
 
         # Perturbation decay per iteration as a percentage of the relative
         # deviation to the initial model

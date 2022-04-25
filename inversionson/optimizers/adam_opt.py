@@ -108,6 +108,7 @@ class AdamOpt(Optimize):
             "epsilon": 1e-1,
             "initial_model": "",
             "max_iterations": 1000,
+            "smoothing_timestep": 1.0e-5,
         }
         with open(self.config_file, "w") as fh:
             toml.dump(config, fh)
@@ -127,6 +128,7 @@ class AdamOpt(Optimize):
         self.alpha = config["alpha"]
         self.beta_1 = config["beta_1"]  # decay factor for first moments
         self.beta_2 = config["beta_2"]  # decay factor for second moments
+        self.smoothing_timestep = config["smoothing_timestep"]
 
         # Perturbation decay per iteration as a percentage of the relative
         # deviation to the initial model
