@@ -1,8 +1,13 @@
-from .component import Component
+from lasif.components.component import Component
 import os
 import shutil
 import toml
+import emoji
+from colorama import init
+from colorama import Fore
+from typing import List, Union
 
+init()
 from inversionson import InversionsonError
 
 
@@ -32,17 +37,12 @@ class StoryTellerComponent(Component):
     """
 
     def __init__(self, communicator, component_name):
-        super(StoryTellerComponent, self).__init__(
-            communicator, component_name
-        )
+        super(StoryTellerComponent, self).__init__(communicator, component_name)
         self.root, self.backup = self._create_root_folder()
         self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
-        self.events_quality_toml = os.path.join(
-            self.root, "events_quality.toml"
-        )
         self.validation_toml = os.path.join(self.root, "validation.toml")
         if os.path.exists(self.validation_toml):
             self.validation_dict = toml.load(self.validation_toml)
@@ -52,11 +52,8 @@ class StoryTellerComponent(Component):
             self.events_used = toml.load(self.events_used_toml)
         else:
             self._create_initial_events_used_toml()
-        if os.path.exists(self.events_quality_toml):
-            self.events_quality = toml.load(self.events_quality_toml)
-        else:
-            self._create_initial_events_quality_toml()
         self.markdown = MarkDown(self.story_file)
+        self.printer = PrettyPrinter()
 
     def _create_root_folder(self):
         """
@@ -131,20 +128,9 @@ class StoryTellerComponent(Component):
         with open(self.events_used_toml, "w+") as fh:
             toml.dump(self.events_used, fh)
 
-    def _create_initial_events_quality_toml(self):
-        """
-        Initialize the toml files which keeps track of usage of events
-        """
-        all_events = self.comm.lasif.list_events()
-        self.events_quality = {}
-        for event in all_events:
-            self.events_quality[event] = 0.0
-        with open(self.events_quality_toml, "w+") as fh:
-            toml.dump(self.events_quality, fh)
-
     def _update_list_of_events(self):
         """
-        In order to be able to add events to inversion we 
+        In order to be able to add events to inversion we
         need to update the list of used events.
         """
         all_events = self.comm.lasif.list_events()
@@ -154,12 +140,9 @@ class StoryTellerComponent(Component):
             return
         else:
             for event in new:
-                self.events_quality[event] = 0.0
                 self.events_used[event] = 0
             with open(self.events_used_toml, "w") as fh:
                 toml.dump(self.events_used, fh)
-            with open(self.events_quality_toml, "w") as fh:
-                toml.dump(self.events_quality, fh)
             with open(self.all_events, "a") as fh:
                 fh.writelines(f"{event}\n" for event in new)
 
@@ -181,16 +164,6 @@ class StoryTellerComponent(Component):
         with open(self.events_used_toml, "w") as fh:
             toml.dump(self.events_used, fh)
 
-    def _update_event_quality(self):
-        """
-        Keep track of event quality, which is based on removal order of
-        batch gradients in control group selection.
-        """
-        for key, val in self.comm.project.event_quality.items():
-            self.events_quality[key] = val
-        with open(self.events_quality_toml, "w") as fh:
-            toml.dump(self.events_quality, fh)
-
     def _start_entry_for_iteration(self):
         """
         Start a new section in the story file
@@ -199,10 +172,10 @@ class StoryTellerComponent(Component):
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
-            iteration_number = int(iteration.split("_")[0][2:].lstrip("0"))
-        self.markdown.add_header(
-            header_style=2, text=f"Iteration: {iteration_number}"
-        )
+            iteration_number = int(
+                self.comm.project.current_iteration.split("_")[-1].lstrip("0")
+            )
+        self.markdown.add_header(header_style=2, text=f"Iteration: {iteration_number}")
         text = "Here you can read all about what happened in iteration "
         text += f"{iteration_number}."
 
@@ -241,7 +214,8 @@ class StoryTellerComponent(Component):
         iteration = self.comm.project.current_iteration
         for event in self.comm.project.events_in_iteration:
             im_file = self.comm.lasif.plot_event_misfits(
-                event=event, iteration=iteration,
+                event=event,
+                iteration=iteration,
             )
             self.markdown.add_paragraph(text=f"Misfits for {event}")
             self.markdown.add_image(
@@ -282,45 +256,6 @@ class StoryTellerComponent(Component):
         text += "and try again."
 
         self.markdown.add_paragraph(text=text)
-
-    def _get_misfit_reduction(self):
-        """
-        Compute misfit reduction between previous two iterations
-        """
-        # We start with misfit of previous iteration
-        # TODO: Something wrong going on here and needs fixing
-        prev_iter = self.comm.salvus_opt.get_previous_iteration_name()
-        prev_it_dict = self.comm.project.get_old_iteration_info(prev_iter)
-
-        prev_total_misfit = 0.0
-        prev_cg_misfit = 0.0
-        for _i, event in enumerate(
-            self.comm.lasif.list_events(iteration=prev_iter)
-        ):
-            prev_total_misfit += float(
-                prev_it_dict["events"][str(_i)]["misfit"]
-            )
-            if event in prev_it_dict["new_control_group"]:
-                event_index = self.comm.project.get_key_number_for_event(
-                    event=event, iteration=prev_iter
-                )
-                prev_cg_misfit += float(
-                    prev_it_dict["events"][event_index]["misfit"]
-                )
-
-        current_total_misfit = 0.0
-        current_cg_misfit = 0.0
-        for key, value in self.comm.project.misfits.items():
-            current_total_misfit += float(value)
-            if key in self.comm.project.old_control_group:
-                current_cg_misfit += float(value)
-
-        tot_red = (
-            prev_total_misfit - current_total_misfit
-        ) / prev_total_misfit
-        cg_red = (prev_cg_misfit - current_cg_misfit) / prev_cg_misfit
-
-        return tot_red, cg_red
 
     def _add_table_of_events_and_misfits(self, verbose=None, task=None):
         """
@@ -369,9 +304,7 @@ class StoryTellerComponent(Component):
             text += "Misfit for the old control group: "
             text += f"{old_control_group_misfit}"
             cg_red *= 100.0  # Get percentages
-            text += (
-                f"\n Misfit reduction between the iterations: {cg_red:.3f} %"
-            )
+            text += f"\n Misfit reduction between the iterations: {cg_red:.3f} %"
 
         if verbose and "additional" not in verbose:
             old_control_group_misfit = 0.0
@@ -395,9 +328,7 @@ class StoryTellerComponent(Component):
         """
         Report what the new control group is and what the current misfit is.
         """
-        self.markdown.add_header(
-            header_style=4, text="Selection of New Control Group"
-        )
+        self.markdown.add_header(header_style=4, text="Selection of New Control Group")
         text = "The events which will continue on to the next iteration are "
         text += "listed below."
 
@@ -426,9 +357,7 @@ class StoryTellerComponent(Component):
         At the end of each iteration we report how many events have been
         uses in inversion.
         """
-        num_events = len(
-            [x for x in list(self.events_used.values()) if x != 0]
-        )
+        num_events = len([x for x in list(self.events_used.values()) if x != 0])
 
         text = f"We have now used {num_events} events during the inversion."
 
@@ -445,11 +374,14 @@ class StoryTellerComponent(Component):
         self.markdown.add_paragraph(text=text)
 
     def report_validation_misfit(
-        self, iteration: str, event: str, total_sum: bool = False,
+        self,
+        iteration: str,
+        event: str,
+        total_sum: bool = False,
     ):
         """
         We write misfit of validation dataset for a specific window_set
-        
+
         :param iteration: Name of validation iteration
         :type iteration: str
         :param window_set: Name of window set
@@ -503,56 +435,31 @@ class StoryTellerComponent(Component):
             # with the first iteration
             # This is the absolute first iteration
             # We need to create all necessary files
-            iteration = self.comm.project.current_iteration
-            if iteration.startswith("it0000_model"):
-                iteration_number = -1
-            else:
-                iteration_number = 0
             self._create_story_file()
             self._start_entry_for_iteration()
             if (
                 self.comm.project.inversion_mode == "mini-batch"
-                or iteration_number == -1
             ):
                 self._write_list_of_all_events()
-                self._update_usage_of_events()
-                # self._add_image_of_data_coverage()
-                # self._add_image_of_event_misfits()
+
             self._add_table_of_events_and_misfits(task=task)
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_control_group()
                 self._update_event_quality()
-        if task == "compute_misfit":
-            first_try = self.comm.salvus_opt.first_trial_model_of_iteration()
-            if "additional" in verbose:
-                self._report_acceptance_of_model()
-                self._update_usage_of_events()
-                # self._add_image_of_event_misfits()
-            else:
-                if first_try:
-                    self._start_entry_for_iteration()
-                    if self.comm.project.inversion_mode == "mini-batch":
-                        # self._add_image_of_data_coverage()
-                        print("Not making figures now")
-                else:
-                    self._report_shrinking_of_trust_region()
-            if self.comm.project.inversion_mode == "mini-batch":
-                self._add_table_of_events_and_misfits(verbose)
 
         if task == "compute_gradient":
             self._initiate_gradient_computation_task()
-
-        if task == "select_control_batch":
-            if verbose and "increase" in verbose:
-                self._report_increase_in_control_group_size()
-            self._report_control_group()
-            self._update_event_quality()
 
         if task == "finalize_iteration":
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
                 self._update_list_of_events()
+                self._update_usage_of_events()
             self._backup_files()
+
+        if task == "adam_documentation":
+            self._update_usage_of_events()
+            self._update_list_of_events()
 
 
 class MarkDown(StoryTellerComponent):
@@ -719,3 +626,88 @@ class MarkDown(StoryTellerComponent):
         self._add_line_break()
         self._add_line_break()
         self._append_to_file()
+
+
+class PrettyPrinter(object):
+    """
+    A class which makes printing in Inversionson pretty and consistant.
+
+    Not too dissimilar from the MarkDown class
+    """
+
+    def __init__(self):
+        self.stream = ""
+        self.color = Fore.WHITE
+        self.color_dict = self.create_color_dict()
+
+    def create_color_dict(self):
+        return {
+            "white": Fore.WHITE,
+            "black": Fore.BLACK,
+            "blue": Fore.BLUE,
+            "green": Fore.GREEN,
+            "red": Fore.RED,
+            "cyan": Fore.CYAN,
+            "magenta": Fore.MAGENTA,
+            "yellow": Fore.YELLOW,
+        }
+
+    def set_color(self, color: str):
+        self.color = self.color_dict[color.lower()]
+
+    def add_emoji(self, emoji_alias: str, vertical_line=True):
+        if not emoji_alias.startswith(":"):
+            emoji_alias = ":" + emoji_alias
+        if not emoji_alias.endswith(":"):
+            emoji_alias += ":"
+        self.stream += f"{emoji.emojize(emoji_alias, use_aliases=True)}"
+        self.stream += " | " if vertical_line else " "
+
+    def add_horizontal_line(self):
+        self.stream += "\n ============================== \n"
+
+    def add_message(self, message: str):
+        self.stream += message
+
+    def print(
+        self,
+        message: str,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = None,
+        color: str = None,
+    ):
+        """
+        A printing function which works with the stream and finally prints it and
+        resets the stream
+
+        :param message: The string to be printed
+        :type message: str
+        :param line_above: Print a line above?, defaults to False
+        :type line_above: bool, optional
+        :param line_below: Print a line below?, defaults to False
+        :type line_below: bool, optional
+        :param emoji_alias: An emoji at the beginning for good measure? It needs to be a string that
+            refers to an emoji, defaults to None
+        :type emoji_alias: Union[str, List[str]], optional
+        :param emoji_alias: Color to print with. Available colors are:
+            [white, black, red, cyan, yellow, magenta, green, blue], defaults to None
+        :type emoji_alias: str, optional
+        """
+        if color is not None:
+            self.set_color(color)
+        self.stream += f"{self.color} "
+        if line_above:
+            self.add_horizontal_line()
+        if emoji_alias is not None:
+            if isinstance(emoji_alias, list):
+                for _i, emo in enumerate(emoji_alias):
+                    vertical_line = True if _i == len(emoji_alias) - 1 else False
+                    self.add_emoji(emo, vertical_line=vertical_line)
+            else:
+                self.add_emoji(emoji_alias)
+        self.add_message(message)
+        if line_below:
+            self.add_horizontal_line()
+        print(self.stream)
+        self.stream = ""

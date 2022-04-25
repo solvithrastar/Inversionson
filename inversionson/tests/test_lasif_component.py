@@ -93,18 +93,6 @@ def test_list_events(pro):
     assert set(events) == set(event_names)
 
 
-def test_get_minibatch(pro):
-    pro.comm.project.change_attribute(attribute="initial_batch_size", new_value=2)
-    first = True
-    batch = pro.comm.lasif.get_minibatch(first)
-
-    assert set(batch) == set(event_names)
-
-    pro.comm.project.change_attribute(attribute="initial_batch_size", new_value=1)
-    batch = pro.comm.lasif.get_minibatch(first)
-    assert len(batch) == 1
-
-
 @pytest.mark.parametrize("event", [event_names[0], event_names[1]])
 def test_move_mesh(pro, event, capsys):
 

@@ -1,14 +1,14 @@
 from __future__ import absolute_import
-from typing import NoReturn
-from .component import Component
+import h5py
 import numpy as np
-import sys
 import shutil
-from pathlib import Path
 import os
+from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-import h5py
+from typing import Union, List
+
+from lasif.components.component import Component
 
 
 class SalvusMeshComponent(Component):
@@ -28,6 +28,22 @@ class SalvusMeshComponent(Component):
         self.event_meshes = self.meshes / "EVENT_MESHES"
         self.average_meshes = self.meshes / "AVERAGE_MESHES"
 
+    def print(
+        self,
+        message: str,
+        color: str = None,
+        line_above: bool = False,
+        line_below: bool = False,
+        emoji_alias: Union[str, List[str]] = ":globe_with_meridians:",
+    ):
+        self.comm.storyteller.printer.print(
+            message=message,
+            color=color,
+            line_above=line_above,
+            line_below=line_below,
+            emoji_alias=emoji_alias,
+        )
+
     def create_mesh(self, event: str):
         """
         Create a smoothiesem mesh for an event. I'll keep refinements fixed
@@ -46,26 +62,18 @@ class SalvusMeshComponent(Component):
         sm.basic.model = "prem_ani_one_crust"
         sm.basic.min_period_in_seconds = self.comm.project.min_period
         sm.basic.elements_per_wavelength = 1.7
-        sm.basic.number_of_lateral_elements = (
-            self.comm.project.elem_per_quarter
-        )
+        sm.basic.number_of_lateral_elements = self.comm.project.elem_per_quarter
         sm.advanced.tensor_order = 4
         if self.comm.project.ellipticity:
             sm.spherical.ellipticity = 0.0033528106647474805
         if self.comm.project.ocean_loading["use"]:
             sm.ocean.bathymetry_file = self.comm.project.ocean_loading["file"]
-            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading[
-                "variable"
-            ]
+            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading["variable"]
             sm.ocean.ocean_layer_style = "loading"
             sm.ocean.ocean_layer_density = 1025.0
         if self.comm.project.topography["use"]:
-            sm.topography.topography_file = self.comm.project.topography[
-                "file"
-            ]
-            sm.topography.topography_varname = self.comm.project.topography[
-                "variable"
-            ]
+            sm.topography.topography_file = self.comm.project.topography["file"]
+            sm.topography.topography_varname = self.comm.project.topography["variable"]
         sm.source.latitude = source_info["latitude"]
         sm.source.longitude = source_info["longitude"]
         sm.refinement.lateral_refinements.append(
@@ -111,9 +119,10 @@ class SalvusMeshComponent(Component):
                     elemental_fields = mesh["MODEL/element_data"].attrs.get(
                         "DIMENSION_LABELS"
                     )[1]
-                    elemental_fields = (
-                        elemental_fields[2:-2].replace(" ", "").split("|")
-                    )
+                    elemental_fields = elemental_fields[2:-2]
+                    if not type(elemental_fields) == str:
+                        elemental_fields = elemental_fields.decode()
+                    elemental_fields = elemental_fields.replace(" ", "").split("|")
                     if field_name in elemental_fields:
                         return True
                     else:
@@ -127,9 +136,7 @@ class SalvusMeshComponent(Component):
                     return False
             else:
                 # Here we assume it's an element_nodal_field
-                nodal_fields = mesh["MODEL/data"].attrs.get(
-                    "DIMENSION_LABELS"
-                )[1]
+                nodal_fields = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
                 nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
                 if field_name in nodal_fields:
                     return True
@@ -183,11 +190,11 @@ class SalvusMeshComponent(Component):
             side_sets=side_sets,
         )
         if has_field and not overwrite:
-            print(f"Field: {field_name} already exists on mesh")
+            self.print(f"Field: {field_name} already exists on mesh")
             return
         attach_field = True
         if not os.path.exists(to_mesh):
-            print(f"Mesh {to_mesh} does not exist. Will create new one.")
+            self.print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
             tm = UnstructuredMesh.from_h5(to_mesh)
             # tm.element_nodal_fields = {}
@@ -202,7 +209,7 @@ class SalvusMeshComponent(Component):
             field = fm.global_strings[field_name]
             tm.attach_global_variable(name=field_name, data=field)
             tm.write_h5(to_mesh)
-            print(f"Attached field {field_name} to mesh {to_mesh}")
+            self.print(f"Attached field {field_name} to mesh {to_mesh}")
             return
         elif elemental:
             # if field_name in tm.elemental_fields.keys():
@@ -217,7 +224,7 @@ class SalvusMeshComponent(Component):
                     element_ids=fm.side_sets[side_set][0],
                     side_ids=fm.side_sets[side_set][1],
                 )
-                print(f"Attached side set {side_set} to mesh {to_mesh}")
+                self.print(f"Attached side set {side_set} to mesh {to_mesh}")
             attach_field = False
 
         else:
@@ -228,7 +235,7 @@ class SalvusMeshComponent(Component):
             field = fm.element_nodal_fields[field_name]
         if attach_field:
             tm.attach_field(field_name, field)
-            print(f"Attached field {field_name} to mesh {to_mesh}")
+            self.print(f"Attached field {field_name} to mesh {to_mesh}")
         tm.write_h5(to_mesh)
 
     def write_xdmf(self, filename: str):
@@ -294,6 +301,8 @@ class SalvusMeshComponent(Component):
         full_path = self.average_meshes / folder_name / "mesh.h5"
         if not os.path.exists(full_path.parent):
             os.makedirs(full_path.parent)
+        if os.path.exists(full_path):
+            return full_path
 
         # We copy the newest mesh from SALVUS_OPT to LASIF and write the
         # average fields onto those.
@@ -310,11 +319,11 @@ class SalvusMeshComponent(Component):
         for field in fields.keys():
             new_fields[field] = np.zeros_like(fields[field])
         # m.element_nodal_fields = {}
+        optimizer = self.comm.project.get_optimizer()
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
-            it = self.comm.salvus_opt.get_name_for_accepted_iteration_number(
-                number=iteration
+            model_path = optimizer.get_path_for_iteration(
+                iteration, optimizer.model_path
             )
-            model_path = self.comm.salvus_opt.get_model_path(iteration=it)
             m_tmp = UnstructuredMesh.from_h5(model_path)
             for field_name, field in new_fields.items():
                 field += m_tmp.element_nodal_fields[field_name]
@@ -323,7 +332,7 @@ class SalvusMeshComponent(Component):
             field /= len(range(iteration_range[0], iteration_range[1] + 1))
             m.attach_field(field_name, field)
         m.write_h5(full_path)
-        print(
+        self.print(
             f"Wrote and average model of iteration {iteration_range[0]} to"
             f" iteration {iteration_range[1]} onto mesh: {full_path}"
         )
@@ -343,9 +352,7 @@ class SalvusMeshComponent(Component):
 
         mesh = self.comm.lasif.find_event_mesh(event)
         m = UnstructuredMesh.from_h5(mesh)
-        mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[
-            ::-1
-        ].astype(int)
+        mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[::-1].astype(int)
         layers = m.elemental_fields["layer"]
         o_core_idx = layers[np.where(m.elemental_fields["fluid"] == 1)[0][0]]
         o_core_idx = np.where(mesh_layers == o_core_idx)[0][0]
@@ -356,65 +363,6 @@ class SalvusMeshComponent(Component):
 
         m.attach_field("ROI", roi)
         m.write_h5(mesh)
-
-    def write_new_opt_fields_to_simulation_mesh(self):
-        """
-        Salvus opt makes a mesh which has the correct velocities but
-        it does not have everything which is needed to run a simulation.
-        We will thus write it's fields on to our simulation mesh.
-        """
-        if self.comm.project.meshes == "multi-mesh":
-            raise InversionsonError(
-                "Multi-mesh inversion should not use this function. Only "
-                "Mono-mesh."
-            )
-        print("Writing new fields to simulation mesh")
-        iteration = self.comm.project.current_iteration
-        if "validation" in iteration:
-            iteration = iteration[11:]  # We don't need a special mesh
-            if "it0000" not in iteration:
-                return  # No need to write opt fields
-        opt_model = os.path.join(
-            self.comm.salvus_opt.models, f"{iteration}.h5"
-        )
-        simulation_mesh = self.comm.lasif.get_simulation_mesh(
-            event_name=None, iteration=iteration
-        )
-
-        sim_mesh_dir = os.path.dirname(simulation_mesh)
-        success_file = os.path.join(sim_mesh_dir, "success.txt")
-
-        if os.path.exists(simulation_mesh) and os.path.exists(success_file):
-            print("Mesh already exists, will not add fields")
-            return
-        else:
-            shutil.copy(
-                self.comm.lasif.lasif_comm.project.lasif_config[
-                    "domain_settings"
-                ]["domain_file"],
-                simulation_mesh,
-            )
-
-        with h5py.File(simulation_mesh, mode="r+") as f_new:
-            with h5py.File(opt_model, mode="r") as f:
-                dim_labels = (
-                    f["MODEL/data"]
-                    .attrs.get("DIMENSION_LABELS")[1][1:-1]
-                    .replace(" ", "")
-                    .split("|")
-                )
-                # This assumes the indices are the same in both files,
-                # which seems to be the case as far as DP could tell.
-                for param in self.comm.project.inversion_params:
-                    print("Writing field:", param)
-                    i = dim_labels.index(param)
-                    f_new["MODEL/data"][:, i, :] = f["MODEL/data"][:, i, :]
-
-        # When all fields are successfully copied write a file to indicate
-        # success to prevent the issue that we continue
-        # with the initial model when something here crashes unexpectedly.
-        with open(success_file, "w") as text_file:
-            text_file.write("All fields written successfully.")
 
     def sum_two_fields_on_a_mesh(
         self,
@@ -483,7 +431,7 @@ class SalvusMeshComponent(Component):
         :param mesh: Path to mesh
         :type mesh: str
         """
-        print("Filling inversion parameters with zeros before interpolation")
+        self.print("Filling inversion parameters with zeros before interpolation")
         m = UnstructuredMesh.from_h5(mesh)
         parameters = self.comm.project.inversion_params
         zero_nodal = np.zeros_like(m.element_nodal_fields[parameters[0]])

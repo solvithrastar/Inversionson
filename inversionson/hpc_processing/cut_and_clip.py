@@ -3,7 +3,7 @@ import sys
 import toml
 import numpy as np
 
-# Here I can add a scripts which adds the relevant fields to the mesh.
+
 def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
     Clip the gradient to remove abnormally high/low values from it.
@@ -114,35 +114,3 @@ def cut_source_region_from_gradient(
 
     gradient.close()
 
-
-if __name__ == "__main__":
-    """
-    Call with python name_of_script toml_filename
-    """
-    toml_filename = sys.argv[1]
-
-    info = toml.load(toml_filename)
-    gradient_filename = info["filename"]
-    radius_to_cut_in_km = info["cutout_radius_in_km"]
-    source_location = info["source_location"]
-    cut_source_region_from_gradient(
-        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km
-    )
-
-    print("Remote source cut completed successfully")
-
-    clipping_percentile = info["clipping_percentile"]
-    parameters = info["parameters"]
-
-    print("Clipping now.")
-    if clipping_percentile < 1.0:
-        clip_gradient(gradient_filename, clipping_percentile, parameters)
-
-    # Set referece frame to spherical
-    print("Set reference frame")
-    with h5py.File(gradient_filename, "r+") as f:
-        attributes = f["MODEL"].attrs
-        attributes.modify("reference_frame", b"spherical")
-
-    with open(toml_filename, "w") as fh:
-        toml.dump(info, fh)
