@@ -48,7 +48,7 @@ def sleep_or_process(comm):
         _print(
             comm,
             f"Waiting {comm.project.sleep_time_in_s} seconds before trying again",
-            emoji_alias=":clock:",
+            emoji_alias=":hourglass:",
         )
         time.sleep(comm.project.sleep_time_in_s)
 
