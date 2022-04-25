@@ -425,12 +425,12 @@ class AdamOpt(Optimize):
         update_scaling_fac = min(update_scaling_fac_norm,
                                  update_scaling_fac_alpha,
                                  update_scaling_fac_peak)
-        self.print("update_scaling_fac_norm", update_scaling_fac_norm,
-              "update_scaling_fac_alpha", update_scaling_fac_alpha,
-              "update_scaling_fac_peak", update_scaling_fac_peak,
+        print("Update scaling factor norm:", update_scaling_fac_norm,
+              "Update scaling factor alpha:", update_scaling_fac_alpha,
+              "Update scaling factor peak:", update_scaling_fac_peak,
               )
 
-        self.print(f"Recaling based on lowest rescaling fac: {update_scaling_fac},"
+        self.print(f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
               f"New maximum update is: {max_upd * update_scaling_fac}")
 
         update *= update_scaling_fac
@@ -447,10 +447,13 @@ class AdamOpt(Optimize):
         # Normalize the model and prevent division by zero in the outer core.
         theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
 
-        # only add perturbation decay at this stage
-        theta_new = theta_prev - update - self.perturbation_decay * theta_prev
+        # Make sure that the model is only updated where theta is non_zero
+        theta_new = np.zeros_like(theta_0)
+        theta_new[theta_0 != 0] = \
+            theta_prev[theta_0 != 0] - update[theta_0 != 0] - \
+            self.perturbation_decay * theta_prev[theta_0 != 0]
 
-        # remove normalization from updated model and write physical model
+        # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
         shutil.copy(
             self.model_path,

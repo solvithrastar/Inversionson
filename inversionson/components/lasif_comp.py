@@ -163,7 +163,7 @@ class LasifComponent(Component):
             if interpolate_to:
                 mesh = (
                     self.comm.project.remote_inversionson_dir
-                    / "meshes"
+                    / "MESHES"
                     / "standard_gradient"
                     / "mesh.h5"
                 )
@@ -251,7 +251,7 @@ class LasifComponent(Component):
                 self.print(
                     "Moving example gradient to cluster", emoji_alias=":package:"
                 )
-                self._move_gradient_to_cluster(hpc_cluster)
+                self.move_gradient_to_cluster(hpc_cluster)
             else:
                 # This happens when we want to move the model to the cluster
                 self.print("Moving model to cluster", emoji_alias=":package:")
@@ -306,7 +306,6 @@ class LasifComponent(Component):
             local_model = self.comm.multi_mesh.find_model_file(iteration)
         else:
             local_model = optimizer.model_path
-        print("Do I have it?")
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
             interpolate_to=False,
@@ -325,7 +324,6 @@ class LasifComponent(Component):
                 )
                 return
         else:
-            self.print("I'm here with LASIF!!")
             if not hpc_cluster.remote_exists(path_to_mesh.parent):
                 self.print("Making the directory")
                 self.print(f"Directory is: {path_to_mesh.parent}")

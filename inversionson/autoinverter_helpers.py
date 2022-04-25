@@ -470,7 +470,7 @@ class ForwardHelper(object):
                 "Will not do interpolation."
             )
             return
-        if self.comm.project.forward_job[event]["interpolated"]:
+        if self.comm.project.model_interp_job[event]["retrieved"]:
             self.print(
                 f"Mesh for {event} has already been interpolated. "
                 "Will not do interpolation."

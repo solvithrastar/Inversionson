@@ -286,22 +286,6 @@ class ProjectComponent(Component):
                 "Please specify smoothing parameters in info file. " "Key: Smoothing"
             )
 
-        if "smoothing_mode" not in self.info["Smoothing"].keys():
-            raise InversionsonError(
-                "Please specify smoothing mode under Smoothing in info file. "
-                "Key: Smoothing.smoothing_mode"
-            )
-
-        if self.info["Smoothing"]["smoothing_mode"] not in [
-            "anisotropic",
-            "isotropic",
-            "none",
-        ]:
-            raise InversionsonError(
-                "Only implemented smoothing modes are 'anisotropic', "
-                "'isotropic' and 'none'"
-            )
-
         if "timestep" not in self.info["Smoothing"].keys():
             raise InversionsonError(
                 "Please specify the timestep you want for your smoothing "
@@ -312,39 +296,7 @@ class ProjectComponent(Component):
             raise InversionsonError(
                 "Smoothing timestep can not be larger than 0.5 seconds"
             )
-        if not self.info["Smoothing"]["smoothing_mode"] == "none":
-            if "smoothing_lengths" not in self.info["Smoothing"].keys():
-                raise InversionsonError(
-                    "Please specify smoothing lengths under Smoothing in info "
-                    "file. Key: Smoothing.smoothing_lengths"
-                )
 
-        if self.info["Smoothing"]["smoothing_mode"] == "anisotropic":
-            if not isinstance(self.info["Smoothing"]["smoothing_lengths"], list):
-                raise InversionsonError(
-                    "Make sure you input a list as smoothing_lengths if you "
-                    "want to smooth anisotropically. List of length 3. "
-                    "Order: r, theta, phi."
-                )
-            if not len(self.info["Smoothing"]["smoothing_lengths"]) == 3:
-                raise InversionsonError(
-                    "Make sure your smoothing_lengths are a list of length 3."
-                    "Order: r, theta, phi."
-                )
-
-        if self.info["Smoothing"]["smoothing_mode"] == "isotropic":
-            if isinstance(self.info["Smoothing"]["smoothing_lengths"], list):
-                if len(self.info["Smoothing"]["smoothing_lengths"]) == 1:
-                    self.info["Smoothing"]["smoothing_lengths"] = self.info[
-                        "Smoothing"
-                    ]["smoothing_lengths"][0]
-                else:
-                    raise InversionsonError(
-                        "If you give a list of isotropic lengths, you can only"
-                        " give a list of length one, as all dimensions will "
-                        "be smoothed with equally many wavelengths. You can "
-                        "also just give a number."
-                    )
         if "Meshing" not in self.info.keys() and self.info["meshes"] == "multi-mesh":
             raise InversionsonError(
                 "We need some information regarding your meshes. "
@@ -570,8 +522,6 @@ class ProjectComponent(Component):
         self.smoothing_site_name = self.site_name
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
-        self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
-        self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
         self.smoothing_tensor_order = self.info["Smoothing"]["tensor_order"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
@@ -655,20 +605,16 @@ class ProjectComponent(Component):
             it_dict["remote_simulation_mesh"] = None
 
         job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
-        s_job_dict = job_dict.copy()
-
-        if self.meshes == "multi-mesh":
-            s_job_dict["interpolated"] = False
 
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             if validation:
-                jobs = {"forward": s_job_dict}
+                jobs = {"forward": job_dict}
                 if remote_interp:
                     jobs["model_interp"] = job_dict
             if not validation:
                 jobs = {
-                    "forward": s_job_dict,
-                    "adjoint": s_job_dict,
+                    "forward": job_dict,
+                    "adjoint": job_dict,
                 }
                 if remote_interp:
                     jobs["model_interp"] = job_dict

@@ -320,7 +320,10 @@ class MultiMeshComponent(Component):
             "elems_per_quarter": self.comm.project.elem_per_quarter,
             "interpolation_weights": remote_weights_path,
         }
-        information["data_processing"] = self.comm.project.remote_data_processing
+        if not gradient and self.comm.project.remote_data_processing:
+            information["data_processing"] = True
+        else:
+            information["data_processing"] = False
 
         # Provide information for cut and clipping
         if gradient:
