@@ -276,11 +276,11 @@ class ProjectComponent(Component):
         if "optimizer" not in self.info.keys():
             raise InversionsonError(
                 "We need to know what type of optimization you want. "
-                "The available ones are 'Adam'"
+                "The available ones are 'Adam', 'SGDM'"
                 "Key: optimizer"
             )
 
-        if self.info["optimizer"].lower() not in ["adam"]:
+        if self.info["optimizer"].lower() not in ["adam", "sgdm"]:
             raise InversionsonError("We only accept 'adam'")
 
         # Smoothing
@@ -546,11 +546,8 @@ class ProjectComponent(Component):
         ]
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
         if not first:
-            if self.optimizer == "adam":
-                adam_opt = AdamOpt(self.comm)
-                self.current_iteration = adam_opt.iteration_name
-            else:
-                raise NotImplementedError("")
+            optimizer = self.get_optimizer()
+            self.current_iteration = optimizer.iteration_name
             self.print(
                 f"Current Iteration: {self.current_iteration}",
                 line_above=True,

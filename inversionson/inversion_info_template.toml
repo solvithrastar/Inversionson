@@ -5,7 +5,7 @@ inversion_id = "MY_INVERSION"
 inversion_mode = "mini-batch"
 # Pick between 'multi-mesh' or 'mono-mesh'
 meshes = "multi-mesh"
-# Currently only 'Adam' available
+# Currently only 'Adam' and 'SGDM' available
 optimizer = "Adam"
 # Either local or remote
 interpolation_mode = "remote"
