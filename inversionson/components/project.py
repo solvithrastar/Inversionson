@@ -255,23 +255,6 @@ class ProjectComponent(Component):
         if self.info["optimizer"].lower() not in ["adam", "sgdm"]:
             raise InversionsonError("We only accept 'adam' and 'sgdm'")
 
-        # Smoothing
-        if "Smoothing" not in self.info.keys():
-            raise InversionsonError(
-                "Please specify smoothing parameters in info file. " "Key: Smoothing"
-            )
-
-        if "timestep" not in self.info["Smoothing"].keys():
-            raise InversionsonError(
-                "Please specify the timestep you want for your smoothing "
-                "The total time is 1 second so it needs to be a fraction of "
-                "that. Key: Smoothing.timestep"
-            )
-        if self.info["Smoothing"]["timestep"] > 0.5:
-            raise InversionsonError(
-                "Smoothing timestep can not be larger than 0.5 seconds"
-            )
-
         if "Meshing" not in self.info.keys() and self.info["meshes"] == "multi-mesh":
             raise InversionsonError(
                 "We need some information regarding your meshes. "
