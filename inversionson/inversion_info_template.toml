@@ -25,9 +25,6 @@ elements_per_azimuthal_quarter = 4
 ellipticity = true
 
 [Smoothing]
-# isotropic or anisotropic. Smoothing is always model dependent but can be either isotropic or anisotropic meaning that different dimensions get smoothed with different wavelengths. Density is always smoothed based on some VP model. If you don't want any smoothing, write 'none'.
-smoothing_mode = "anisotropic"
-# If smoothing_mode is isotropic, only one value is required, if smoothing_mode is anisotropic, three values in a list are used.
 timestep = 1e-5
 tensor_order = 2 # The tensor order used in in the diffusion simulations. This may be set to 1 to make smoothing faster at the cost of lower, but likely acceptable precision.
 
