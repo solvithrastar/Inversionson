@@ -2,7 +2,6 @@ from typing import Dict, List
 import os
 import inspect
 import warnings
-import shutil
 import emoji
 import toml
 import salvus.flow.api as sapi
@@ -11,7 +10,6 @@ from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 from inversionson.utils import sleep_or_process
-from inversionson.utils import sum_two_parameters_h5
 
 max_reposts = 3
 
@@ -19,17 +17,8 @@ CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
         os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
-    "inversionson",
     "remote_scripts",
     "cut_and_clip.py",
-)
-SUM_GRADIENTS_SCRIPT_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "inversionson",
-    "remote_scripts",
-    "gradient_summing.py",
 )
 
 PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(

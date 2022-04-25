@@ -545,15 +545,7 @@ class ProjectComponent(Component):
             "validation_dataset"
         ]
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
-        if not first:
-            optimizer = self.get_optimizer()
-            self.current_iteration = optimizer.iteration_name
-            self.print(
-                f"Current Iteration: {self.current_iteration}",
-                line_above=True,
-                line_below=True,
-                emoji_alias=":date:",
-            )
+
         self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
         self.modelling_params = self.arrange_params(self.info["modelling_parameters"])
 
@@ -565,6 +557,17 @@ class ProjectComponent(Component):
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
             os.mkdir(self.paths["documentation"] / "BACKUP")
+
+        optimizer = self.get_optimizer()
+        self.smoothing_tensor_order = optimizer.get_tensor_order(optimizer.initial_model)
+        if not first:
+            self.current_iteration = optimizer.iteration_name
+            self.print(
+                f"Current Iteration: {self.current_iteration}",
+                line_above=True,
+                line_below=True,
+                emoji_alias=":date:",
+            )
 
         self.paths["iteration_tomls"] = self.paths["documentation"] / "ITERATIONS"
 

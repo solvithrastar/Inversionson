@@ -131,7 +131,7 @@ class RegularizationHelper(object):
             for _i, s in enumerate(status):
                 if s.name != "finished":
                     finished = False
-                elif s.name in ["unknown", "failed"]:
+                if s.name in ["unknown", "failed"]:
                     task_dict["reposts"] += 1
                     task_dict["submitted"] = False
                     self._write_tasks(self.tasks)
