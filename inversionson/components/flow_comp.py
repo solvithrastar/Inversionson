@@ -191,7 +191,7 @@ class SalvusFlowComponent(Component):
 
         return job
 
-    def __get_custom_job(self, event: str, sim_type: str):
+    def     __get_custom_job(self, event: str, sim_type: str):
         """
         A get_job function which handles job types which are not of type
         salvus.flow.sites.salvus_job.SalvusJob

@@ -275,7 +275,7 @@ class AdamOpt(Optimize):
             )
             all_events = list(set(all_events) - set(blocked_data))
             n_events = self.comm.project.batch_size
-            doc_path = self.comm.project.paths["inversion_root"] / "DOCUMENTATION"
+            doc_path = self.comm.project.paths["inversion_root"] / "OPTIMIZATION" / "GRADIENT_NORMS"
             all_norms_path = doc_path / "all_norms.toml"
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
