@@ -2,7 +2,6 @@ from typing import Dict, List
 import os
 import inspect
 import warnings
-import shutil
 import emoji
 import toml
 import salvus.flow.api as sapi
@@ -11,7 +10,6 @@ from tqdm import tqdm
 from inversionson import InversionsonError, InversionsonWarning
 from salvus.flow.api import get_site
 from inversionson.utils import sleep_or_process
-from inversionson.utils import sum_two_parameters_h5
 
 max_reposts = 3
 
@@ -19,17 +17,8 @@ CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
         os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
-    "inversionson",
     "remote_scripts",
     "cut_and_clip.py",
-)
-SUM_GRADIENTS_SCRIPT_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "inversionson",
-    "remote_scripts",
-    "gradient_summing.py",
 )
 
 PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
@@ -494,19 +483,12 @@ class ForwardHelper(object):
                 )
                 return
             hpc_cluster = get_site(self.comm.project.interpolation_site)
-            if hpc_cluster.config["site_type"] == "local":
-                interp_folder = os.path.join(
-                    self.comm.project.remote_diff_model_dir, "..", "MODELS", event
-                )
-            else:
-                username = hpc_cluster.config["ssh_settings"]["username"]
-                interp_folder = os.path.join(
-                    "/scratch/snx3000",
-                    username,
-                    "INTERPOLATION_WEIGHTS",
-                    "MODELS",
-                    event,
-                )
+            interp_folder = os.path.join(
+                self.comm.project.remote_inversionson_dir,
+                "INTERPOLATION_WEIGHTS",
+                "MODELS",
+                event,
+            )
             if not hpc_cluster.remote_exists(interp_folder):
                 hpc_cluster.remote_mkdir(interp_folder)
 
@@ -1522,17 +1504,14 @@ class AdjointHelper(object):
         hpc_cluster = get_site(self.comm.project.interpolation_site)
         if hpc_cluster.config["site_type"] == "local":
             interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir,
-                "..",
+                self.comm.project.remote_inversionson_dir,
                 "INTERPOLATION_WEIGHTS",
                 "GRADIENTS",
                 event,
             )
         else:
-            username = hpc_cluster.config["ssh_settings"]["username"]
             interp_folder = os.path.join(
-                "/scratch/snx3000",
-                username,
+                self.comm.project.remote_inversionson_dir,
                 "INTERPOLATION_WEIGHTS",
                 "GRADIENTS",
                 event,
@@ -1651,440 +1630,3 @@ class AdjointHelper(object):
 
         # Call script
         print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
-
-
-class SmoothingHelper(object):
-    """
-    A class related to everything regarding the smoothing simulations
-    """
-
-    def __init__(self, comm, events):
-        self.comm = comm
-        self.events = events
-
-    def print(
-        self,
-        message: str,
-        color="red",
-        line_above=False,
-        line_below=False,
-        emoji_alias=None,
-    ):
-        self.comm.storyteller.printer.print(
-            message=message,
-            color=color,
-            line_above=line_above,
-            line_below=line_below,
-            emoji_alias=emoji_alias,
-        )
-
-    def __remote_summing(self, events, verbose=False):
-        """
-        Sum gradients on remote for mono-batch case in preparation for.
-        smoothing.
-
-        Stores the summed gradient in the local lasif project.
-
-        :param events: List of events to be summed.
-        """
-
-        gradient_paths = []
-        iteration = self.comm.project.current_iteration
-
-        for event in events:
-            if self.comm.project.meshes == "multi-mesh":
-                job = self.comm.salvus_flow.get_job(event, "gradient_interp")
-                gradient_path = os.path.join(
-                    str(job.stderr_path.parent), "output/mesh.h5"
-                )
-
-            else:
-                job = self.comm.salvus_flow.get_job(event, "adjoint")
-
-                output_files = job.get_output_files()
-                gradient_path = output_files[0][
-                    ("adjoint", "gradient", "output_filename")
-                ]
-            gradient_paths.append(str(gradient_path))
-        # Connect to daint
-        hpc_cluster = get_site(self.comm.project.site_name)
-
-        remote_inversionson_dir = os.path.join(
-            self.comm.project.remote_diff_model_dir, "..", "summing_dir"
-        )
-        if not hpc_cluster.remote_exists(remote_inversionson_dir):
-            hpc_cluster.remote_mkdir(remote_inversionson_dir)
-
-        remote_output_path = os.path.join(remote_inversionson_dir, "summed_gradient.h5")
-        remote_norms_path = os.path.join(
-            remote_inversionson_dir, f"{iteration}_gradient_norms.toml"
-        )
-
-        # copy summing script to hpc
-        remote_script = os.path.join(remote_inversionson_dir, "gradient_summing.py")
-        if not hpc_cluster.remote_exists(remote_script):
-            hpc_cluster.remote_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
-
-        info = {}
-        info["filenames"] = gradient_paths
-        info["parameters"] = self.comm.project.inversion_params
-        info["output_gradient"] = remote_output_path
-        info["event_list"] = events
-        info["gradient_norms_path"] = remote_norms_path
-
-        if self.comm.project.optimizer == "adam":
-            info["batch_average"] = True  # compute sample average
-
-        toml_filename = f"gradient_sum.toml"
-        with open(toml_filename, "w") as fh:
-            toml.dump(info, fh)
-
-        # put toml on daint and remove local toml
-        remote_toml = os.path.join(remote_inversionson_dir, toml_filename)
-        hpc_cluster.remote_put(toml_filename, remote_toml)
-        os.remove(toml_filename)
-
-        # Call script
-        self.print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
-        doc_path = os.path.join(
-            self.comm.project.paths["inversion_root"], "DOCUMENTATION"
-        )
-        norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
-
-        store_norms = True
-        if store_norms:
-            hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
-            all_norms_path = os.path.join(doc_path, "all_norms.toml")
-            if not os.path.exists(all_norms_path):
-                norm_dict = {}
-                with open(all_norms_path, "w") as fh:
-                    toml.dump(norm_dict, fh)
-            else:
-                norm_dict = toml.load(all_norms_path)
-
-            norm_iter_dict = toml.load(norm_dict_toml)
-            for event, norm in norm_iter_dict.items():
-                norm_dict[event] = float(norm)
-
-            with open(all_norms_path, "w") as fh:
-                toml.dump(norm_dict, fh)
-        # copy summed gradient over to lasif project
-        gradient = (
-            self.comm.lasif.lasif_comm.project.paths["gradients"]
-            / f"ITERATION_{iteration}"
-            / "summed_gradient.h5"
-        )
-        hpc_cluster.remote_get(remote_output_path, gradient)
-
-        if "VPV" in self.comm.project.inversion_params:
-            sum_two_parameters_h5(gradient, ["VPV", "VPH"])
-
-    def dispatch_smoothing_simulations(self, smooth_individual=False, verbose=False):
-        """
-        Dispatch smoothing simulations. If interpolations needed, they
-        are done first.
-
-        :param verbose: Print information, defaults to False
-        :type verbose: bool, optional
-        """
-        interpolate = False
-        if self.comm.project.meshes == "multi-mesh":
-            interpolate = True
-            self.__put_standard_gradient_to_cluster()
-        if smooth_individual:
-            for event in self.events:
-                self.__dispatch_smoothing_simulation(
-                    event=event, interpolate=interpolate, verbose=verbose
-                )
-        else:
-            self.__dispatch_smoothing_simulation(event=None, verbose=verbose)
-
-    def monitor_interpolations(self, smooth_individual=False, verbose=False):
-        """
-        Monitor the status of the interpolations, as soon as one is done,
-        the smoothing simulation is dispatched
-        """
-        if not self.comm.project.meshes == "multi-mesh":
-            return
-
-        events = self.events
-        int_job_listener = RemoteJobListener(
-            comm=self.comm,
-            job_type="gradient_interp",
-            events=events,
-        )
-        int_job_listener.monitor_jobs()
-        for event in int_job_listener.not_submitted:
-            self.__dispatch_raw_gradient_interpolation(event=event, verbose=verbose)
-
-        while True:
-            int_job_listener.monitor_jobs()
-            for event in int_job_listener.events_retrieved_now:
-                self.comm.project.change_attribute(
-                    attribute=f'gradient_interp_job["{event}"]["retrieved"]',
-                    new_value=True,
-                )
-                self.comm.project.update_iteration_toml()
-                if smooth_individual:
-                    self.__dispatch_smoothing_simulation(
-                        event=event,
-                        verbose=verbose,
-                        interpolate=True,
-                    )
-
-            for event in int_job_listener.to_repost:
-                self.comm.project.change_attribute(
-                    attribute=f'gradient_interp_job["{event}"]["submitted"]',
-                    new_value=False,
-                )
-                self.comm.project.update_iteration_toml()
-                self.__dispatch_raw_gradient_interpolation(event=event, verbose=verbose)
-            if smooth_individual:
-                self.print(
-                    f"Dispatched {len(int_job_listener.events_retrieved_now)} "
-                    "Smoothing jobs"
-                )
-            if len(int_job_listener.events_retrieved_now) + len(
-                int_job_listener.events_already_retrieved
-            ) == len(events):
-                break
-
-            if not int_job_listener.events_retrieved_now:
-                sleep_or_process(self.comm)
-
-            int_job_listener.to_repost = []
-            int_job_listener.events_retrieved_now = []
-
-    def sum_gradients(self, remote_summing=True):
-        from inversionson.utils import sum_gradients
-
-        if self.events is None:
-            events = self.comm.project.events_in_iteration
-        else:
-            events = self.events
-
-        if remote_summing:
-            self.__remote_summing(events)
-            return
-
-        grad_mesh = self.comm.lasif.find_gradient(
-            iteration=self.comm.project.current_iteration,
-            event=None,
-            summed=True,
-            smooth=False,
-            just_give_path=True,
-        )
-        if os.path.exists(grad_mesh):
-            self.print(
-                "Gradient has already been summed. Moving on",
-                emoji_alias=":white_check_mark:",
-            )
-            return
-        gradients = []
-        for event in events:
-            gradients.append(
-                self.comm.lasif.find_gradient(
-                    iteration=self.comm.project.current_iteration,
-                    event=event,
-                    summed=False,
-                    smooth=False,
-                    just_give_path=False,
-                )
-            )
-        shutil.copy(gradients[0], grad_mesh)
-        sum_gradients(mesh=grad_mesh, gradients=gradients)
-
-    def __submitted_retrieved(self, event: str, sim_type="smoothing"):
-
-        if sim_type == "smoothing":
-            if event is not None:
-                job_info = self.comm.project.smoothing_job[event]
-            else:
-                job_info = self.comm.project.smoothing_job
-
-        elif sim_type == "gradient_interp":
-            job_info = self.comm.project.gradient_interp_job[event]
-
-        return job_info["submitted"], job_info["retrieved"]
-
-    def __dispatch_smoothing_simulation(
-        self, event: str, interpolate: bool = False, verbose: bool = False
-    ):
-        submitted, retrieved = self.__submitted_retrieved(event)
-        # See if smoothing job already submitted
-
-        if submitted:
-            sub_ret = "submitted"
-            if retrieved:
-                sub_ret = "retrieved"
-            if verbose:
-                self.print(
-                    f"Event {event} has been {sub_ret}. Moving on.",
-                    emoji_alias=":white_check_mark:",
-                )
-            return
-        if event is None:
-            self.comm.smoother.run_remote_smoother(event=event)
-            return
-        if not interpolate:
-            if verbose:
-                self.print(f"Submitting smoothing for {event}")
-            self.comm.smoother.run_remote_smoother(event)
-
-        if interpolate:
-            submitted, retrieved = self.__submitted_retrieved(
-                event, sim_type="gradient_interp"
-            )
-            if not submitted:
-                hpc_cluster = get_site(self.comm.project.interpolation_site)
-                if hpc_cluster.config["site_type"] == "local":
-                    interp_folder = os.path.join(
-                        self.comm.project.remote_diff_model_dir,
-                        "..",
-                        "INTERPOLATION_WEIGHTS",
-                        "GRADIENTS",
-                        event,
-                    )
-                else:
-                    username = hpc_cluster.config["ssh_settings"]["username"]
-                    interp_folder = os.path.join(
-                        "/scratch/snx3000",
-                        username,
-                        "INTERPOLATION_WEIGHTS",
-                        "GRADIENTS",
-                        event,
-                    )
-                if not hpc_cluster.remote_exists(interp_folder):
-                    hpc_cluster.remote_mkdir(interp_folder)
-                self.comm.multi_mesh.interpolate_gradient_to_model(
-                    event,
-                    smooth=False,
-                    interp_folder=interp_folder,
-                )
-            else:
-                if retrieved:
-                    self.print(f"I'm running the remote smoother now for event {event}")
-                    self.comm.smoother.run_remote_smoother(event)
-                else:
-                    if verbose:
-                        self.print(
-                            f"Event {event} is being interpolated," " can't smooth yet"
-                        )
-
-    def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
-        """
-        Take the gradient out of the adjoint simulations and
-        interpolate them to the inversion grid prior to smoothing.
-        """
-        hpc_cluster = get_site(self.comm.project.interpolation_site)
-        if hpc_cluster.config["site_type"] == "local":
-            interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir,
-                "..",
-                "INTERPOLATION_WEIGHTS",
-                "GRADIENTS",
-                event,
-            )
-        else:
-            username = hpc_cluster.config["ssh_settings"]["username"]
-            interp_folder = os.path.join(
-                "/scratch/snx3000",
-                username,
-                "INTERPOLATION_WEIGHTS",
-                "GRADIENTS",
-                event,
-            )
-        if not hpc_cluster.remote_exists(interp_folder):
-            hpc_cluster.remote_mkdir(interp_folder)
-        self.comm.multi_mesh.interpolate_gradient_to_model(
-            event, smooth=False, interp_folder=interp_folder
-        )
-
-    def retrieve_smooth_gradients(
-        self, events=None, smooth_individual=False, verbose=False
-    ):
-        if events is None:
-            events = self.events
-        if not smooth_individual:
-            events = [events]
-        smooth_job_listener = RemoteJobListener(self.comm, "smoothing")
-        interpolate = False
-        if self.comm.project.meshes == "multi-mesh":
-            interpolate = True
-
-        while True:
-            smooth_job_listener.monitor_jobs()
-            for event in smooth_job_listener.events_retrieved_now:
-                self.comm.smoother.retrieve_smooth_gradient(event_name=event)
-                if not smooth_individual:
-                    attribute = 'smoothing_job["retrieved"]'
-                else:
-                    attribute = f'smoothing_job["{event}"]["retrieved"]'
-                self.comm.project.change_attribute(
-                    attribute=attribute,
-                    new_value=True,
-                )
-                self.comm.project.update_iteration_toml()
-            for event in smooth_job_listener.to_repost:
-                if not smooth_individual:
-                    attribute = 'smoothing_job["submitted"]'
-                else:
-                    attribute = f'smoothing_job["{event}"]["submitted"]'
-
-                self.comm.project.change_attribute(
-                    attribute=attribute,
-                    new_value=False,
-                )
-                self.comm.project.update_iteration_toml()
-                self.print(f"Dispatching smoothing simulation via repost: {event}")
-                self.__dispatch_smoothing_simulation(
-                    event=event, interpolate=interpolate, verbose=verbose
-                )
-            if len(smooth_job_listener.events_retrieved_now) > 0:
-                self.print(
-                    f"Retrieved {len(smooth_job_listener.events_retrieved_now)} "
-                    "smoothing jobs"
-                )
-            if len(smooth_job_listener.events_already_retrieved) + len(
-                smooth_job_listener.events_retrieved_now
-            ) == len(events):
-                break
-
-            if not smooth_job_listener.events_retrieved_now:
-                sleep_or_process(self.comm)
-
-            smooth_job_listener.to_repost = []
-            smooth_job_listener.events_retrieved_now = []
-
-    def assert_all_simulations_dispatched(self, smooth_individual=False):
-        all = True
-        if not smooth_individual:
-            submitted, _ = self.__submitted_retrieved(None)
-            if submitted:
-                return True
-            else:
-                return False
-        for event in self.events:
-            submitted, _ = self.__submitted_retrieved(event)
-            if not submitted:
-                all = False
-                break
-        return all
-
-    def assert_all_simulations_retrieved(self, smooth_individual=False):
-        all = True
-        if not smooth_individual:
-            _, retrieved = self.__submitted_retrieved(None)
-            if retrieved:
-                return True
-            else:
-                return False
-        for event in self.events:
-            _, retrieved = self.__submitted_retrieved(event)
-            if not retrieved:
-                all = False
-                break
-        return all
-
-    def __put_standard_gradient_to_cluster(self):
-        self.comm.lasif.move_gradient_to_cluster()

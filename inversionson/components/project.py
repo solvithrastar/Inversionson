@@ -11,6 +11,7 @@ import pathlib
 from inversionson import InversionsonError, InversionsonWarning
 import warnings
 from inversionson.optimizers.adam_opt import AdamOpt
+from inversionson.optimizers.sgd_with_momentum import SGDM
 from typing import Union, List
 
 from lasif.components.communicator import Communicator
@@ -107,6 +108,8 @@ class ProjectComponent(Component):
         """
         if self.optimizer == "adam":
             return AdamOpt(comm=self.comm)
+        if self.optimizer == "sgdm":
+            return SGDM(comm=self.comm)
         else:
             raise InversionsonError(f"Optimization method {self.optimizer} not defined")
 
@@ -515,18 +518,7 @@ class ProjectComponent(Component):
             "validation_dataset"
         ]
         self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
-        if not first:
-            if self.optimizer == "adam":
-                adam_opt = AdamOpt(self.comm)
-                self.current_iteration = adam_opt.iteration_name
-            else:
-                raise NotImplementedError("")
-            self.print(
-                f"Current Iteration: {self.current_iteration}",
-                line_above=True,
-                line_below=True,
-                emoji_alias=":date:",
-            )
+
         self.inversion_params = self.arrange_params(self.info["inversion_parameters"])
         self.modelling_params = self.arrange_params(self.info["modelling_parameters"])
 
@@ -538,6 +530,19 @@ class ProjectComponent(Component):
         if not os.path.exists(self.paths["documentation"]):
             os.makedirs(self.paths["documentation"])
             os.mkdir(self.paths["documentation"] / "BACKUP")
+
+        optimizer = self.get_optimizer()
+        self.smoothing_tensor_order = optimizer.get_tensor_order(
+            optimizer.initial_model
+        )
+        if not first:
+            self.current_iteration = optimizer.iteration_name
+            self.print(
+                f"Current Iteration: {self.current_iteration}",
+                line_above=True,
+                line_below=True,
+                emoji_alias=":date:",
+            )
 
         self.paths["iteration_tomls"] = self.paths["documentation"] / "ITERATIONS"
 

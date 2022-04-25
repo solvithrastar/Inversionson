@@ -89,9 +89,13 @@ class RegularizationHelper(object):
                 toml.dump(existing_tasks, fh)
 
     def dispatch_smoothing_tasks(self):
-        self.print("Dispatching Smoothing Tasks")
+        dispatching_msg = True
         for task_name, task_dict in self.tasks.items():
             if not task_dict["submitted"] and task_dict["reposts"] < self.max_reposts:
+                if dispatching_msg:
+                    self.print("Dispatching Smoothing Tasks")
+                    dispatching_msg = False
+
                 sims = self.comm.smoother.get_sims_for_smoothing_task(
                     reference_model=task_dict["reference_model"],
                     model_to_smooth=task_dict["model_to_smooth"],
@@ -127,7 +131,7 @@ class RegularizationHelper(object):
             for _i, s in enumerate(status):
                 if s.name != "finished":
                     finished = False
-                elif s.name in ["unknown", "failed"]:
+                if s.name in ["unknown", "failed"]:
                     task_dict["reposts"] += 1
                     task_dict["submitted"] = False
                     self._write_tasks(self.tasks)

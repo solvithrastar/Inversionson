@@ -191,7 +191,7 @@ class SalvusFlowComponent(Component):
 
         return job
 
-    def __get_custom_job(self, event: str, sim_type: str):
+    def     __get_custom_job(self, event: str, sim_type: str):
         """
         A get_job function which handles job types which are not of type
         salvus.flow.sites.salvus_job.SalvusJob
@@ -202,19 +202,7 @@ class SalvusFlowComponent(Component):
         :type sim_type: str
         """
         gradient = False
-        hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
 
-        if hpc_cluster.config["site_type"] == "local":
-            interp_folder = os.path.join(
-                self.comm.project.remote_diff_model_dir, "..", "INTERPOLATION_WEIGHTS"
-            )
-        else:
-            username = hpc_cluster.config["ssh_settings"]["username"]
-            interp_folder = os.path.join(
-                "/scratch/snx3000",
-                username,
-                "INTERPOLATION_WEIGHTS",
-            )
         if sim_type == "model_interp":
             if self.comm.project.model_interp_job[event]["submitted"]:
                 job_name = self.comm.project.model_interp_job[event]["name"]

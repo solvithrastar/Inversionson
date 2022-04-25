@@ -130,18 +130,19 @@ class GradientSummer(object):
 
         if store_norms:
             doc_path = os.path.join(
-                self.comm.project.paths["inversion_root"], "DOCUMENTATION"
-            )
+                self.comm.project.paths["inversion_root"], "OPTIMIZATION",
+                "GRADIENT_NORMS")
+            if not os.path.exists(doc_path):
+                os.mkdir(doc_path)
+
             norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
 
             hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
             all_norms_path = os.path.join(doc_path, "all_norms.toml")
-            if not os.path.exists(all_norms_path):
-                norm_dict = {}
-                with open(all_norms_path, "w") as fh:
-                    toml.dump(norm_dict, fh)
-            else:
+            if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
+            else:
+                norm_dict = {}
 
             norm_iter_dict = toml.load(norm_dict_toml)
             for event, norm in norm_iter_dict.items():

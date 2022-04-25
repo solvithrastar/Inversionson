@@ -11,9 +11,10 @@ import os
 import glob
 import h5py
 import toml
-from typing import List, Tuple, Union
+from typing import List, Union
 from salvus.flow.api import get_site
-from inversionson import InversionsonError, autoinverter_helpers as helpers
+from inversionson import InversionsonError
+from inversionson.helpers import autoinverter_helpers as helpers
 
 
 class Optimize(object):
@@ -409,3 +410,14 @@ class Optimize(object):
             # the above executed to preserve the ordering that data came in
             indices.sort()
             dat[:, indices, :] = data_copy[:, indices, :]
+
+    def get_tensor_order(self, filename):
+        """
+        Get the tensor order from a Salvus file.
+        :param filename: filename
+        :type filename: str
+        """
+        with h5py.File(filename, "r") as h5:
+            num_gll = h5["MODEL"]["coordinates"].shape[1]
+            dimension = h5["MODEL"]["coordinates"].shape[2]
+        return round(num_gll ** (1 / dimension) - 1)

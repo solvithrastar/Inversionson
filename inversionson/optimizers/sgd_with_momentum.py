@@ -14,24 +14,15 @@ from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.autoinverter_helpers import AdjointHelper
 
 
-class AdamOpt(Optimize):
+class SGDM(Optimize):
     """
-    A class that performs Adam optimization, if model_decay is
-    set to a non-zero value, it performs AdamW optimization. This is
-    essentially a type of L2 smoothing.
-
-    Useful references:
-    https://arxiv.org/abs/1412.6980
-    https://towardsdatascience.com/why-adamw-matters-736223f31b5d
-
-    And somewhat unrelated, but relevant on Importance Sampling:
-    https://arxiv.org/pdf/1803.00942.pdf
+    A class that performs Stochastic Gradient descent with momentum.
 
     The class inherits from the base optimizer class and is designed
     to facilitate any differences between the two classes.
     """
 
-    optimizer_name = "Adam"
+    optimizer_name = "SGDM"
 
     def __init__(self, comm):
 
@@ -39,10 +30,9 @@ class AdamOpt(Optimize):
         super().__init__(comm)
 
     def _initialize_derived_class_folders(self):
-        """These folder are needed only for Adam."""
+        """These folder are needed only for SGDM."""
         self.smooth_update_dir = self.opt_folder / "SMOOTHED_UPDATES"
-        self.first_moment_dir = self.opt_folder / "FIRST_MOMENTS"
-        self.second_moment_dir = self.opt_folder / "SECOND_MOMENTS"
+        self.moment_dir = self.opt_folder / "MOMENTS"
         self.smoothed_model_dir = self.opt_folder / "SMOOTHED_MODELS"
 
     @property
@@ -70,12 +60,8 @@ class AdamOpt(Optimize):
         return self.raw_gradient_dir / f"gradient_{self.iteration_number:05d}.h5"
 
     @property
-    def first_moment_path(self):
-        return self.first_moment_dir / f"first_moment_{self.iteration_number:05d}.h5"
-
-    @property
-    def second_moment_path(self):
-        return self.second_moment_dir / f"second_moment_{self.iteration_number:05d}.h5"
+    def moment_path(self):
+        return self.moment_dir / f"moment_{self.iteration_number:05d}.h5"
 
     @property
     def smoothed_model_path(self):
@@ -98,14 +84,12 @@ class AdamOpt(Optimize):
         """
         config = {
             "alpha": 0.001,
-            "beta_1": 0.9,
-            "beta_2": 0.999,
+            "beta": 0.9,
             "perturbation_decay": 0.001,
             "roughness_decay_type": "relative_perturbation", # or absolute
             "update_smoothing_length": [0.5, 1.0, 1.0],
             "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
             "gradient_scaling_factor": 1e17,
-            "epsilon": 1e-1,
             "initial_model": "",
             "max_iterations": 1000,
         }
@@ -113,20 +97,19 @@ class AdamOpt(Optimize):
             toml.dump(config, fh)
 
         print(
-            "Wrote a config file for the Adam optimizer. Please provide "
-            "an initial model."
+            "Wrote a config file for the SGD with Momentum optimizer. "
+            "Please provide an initial model."
         )
 
     def _read_config(self):
         """Reads the config file."""
         if not os.path.exists(self.config_file):
-            raise Exception("Can't read the ADAM config file")
+            raise Exception("Can't read the SGDM config file")
         config = toml.load(self.config_file)
 
         self.initial_model = config["initial_model"]
         self.alpha = config["alpha"]
-        self.beta_1 = config["beta_1"]  # decay factor for first moments
-        self.beta_2 = config["beta_2"]  # decay factor for second moments
+        self.beta = config["beta"]  # decay factor for first moments
 
         # Perturbation decay per iteration as a percentage of the relative
         # deviation to the initial model
@@ -141,7 +124,6 @@ class AdamOpt(Optimize):
         # Gradient scaling factor to avoid issues with floats, this should be constant throughout the inversion
         self.grad_scaling_fac = config["gradient_scaling_factor"]
         # Regularization parameter to avoid dividing by zero
-        self.epsilon = config["epsilon"]  # this is automatically scaled
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
         else:
@@ -154,8 +136,7 @@ class AdamOpt(Optimize):
         folders = [
             self.model_dir,
             self.raw_gradient_dir,
-            self.first_moment_dir,
-            self.second_moment_dir,
+            self.moment_dir,
             self.raw_update_dir,
             self.smooth_update_dir,
             self.task_dir,
@@ -301,7 +282,7 @@ class AdamOpt(Optimize):
     def _compute_raw_update(self):
         """Computes the raw update"""
 
-        self.print("Adam: Computing raw update...", line_above=True)
+        self.print("SGD with Momentum: Computing raw update...", line_above=True)
         # Read task toml
 
         iteration_number = self.task_dict["iteration_number"] + 1
@@ -316,70 +297,39 @@ class AdamOpt(Optimize):
             )
 
         if iteration_number == 1:  # Initialize moments if needed
-            shutil.copy(self.raw_gradient_path, self.first_moment_path)
+            shutil.copy(self.raw_gradient_path, self.moment_path)
 
-            with h5py.File(self.first_moment_path, "r+") as h5:
+            with h5py.File(self.moment_path, "r+") as h5:
                 data = h5["MODEL/data"]
 
                 # initialize with zeros
                 for i in indices:
                     data[:, i, :] = np.zeros_like(data[:, i, :])
 
-            # Also initialize second moments with zeros
-            shutil.copy(self.first_moment_path, self.second_moment_path)
 
-        m_t = (
-            self.beta_1 * self.get_h5_data(self.first_moment_path)
-            + (1 - self.beta_1) * g_t
+        v_t = (
+            self.beta * self.get_h5_data(self.moment_path)
+            + (1 - self.beta) * g_t
         )
 
         # Store first moment
         shutil.copy(
-            self.first_moment_path,
+            self.moment_path,
             self._get_path_for_iteration(
-                self.iteration_number + 1, self.first_moment_path
+                self.iteration_number + 1, self.moment_path
             ),
         )
         self.set_h5_data(
             self._get_path_for_iteration(
-                self.iteration_number + 1, self.first_moment_path
-            ),
-            m_t,
-        )
-
-        # v_t was sometimes becoming too small, so enforce double precision
-        v_t = self.beta_2 * self.get_h5_data(self.second_moment_path) + (
-            1 - self.beta_2
-        ) * (g_t**2)
-
-        # Store second moment
-        shutil.copy(
-            self.second_moment_path,
-            self._get_path_for_iteration(
-                self.iteration_number + 1, self.second_moment_path
-            ),
-        )
-        self.set_h5_data(
-            self._get_path_for_iteration(
-                self.iteration_number + 1, self.second_moment_path
+                self.iteration_number + 1, self.moment_path
             ),
             v_t,
         )
 
         # Correct bias
-        m_t = m_t / (1 - self.beta_1 ** (self.iteration_number + 1))
-        v_t = v_t / (1 - self.beta_2 ** (self.iteration_number + 1))
+        v_t = v_t / (1 - self.beta ** (self.iteration_number + 1))
+        update = self.alpha * v_t
 
-        # ensure e is sufficiently small, even for the small gradient values
-        # that we typically have.
-        e = self.epsilon * np.mean(np.sqrt(v_t))
-
-        update = self.alpha * m_t / (np.sqrt(v_t) + e)
-
-        max_upd = np.max(np.abs(update))
-        self.print(f"Max raw model update: {max_upd}")
-        if max_upd > 3.0 * self.alpha:
-            raise Exception("Raw update seems a bit large")
         if np.sum(np.isnan(update)) > 1:
             raise Exception(
                 "NaNs were found in the raw update."
@@ -397,14 +347,11 @@ class AdamOpt(Optimize):
         """
         Apply the smoothed update.
         """
-        self.print("Adam: Applying smooth update...", line_above=True)
+        self.print("SGD with Momentum: Applying smooth update...",
+                   line_above=True)
 
         raw_update = self.get_h5_data(self.raw_update_path)
-        max_raw_update = np.max(np.abs(raw_update))
         update = self.get_h5_data(self.smooth_update_path)
-
-        raw_update_norm = np.sqrt(np.sum(raw_update ** 2))
-        update_norm = np.sqrt(np.sum(update ** 2))
 
         if np.sum(np.isnan(update)) > 1:
             raise Exception(
@@ -414,27 +361,13 @@ class AdamOpt(Optimize):
 
         max_upd = np.max(np.abs(update))
         print(f"Max smooth model update: {max_upd}")
-        if max_upd > 4.0 * self.alpha:
-            raise Exception(
-                "Check smooth gradient, the update is larger than expected."
-            )
 
-        update_scaling_fac_norm = raw_update_norm / update_norm
         update_scaling_fac_alpha = self.alpha / max_upd
-        update_scaling_fac_peak = max_raw_update / max_upd
 
-        update_scaling_fac = min(update_scaling_fac_norm,
-                                 update_scaling_fac_alpha,
-                                 update_scaling_fac_peak)
-        print("Update scaling factor norm:", update_scaling_fac_norm,
-              "Update scaling factor alpha:", update_scaling_fac_alpha,
-              "Update scaling factor peak:", update_scaling_fac_peak,
-              )
+        self.print(f"Recaling based on alpha: {update_scaling_fac_alpha},"
+              f"New maximum update is: {max_upd * update_scaling_fac_alpha}")
 
-        self.print(f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
-              f"New maximum update is: {max_upd * update_scaling_fac}")
-
-        update *= update_scaling_fac
+        update *= update_scaling_fac_alpha
 
         # Update parameters
         if max(self.roughness_decay_smoothing_length) > 0.0:
@@ -452,7 +385,7 @@ class AdamOpt(Optimize):
         theta_new = np.zeros_like(theta_0)
         theta_new[theta_0 != 0] = \
             theta_prev[theta_0 != 0] - update[theta_0 != 0] - \
-            self.perturbation_decay * theta_prev[theta_0 != 0]
+            (1-self.beta) * self.perturbation_decay * theta_prev[theta_0 != 0]
 
         # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
@@ -474,10 +407,10 @@ class AdamOpt(Optimize):
 
     def _update_model(self, verbose: bool, raw=True, smooth=False):
         """
-        Apply an Adam style update to the model
+        Apply an SGDM style update to the model
         """
         if (raw and smooth) or (not raw and not smooth):
-            raise InversionsonError("Adam updates can be raw or smooth, not both")
+            raise InversionsonError("SGDM updates can be raw or smooth, not both")
         if raw:
             gradient = (
                 self.comm.lasif.lasif_comm.project.paths["gradients"]
@@ -709,7 +642,7 @@ class AdamOpt(Optimize):
             else:
                 self.print("Model already updated")
         else:
-            raise InversionsonError(f"Task {task_name} is not recognized by AdamOpt")
+            raise InversionsonError(f"Task {task_name} is not recognized by SGDM")
 
     def get_new_task(self):
         if self.task_dict["finished"]:
