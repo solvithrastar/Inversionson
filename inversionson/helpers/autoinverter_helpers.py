@@ -25,7 +25,6 @@ PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
     os.path.dirname(
         os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
     ),
-    "inversionson",
     "remote_scripts",
     "window_and_calc_adj_src.py",
 )
