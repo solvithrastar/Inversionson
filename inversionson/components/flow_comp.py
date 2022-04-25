@@ -57,7 +57,6 @@ class SalvusFlowComponent(Component):
         :return: Job name
         :rtype: str
         """
-        inversion_id = self.comm.project.inversion_id
         old_iter = True
         sim_types = [
             "forward",
@@ -81,7 +80,7 @@ class SalvusFlowComponent(Component):
             import random
 
             unique_id = "".join(random.choice("0123456789ABCDEF") for i in range(8))
-            job = iteration + "_" + inversion_id + "_" + sim_type + "_" + unique_id
+            job = iteration + "_" + sim_type + "_" + unique_id
             if sim_type == "forward":
                 self.comm.project.forward_job[event]["name"] = job
             elif sim_type == "adjoint":

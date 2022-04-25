@@ -660,7 +660,7 @@ class PrettyPrinter(object):
             emoji_alias = ":" + emoji_alias
         if not emoji_alias.endswith(":"):
             emoji_alias += ":"
-        self.stream += f"{emoji.emojize(emoji_alias, language='alias')}"
+        self.stream += f"{emoji.emojize(emoji_alias, use_aliases=True)}"
         self.stream += " | " if vertical_line else " "
 
     def add_horizontal_line(self):
