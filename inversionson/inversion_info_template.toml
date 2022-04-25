@@ -28,7 +28,6 @@ ellipticity = true
 # isotropic or anisotropic. Smoothing is always model dependent but can be either isotropic or anisotropic meaning that different dimensions get smoothed with different wavelengths. Density is always smoothed based on some VP model. If you don't want any smoothing, write 'none'.
 smoothing_mode = "anisotropic"
 # If smoothing_mode is isotropic, only one value is required, if smoothing_mode is anisotropic, three values in a list are used.
-smoothing_lengths = [ 0.5, 1.0, 1.0,]
 timestep = 1e-5
 tensor_order = 2 # The tensor order used in in the diffusion simulations. This may be set to 1 to make smoothing faster at the cost of lower, but likely acceptable precision.
 
@@ -85,6 +84,9 @@ site_name = "daint"
 model_wall_time = 300
 gradient_wall_time = 900
 
+# Setting the below value to true makes inversionson select windows, compute station weights
+# and compute adjoint sources on the HPC. This is required when using inversionson in combination with
+# a remote raw data storage. It currently uses tf-phase misfits and the default LASIF settings for window selection.
 [HPC.processing]
 use = true
 wall_time = 1000

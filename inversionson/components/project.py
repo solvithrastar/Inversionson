@@ -571,7 +571,6 @@ class ProjectComponent(Component):
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
         self.smoothing_mode = self.info["Smoothing"]["smoothing_mode"]
-        self.smoothing_lengths = self.info["Smoothing"]["smoothing_lengths"]
         self.smoothing_timestep = self.info["Smoothing"]["timestep"]
         self.smoothing_tensor_order = self.info["Smoothing"]["tensor_order"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
