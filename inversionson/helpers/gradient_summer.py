@@ -35,7 +35,7 @@ class GradientSummer(object):
         color: str = "green",
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias: Union[str, List[str]] = ":heavy_plus_sign:",
+        emoji_alias: Union[str, List[str]] = ":nerd_face:",
     ):
         self.comm.storyteller.printer.print(
             message=message,
