@@ -297,10 +297,12 @@ if __name__ == "__main__":
         )
 
     shutil.move("./to_mesh.h5", "./output/mesh.h5")
-    if not info["gradient"] and info["create_simulation_dict"]:
+    if not info["gradient"]:
         move_mesh(
             mesh_folder=mesh_info["mesh_folder"], event_name=mesh_info["event_name"]
         )
         print("Meshed moved to longer term storage")
-        print("Creating simulation object")
-        create_simulation_object(mesh_info, source_info, receiver_info, simulation_info)
+        if info["create_simulation_dict"]:
+            print("Creating simulation object")
+            create_simulation_object(mesh_info, source_info,
+                                     receiver_info, simulation_info)
