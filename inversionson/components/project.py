@@ -484,6 +484,7 @@ class ProjectComponent(Component):
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
         self.sleep_time_in_s = self.info["HPC"]["sleep_time_in_seconds"]
+        self.max_reposts = self.info["HPC"]["max_reposts"]
         self.remote_inversionson_dir = pathlib.Path(
             self.info["HPC"]["inversionson_fast_dir"]
         )

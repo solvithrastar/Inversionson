@@ -2,6 +2,7 @@ import os
 import toml
 from typing import Union, List
 
+
 from pathlib import Path
 from salvus.flow import api as sapi
 from salvus.opt.smoothing import get_smooth_model
@@ -31,7 +32,6 @@ class RegularizationHelper(object):
         """
         self.comm = comm
         self.site_name = self.comm.project.smoothing_site_name
-        self.max_reposts = 3
         self.iteration_name = iteration_name
         self.regularization_folder = (
             Path(self.comm.project.paths["inversion_root"])
@@ -91,7 +91,7 @@ class RegularizationHelper(object):
     def dispatch_smoothing_tasks(self):
         dispatching_msg = True
         for task_name, task_dict in self.tasks.items():
-            if not task_dict["submitted"] and task_dict["reposts"] < self.max_reposts:
+            if not task_dict["submitted"] and task_dict["reposts"] < self.comm.project.max_reposts:
                 if dispatching_msg:
                     self.print("Dispatching Smoothing Tasks")
                     dispatching_msg = False
@@ -112,7 +112,7 @@ class RegularizationHelper(object):
                 self.tasks[task_name]["submitted"] = True
                 self.tasks[task_name]["job_name"] = job.job_array_name
                 self._write_tasks(self.tasks)
-            elif task_dict["reposts"] >= self.max_reposts:
+            elif task_dict["reposts"] >= self.comm.project.max_reposts:
                 raise Exception(
                     "Too many reposts in smoothing, "
                     "please check the time steps and the inputs."

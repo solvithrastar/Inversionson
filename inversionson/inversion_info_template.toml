@@ -48,6 +48,8 @@ remote_mesh_directory = "path_to_directory_containing_meshes_and_models"
 remote_conda_environment = "salvus"
 # Waiting time to check again if jobs are finished. Most HPC clusters don't like it if you check too often.
 sleep_time_in_seconds = 20
+# Maximum number of reposts if a job fails.
+max_reposts = 3
 
 [HPC.wave_propagation]
 site_name = "daint"
