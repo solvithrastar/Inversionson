@@ -59,10 +59,14 @@ def calculate_adjoint_source(observed, synthetic, window, min_period,
                              **kwargs):
 
     ret_val = {}
-    if len(window) == 2:
-        weight = 1.0
+
+    if window:
+        if len(window) == 2:
+            weight = 1.0
+        else:
+            weight = window[2]
     else:
-        weight = window[2]
+        weight = 1.0
 
     # Work on copies of the original data
     observed = observed.copy()
