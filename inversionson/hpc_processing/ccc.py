@@ -13,49 +13,13 @@ from __future__ import (absolute_import, division, print_function,
 
 import numpy as np
 from obspy import Trace
-from scipy.integrate import simps
 import obspy.signal.cross_correlation as crosscorr
 
-VERBOSE_NAME = "Cross Correlation Traveltime Misfit"
+VERBOSE_NAME = "Zero-lag Cross-Correlation-Coefficient"
 
 DESCRIPTION = r"""
-Traveltime misfits simply measure the squared traveltime difference. The
-misfit :math:`\chi(\mathbf{m})` for a given Earth model :math:`\mathbf{m}`
-and a single receiver and component is given by
-
-.. math::
-
-    \chi (\mathbf{m}) = \frac{1}{2} \left[ T^{obs} - T(\mathbf{m}) \right] ^ 2
-
-:math:`T^{obs}` is the observed traveltime, and :math:`T(\mathbf{m})` the
-predicted traveltime in Earth model :math:`\mathbf{m}`.
-
-In practice traveltime are measured by cross correlating observed and
-predicted waveforms. 
-
-The adjoint source for the same receiver and component is then given by
-
-.. math::
-
-    f^{\dagger}(t) = - \left[ T^{obs} - T(\mathbf{m}) \right] ~ \frac{1}{N} ~
-    \partial_t \mathbf{s}(T - t, \mathbf{m})
-
-For the sake of simplicity we omit the spatial Kronecker delta and define
-the adjoint source as acting solely at the receiver's location. For more
-details, please see [Tromp2005]_ and [Bozdag2011]_.
-
-
-:math:`N` is a normalization factor given by
-
-
-.. math::
-
-    N = \int_0^T ~ \mathbf{s}(t, \mathbf{m}) ~
-    \partial^2_t \mathbf{s}(t, \mathbf{m}) dt
-
-This particular implementation here uses
-`Simpson's rule <http://en.wikipedia.org/wiki/Simpson's_rule>`_
-to evaluate the definite integral.
+This is the CCC misfit as used by famous seismologist Ya-Jian Gao in 
+several of his publications.
 """  # NOQA
 
 # Optional: document any additional parameters this particular adjoint sources
