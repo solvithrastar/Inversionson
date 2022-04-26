@@ -31,7 +31,6 @@ class ProjectComponent(Component):
         a running inversion can be restarted although this is done.
         """
         self.info = information_dict
-        self.sleep_time_in_s = 30
         self.random_event_processing = False
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
@@ -484,7 +483,7 @@ class ProjectComponent(Component):
         self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
         self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
         self.remote_mesh_dir = pathlib.Path(self.info["HPC"]["remote_mesh_directory"])
-
+        self.sleep_time_in_s = self.info["HPC"]["sleep_time_in_seconds"]
         self.remote_inversionson_dir = pathlib.Path(
             self.info["HPC"]["inversionson_fast_dir"]
         )

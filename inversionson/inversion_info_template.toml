@@ -46,6 +46,8 @@ inversionson_fast_dir = "scratch/snx3000/username/INVERSIONSON"
 remote_mesh_directory = "path_to_directory_containing_meshes_and_models"
 # This conda environment will be activated before running the interpolation and hpc processing jobs.
 remote_conda_environment = "salvus"
+# Waiting time to check again if jobs are finished. Most HPC clusters don't like it if you check too often.
+sleep_time_in_seconds = 20
 
 [HPC.wave_propagation]
 site_name = "daint"
