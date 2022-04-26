@@ -372,10 +372,6 @@ def run(info):
     else:
         ad_src_type = "tf_phase_misfit"
 
-    if ad_src_type != "tf_phase_misfit":
-        raise NotImplemented()
-
-    # TODO make it work for more adjoint sources later
     env_scaling = False
 
     if len(all_windows.keys()) == 0:
