@@ -437,9 +437,7 @@ class StoryTellerComponent(Component):
             # We need to create all necessary files
             self._create_story_file()
             self._start_entry_for_iteration()
-            if (
-                self.comm.project.inversion_mode == "mini-batch"
-            ):
+            if self.comm.project.inversion_mode == "mini-batch":
                 self._write_list_of_all_events()
 
             self._add_table_of_events_and_misfits(task=task)
@@ -660,7 +658,7 @@ class PrettyPrinter(object):
             emoji_alias = ":" + emoji_alias
         if not emoji_alias.endswith(":"):
             emoji_alias += ":"
-        self.stream += f"{emoji.emojize(emoji_alias, use_aliases=True)}"
+        self.stream += f"{emoji.emojize(emoji_alias, language='alias')}"
         self.stream += " | " if vertical_line else " "
 
     def add_horizontal_line(self):

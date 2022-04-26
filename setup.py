@@ -24,7 +24,7 @@ sys.path.insert(0, path)
 
 setup_config = dict(
     name="inversionson",
-    version="0.0.1",
+    version="0.0.2",
     description="",
     author="Solvi Thrastarson",
     author_email="soelvi.thrastarson@erdw.ethz.ch",
@@ -44,12 +44,8 @@ setup_config = dict(
         "pyasdf",
         "toml",
         "numpy",
-        "numexpr"
-        "pytest",
-        "flask",
-        "flask-cache",
-        "sphinx",
-        "emoji"]
+        "numexpr",
+        "emoji>=1.7"]
 )
 
 

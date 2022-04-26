@@ -176,7 +176,7 @@ def run(root=None):
     print(
         emoji.emojize(
             "\n :flag_for_Iceland: | Welcome to Inversionson | :flag_for_Iceland: \n",
-            use_aliases=True,
+            language="alias",
         )
     )
     info = read_info_toml(root)
