@@ -381,6 +381,8 @@ class SGDM(Optimize):
             # If relative perturbations are smoothed, make model physical
             if self.roughness_decay_type == "relative_perturbation":
                 theta_prev = (theta_prev + 1) * theta_0
+        else:
+            theta_prev = self.get_h5_data(self.model_path)
 
         # Normalize the model and prevent division by zero in the outer core.
         theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
