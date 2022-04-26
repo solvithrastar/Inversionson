@@ -392,6 +392,7 @@ class ForwardHelper(object):
         info["receiver_json_path"] = os.path.join(
             remote_receiver_dir, f"{event}_receivers.json"
         )
+        info["ad_src_type"] = self.comm.project.ad_src_type
 
         toml_filename = f"{iteration}_{event}_adj_info.toml"
 

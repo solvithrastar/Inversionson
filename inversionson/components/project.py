@@ -32,6 +32,7 @@ class ProjectComponent(Component):
         """
         self.info = information_dict
         self.random_event_processing = False
+        self.ad_src_type = "tf_phase_misfit"
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")
         self.simulation_dict = self._read_config_file()

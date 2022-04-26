@@ -43,6 +43,8 @@ def calculate_adjoint_source(
 
     if adj_src_type == "tf_phase_misfit":
         from inversionson.hpc_processing.tf_phase_misfit import calculate_adjoint_source as fct
+    elif adj_src_type == "ccc":
+        from inversionson.hpc_processing.ccc import calculate_adjoint_source as fct
     else:
         raise Exception("Not implemented error")
 
