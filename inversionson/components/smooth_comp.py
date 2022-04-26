@@ -58,7 +58,8 @@ class SalvusSmoothComponent(Component):
             hpc_cluster.remote_mkdir(remote_diff_dir)
 
         if "REMOTE:" not in model_to_smooth:
-            print("Uploading values for smoothing.")
+            print(f"Uploading initial values from: {model_to_smooth} "
+                  f"for smoothing.")
             file_name = model_to_smooth.split("/")[-1]
             remote_file_path = os.path.join(remote_diff_dir, file_name)
             tmp_remote_file_path = remote_file_path + "_tmp"
