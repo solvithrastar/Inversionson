@@ -791,7 +791,7 @@ class SalvusFlowComponent(Component):
         )
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
         if hpc_cluster.config["site_type"] == "local":
-            job.wait(poll_interval_in_seconds=10)
+            job.wait(poll_interval_in_seconds=self.comm.project.sleep_time_in_s)
 
         if (
             self.comm.project.remote_mesh is None
