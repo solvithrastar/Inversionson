@@ -76,14 +76,15 @@ def calculate_adjoint_source(observed, synthetic, window, min_period,
 
     misfit = 1 - CC / weight_2
 
-    # Subsample accuracy time shift
-    time_shift = xcorr_shift(synthetic, observed, min_period)
+
     ret_val["misfit"] = misfit
-    
-    if time_shift >= min_period / 2.0:
-        ret_val["adjoint_source"] = Trace(data=np.zeros_like(observed.data),
-                                          header=observed.stats)
-        return ret_val
+
+    # # Subsample accuracy time shift
+    # time_shift = xcorr_shift(synthetic, observed, min_period)
+    # if time_shift >= min_period / 2.0:
+    #     ret_val["adjoint_source"] = Trace(data=np.zeros_like(observed.data),
+    #                                       header=observed.stats)
+    #     return ret_val
 
     if adjoint_src:
         A = np.dot(observed, synthetic) / np.dot(synthetic, synthetic)
