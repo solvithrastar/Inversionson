@@ -166,7 +166,7 @@ def read_info_toml(root):
             fh.write(toml_string)
         print("I created a dummy configuration file " + str(info_toml_path))
         print("Please edit this file as needed and run me again.")
-        exit()
+        sys.exit()
     else:
         print("Using configuration file " + str(info_toml_path))
     return toml.load(info_toml_path)

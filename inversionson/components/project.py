@@ -516,7 +516,9 @@ class ProjectComponent(Component):
             os.mkdir(self.paths["documentation"] / "BACKUP")
 
         optimizer = self.get_optimizer()
-        self.smoothing_tensor_order = optimizer.get_tensor_order(optimizer.initial_model)
+        self.smoothing_tensor_order = optimizer.get_tensor_order(
+            optimizer.initial_model
+        )
         self.smoothing_timestep = optimizer.smoothing_timestep
 
         if not first:
@@ -583,10 +585,10 @@ class ProjectComponent(Component):
                     jobs["gradient_interp"] = job_dict
                 if self.hpc_processing and not validation:
                     jobs["hpc_processing"] = job_dict
-                it_dict["events"][str(_i)] = {
-                    "name": event,
-                    "job_info": jobs,
-                }
+            it_dict["events"][str(_i)] = {
+                "name": event,
+                "job_info": jobs,
+            }
             if not validation:
                 it_dict["events"][str(_i)]["misfit"] = float(0.0)
                 it_dict["events"][str(_i)]["usage_updated"] = False

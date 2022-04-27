@@ -190,7 +190,7 @@ class SalvusFlowComponent(Component):
 
         return job
 
-    def     __get_custom_job(self, event: str, sim_type: str):
+    def __get_custom_job(self, event: str, sim_type: str):
         """
         A get_job function which handles job types which are not of type
         salvus.flow.sites.salvus_job.SalvusJob
@@ -235,9 +235,7 @@ class SalvusFlowComponent(Component):
 
         job = s_job.Job(
             site=sapi.get_site(site_name=db_job.site.site_name),
-            commands=self.comm.multi_mesh.get_interp_commands(
-                event, gradient
-            ),
+            commands=self.comm.multi_mesh.get_interp_commands(event, gradient),
             job_type=db_job.job_type,
             job_info=db_job.info,
             jobname=db_job.job_name,
@@ -790,8 +788,6 @@ class SalvusFlowComponent(Component):
             color="magenta",
         )
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
-        if hpc_cluster.config["site_type"] == "local":
-            job.wait(poll_interval_in_seconds=self.comm.project.sleep_time_in_s)
 
         if (
             self.comm.project.remote_mesh is None
@@ -830,6 +826,8 @@ class SalvusFlowComponent(Component):
             emoji_alias=":hourglass:",
             color="magenta",
         )
+        if hpc_cluster.config["site_type"] == "local":
+            job.wait(poll_interval_in_seconds=self.comm.project.sleep_time_in_s)
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
         """
