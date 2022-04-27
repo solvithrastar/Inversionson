@@ -71,8 +71,11 @@ def calculate_adjoint_source(observed, synthetic, window, min_period,
     # Work on copies of the original data
     observed = observed.copy()
     synthetic = synthetic.copy()
-    CC = np.dot(observed, synthetic)
-    weight_2 = np.sqrt(np.dot(observed, observed) * np.dot(synthetic, synthetic))
+    CC = np.sum(observed.data * synthetic.data)
+
+    oo = np.sum(observed.data * observed.data)
+    ss = np.sum(synthetic.data * synthetic.data)
+    weight_2 = np.sqrt(oo * ss)
 
     misfit = 1 - CC / weight_2
 
@@ -87,13 +90,10 @@ def calculate_adjoint_source(observed, synthetic, window, min_period,
     #     return ret_val
 
     if adjoint_src:
-        A = np.dot(observed, synthetic) / np.dot(synthetic, synthetic)
-        adj = (observed - A * synthetic) / weight_2
+        A = CC / ss
+        adj = (observed.data - A * synthetic.data) / weight_2
         adj_src = Trace(data=weight * adj *
                         synthetic.stats.delta, header=observed.stats)
         ret_val["adjoint_source"] = adj_src
 
     return ret_val
-
-
-
