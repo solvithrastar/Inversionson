@@ -103,7 +103,7 @@ class AdamOpt(Optimize):
             "perturbation_decay": 0.001,
             "roughness_decay_type": "relative_perturbation", # or absolute
             "update_smoothing_length": [0.5, 1.0, 1.0],
-            "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
+            "roughness_decay_smoothing_length": [0.0, 0.0, 0.0],
             "gradient_scaling_factor": 1e17,
             "epsilon": 1e-1,
             "initial_model": "",

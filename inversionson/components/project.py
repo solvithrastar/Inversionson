@@ -521,6 +521,11 @@ class ProjectComponent(Component):
         )
         self.smoothing_timestep = optimizer.smoothing_timestep
 
+        if self.meshes == "multi-mesh" or self.remote_data_processing:
+            self.prepare_forward = True
+        else:
+            self.prepare_forward = False
+
         if not first:
             self.current_iteration = optimizer.iteration_name
             self.print(
@@ -573,15 +578,16 @@ class ProjectComponent(Component):
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             if validation:
                 jobs = {"forward": job_dict}
-                if remote_interp:
-                    jobs["model_interp"] = job_dict
+                if self.prepare_forward:
+                    jobs["prepare_forward"] = job_dict
             if not validation:
                 jobs = {
                     "forward": job_dict,
                     "adjoint": job_dict,
                 }
+                if self.prepare_forward:
+                    jobs["prepare_forward"] = job_dict
                 if remote_interp:
-                    jobs["model_interp"] = job_dict
                     jobs["gradient_interp"] = job_dict
                 if self.hpc_processing and not validation:
                     jobs["hpc_processing"] = job_dict
@@ -656,9 +662,10 @@ class ProjectComponent(Component):
             jobs = {"forward": self.forward_job[event]}
             if not validation:
                 jobs["adjoint"] = self.adjoint_job[event]
-            if remote_interp:
-                jobs["model_interp"] = self.model_interp_job[event]
-                if not validation:
+            if self.prepare_forward:
+                jobs["prepare_forward"] = self.prepare_forward_job[event]
+
+            if remote_interp and not validation:
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.hpc_processing and not validation:
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
@@ -706,8 +713,9 @@ class ProjectComponent(Component):
             self.misfits = {}
             self.updated = {}
         self.forward_job = {}
+        if self.prepare_forward:
+            self.prepare_forward_job = {}
         if remote_interp:
-            self.model_interp_job = {}
             self.gradient_interp_job = {}
         if self.hpc_processing and not validation:
             self.hpc_processing_job = {}
@@ -730,10 +738,11 @@ class ProjectComponent(Component):
                     "adjoint"
                 ]
             self.forward_job[event] = it_dict["events"][str(_i)]["job_info"]["forward"]
-            if remote_interp:
-                self.model_interp_job[event] = it_dict["events"][str(_i)]["job_info"][
-                    "model_interp"
+            if self.prepare_forward:
+                self.prepare_forward_job[event] = it_dict["events"][str(_i)]["job_info"][
+                    "prepare_forward"
                 ]
+            if remote_interp:
                 if not validation:
                     self.gradient_interp_job[event] = it_dict["events"][str(_i)][
                         "job_info"

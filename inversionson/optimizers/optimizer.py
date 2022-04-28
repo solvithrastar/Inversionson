@@ -194,7 +194,7 @@ class Optimize(object):
 
         if self.comm.project.meshes == "multi-mesh":
             self.comm.salvus_flow.delete_stored_wavefields(
-                self.iteration_name, "model_interp"
+                self.iteration_name, "prepare_forward"
             )
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "gradient_interp"
@@ -226,7 +226,7 @@ class Optimize(object):
         it_name = self.iteration_name if it_name is None else it_name
         self.comm.project.change_attribute("current_iteration", it_name)
         validation = "validation" in it_name
-
+        print("preparing iteration for ", it_name)
         if self.comm.lasif.has_iteration(it_name):
             raise InversionsonError(f"Iteration {it_name} already exists")
 
@@ -305,7 +305,8 @@ class Optimize(object):
             self.comm, self.comm.project.validation_dataset
         )
         assert "validation_" in self.comm.project.current_iteration
-        val_forward_helper.dispatch_forward_simulations(verbose=verbose)
+        val_forward_helper.dispatch_forward_simulations(verbose=verbose,
+                                                        validation=True)
         assert val_forward_helper.assert_all_simulations_dispatched()
         val_forward_helper.retrieve_forward_simulations(
             adjoint=False, verbose=verbose, validation=True

@@ -149,7 +149,8 @@ def move_nodal_field_to_gradient(mesh_info, field):
     print(f"Moved {field} to gradient")
 
 
-def create_simulation_object(mesh_info, source_info, receiver_info, simulation_info):
+def create_simulation_object(mesh_info, source_info, receiver_info,
+                             simulation_info, multi_mesh):
     """
     Create the simulation object remotely and write it into a dictionary toml file.
     This dictionary is then downloaded and used locally to create the simulation object,
@@ -189,7 +190,11 @@ def create_simulation_object(mesh_info, source_info, receiver_info, simulation_i
         ),
     )
 
-    mesh = pathlib.Path().resolve() / "output" / "mesh.h5"
+    if multi_mesh:
+        mesh = pathlib.Path().resolve() / "output" / "mesh.h5"
+    else:
+        mesh = pathlib.Path().resolve() / "from_mesh.h5"
+
     w = sc.simulation.Waveform(mesh=mesh, sources=src)
     w.add_receivers(receivers, max_iterations=100000)
 
@@ -267,23 +272,26 @@ if __name__ == "__main__":
             receiver_info = info["receiver_info"]
 
         simulation_info = info["simulation_info"]
-        create_mesh(mesh_info=mesh_info, source_info=source_info)
-        print("Mesh created or already existed")
+        if info["multi-mesh"]:
+            create_mesh(mesh_info=mesh_info, source_info=source_info)
+            print("Mesh created or already existed")
     else:
-        get_standard_gradient(mesh_info=mesh_info)
-        move_nodal_field_to_gradient(mesh_info=mesh_info, field="z_node_1D")
+        if info["multi-mesh"]:
+            get_standard_gradient(mesh_info=mesh_info)
+            move_nodal_field_to_gradient(mesh_info=mesh_info, field="z_node_1D")
 
     if not os.path.exists(mesh_info["interpolation_weights"]):
         os.makedirs(mesh_info["interpolation_weights"])
 
-    interpolate_fields(
-        from_mesh="./from_mesh.h5",
-        to_mesh="./to_mesh.h5",
-        layers="nocore",
-        parameters=["VPV", "VPH", "VSV", "VSH", "RHO"],
-        stored_array=mesh_info["interpolation_weights"],
-    )
-    print("Fields interpolated")
+    if info["multi-mesh"]:
+        interpolate_fields(
+            from_mesh="./from_mesh.h5",
+            to_mesh="./to_mesh.h5",
+            layers="nocore",
+            parameters=["VPV", "VPH", "VSV", "VSH", "RHO"],
+            stored_array=mesh_info["interpolation_weights"],
+        )
+        print("Fields interpolated")
 
     # Also clip the gradient here. We prefer not to use the login node anymore
     # for this if we have a job anyway.
@@ -295,14 +303,16 @@ if __name__ == "__main__":
             info["cutout_radius_in_km"],
             info["clipping_percentile"],
         )
-
-    shutil.move("./to_mesh.h5", "./output/mesh.h5")
+    if info["multi-mesh"]:
+        shutil.move("./to_mesh.h5", "./output/mesh.h5")
     if not info["gradient"]:
-        move_mesh(
-            mesh_folder=mesh_info["mesh_folder"], event_name=mesh_info["event_name"]
-        )
-        print("Meshed moved to longer term storage")
+        if info["multi-mesh"]:
+            move_mesh(
+                mesh_folder=mesh_info["mesh_folder"], event_name=mesh_info["event_name"]
+            )
+            print("Meshed moved to longer term storage")
         if info["create_simulation_dict"]:
             print("Creating simulation object")
             create_simulation_object(mesh_info, source_info,
-                                     receiver_info, simulation_info)
+                                     receiver_info, simulation_info,
+                                     info["multi-mesh"])

@@ -106,10 +106,9 @@ class MultiMeshComponent(Component):
                 overwrite=False,
             )
 
-    def interpolate_to_simulation_mesh(
+    def prepare_forward(
         self,
         event: str,
-        interp_folder=None,
     ):
         """
         Interpolate current master model to a simulation mesh.
@@ -117,42 +116,25 @@ class MultiMeshComponent(Component):
         :param event: Name of event
         :type event: str
         """
-        iteration = self.comm.project.current_iteration
-        mode = self.comm.project.interpolation_mode
-        if mode == "remote":
-            job = self.construct_remote_interpolation_job(
-                event=event,
-                gradient=False,
-            )
+        job = self.construct_remote_interpolation_job(
+            event=event,
+            gradient=False,
+        )
+        if job is not None:
             self.comm.project.change_attribute(
-                attribute=f'model_interp_job["{event}"]["name"]',
+                attribute=f'prepare_forward_job["{event}"]["name"]',
                 new_value=job.job_name,
             )
             job.launch()
             self.comm.project.change_attribute(
-                attribute=f'model_interp_job["{event}"]["submitted"]',
+                attribute=f'prepare_forward_job["{event}"]["submitted"]',
                 new_value=True,
             )
             self.print(
-                f"Interpolation job for event {event} submitted",
+                f"Prepare forward job for event {event} submitted",
                 emoji_alias=":white_check_mark:",
             )
-        else:
-            simulation_mesh = lapi.get_simulation_mesh(
-                self.comm.lasif.lasif_comm, event, iteration
-            )
-            model = self.find_model_file(iteration)
 
-            # There are many more knobs to tune but for now lets stick to
-            # defaults.
-            mapi.gll_2_gll_layered(
-                from_gll=model,
-                to_gll=simulation_mesh,
-                layers="nocore",
-                nelem_to_search=20,
-                parameters=self.comm.project.modelling_params,
-                stored_array=interp_folder,
-            )
 
     def interpolate_gradient_to_model(
         self, event: str, smooth=True, interp_folder=None
@@ -256,7 +238,10 @@ class MultiMeshComponent(Component):
         description = "Interpolation of "
         description += "gradient " if gradient else "model "
         description += f"for event {event}"
-        wall_time = self.comm.project.model_interp_wall_time
+
+        wall_time = 0.0
+        if self.comm.project.meshes == "multi-mesh":
+            wall_time += self.comm.project.model_interp_wall_time
 
         # Add wall time when the data needs to be processed, this way
         # we can get through the queue faster for jobs that were finished already.
@@ -274,6 +259,16 @@ class MultiMeshComponent(Component):
 
             if not hpc_cluster.remote_exists(remote_proc_path):
                 wall_time += self.comm.project.remote_data_proc_wall_time
+            else:
+                self.comm.project.change_attribute(
+                    attribute=f'prepare_forward_job["{event}"]["submitted"]',
+                    new_value=True,
+                )
+                self.comm.project.change_attribute(
+                    attribute=f'prepare_forward_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                return None
 
         if gradient:
             wall_time = self.comm.project.grad_interp_wall_time
@@ -290,7 +285,7 @@ class MultiMeshComponent(Component):
         return int_job
 
     def prepare_interpolation_toml(self, gradient, event, hpc_cluster=None):
-        toml_name = "gradient_interp.toml" if gradient else "model_interp.toml"
+        toml_name = "gradient_interp.toml" if gradient else "prepare_forward.toml"
         toml_filename = (
             self.comm.project.inversion_root / "INTERPOLATION" / event / toml_name
         )
@@ -325,6 +320,11 @@ class MultiMeshComponent(Component):
             information["data_processing"] = True
         else:
             information["data_processing"] = False
+
+        if self.comm.project.meshes == "multi-mesh":
+            information["multi-mesh"] = True
+        else:
+            information["multi-mesh"] = False
 
         # Provide information for cut and clipping
         if gradient:

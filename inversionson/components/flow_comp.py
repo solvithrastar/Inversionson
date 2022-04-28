@@ -62,7 +62,7 @@ class SalvusFlowComponent(Component):
             "forward",
             "adjoint",
             "smoothing",
-            "model_interp",
+            "prepare_forward",
             "gradient_interp",
             "hpc_processing",
         ]
@@ -108,8 +108,8 @@ class SalvusFlowComponent(Component):
                     job = self.comm.project.forward_job[event]["name"]
                 elif sim_type == "adjoint":
                     job = self.comm.project.adjoint_job[event]["name"]
-                elif sim_type == "model_interp":
-                    job = self.comm.project.model_interp_job[event]["name"]
+                elif sim_type == "prepare_forward":
+                    job = self.comm.project.prepare_forward_job[event]["name"]
                 elif sim_type == "gradient_interp":
                     job = self.comm.project.gradient_interp_job[event]["name"]
                 elif sim_type == "hpc_processing":
@@ -137,7 +137,7 @@ class SalvusFlowComponent(Component):
         :type iteration: str, optional
         """
         if iteration == "current" or iteration == self.comm.project.current_iteration:
-            if sim_type in ["gradient_interp", "model_interp", "hpc_processing"]:
+            if sim_type in ["gradient_interp", "prepare_forward", "hpc_processing"]:
                 return self.__get_custom_job(event=event, sim_type=sim_type)
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["submitted"]:
@@ -202,9 +202,9 @@ class SalvusFlowComponent(Component):
         """
         gradient = False
 
-        if sim_type == "model_interp":
-            if self.comm.project.model_interp_job[event]["submitted"]:
-                job_name = self.comm.project.model_interp_job[event]["name"]
+        if sim_type == "prepare_forward":
+            if self.comm.project.prepare_forward_job[event]["submitted"]:
+                job_name = self.comm.project.prepare_forward_job[event]["name"]
             else:
                 raise InversionsonError(
                     f"Model interpolation job for event: {event} "
@@ -593,7 +593,7 @@ class SalvusFlowComponent(Component):
 
         return w
 
-    def construct_simulation_from_dict(self, event: str):
+    def construct_simulation_from_dict(self, event: str, validation=False):
         """
         Download a dictionary with the simulation object and use it to create a local simulation object
         without having any of the relevant data locally.
@@ -604,7 +604,7 @@ class SalvusFlowComponent(Component):
         """
 
         hpc_cluster = sapi.get_site(self.comm.project.site_name)
-        interp_job = self.get_job(event, sim_type="model_interp")
+        interp_job = self.get_job(event, sim_type="prepare_forward")
 
         # Always write events to the same folder
         destination = (
@@ -623,7 +623,20 @@ class SalvusFlowComponent(Component):
             hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
 
         sim_dict = toml.load(destination)
-        remote_mesh = interp_job.stdout_path.parent / "output" / "mesh.h5"
+
+        if self.comm.project.meshes == "multi_mesh":
+            already_interpolated = True
+        else:
+            already_interpolated = False
+
+        remote_mesh = self.comm.lasif.find_remote_mesh(
+            event=event,
+            gradient=False,
+            interpolate_to=False,
+            hpc_cluster=hpc_cluster,
+            validation=validation,
+            already_interpolated=already_interpolated)
+
         local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
             "domain_settings"
         ]["domain_file"]
@@ -703,7 +716,7 @@ class SalvusFlowComponent(Component):
         ]
 
         if remote_interp:
-            interp_job = self.get_job(event=event, sim_type="model_interp")
+            interp_job = self.get_job(event=event, sim_type="prepare_forward")
 
         forward_job = self.get_job(event=event, sim_type="forward")
         meta = forward_job.output_path / "meta.json"

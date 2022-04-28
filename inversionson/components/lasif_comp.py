@@ -157,6 +157,9 @@ class LasifComponent(Component):
             and "00000" not in iteration
         ):
             validation = True
+        else:
+            validation = False
+
         if iteration in ["validation_it0000_model", "validation_model_00000"]:
             iteration = iteration[11:]  # Just use the same as the initial model
         if gradient:
@@ -177,7 +180,7 @@ class LasifComponent(Component):
             if already_interpolated:
                 job = self.comm.salvus_flow.get_job(
                     event=event,
-                    sim_type="model_interp",
+                    sim_type="prepare_forward",
                     iteration=iteration,
                 )
                 mesh = job.stdout_path.parent / "output" / "mesh.h5"
