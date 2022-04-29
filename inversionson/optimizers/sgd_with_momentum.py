@@ -34,7 +34,6 @@ class SGDM(Optimize):
         self.smooth_update_dir = self.opt_folder / "SMOOTHED_UPDATES"
         self.moment_dir = self.opt_folder / "MOMENTS"
         self.smoothed_model_dir = self.opt_folder / "SMOOTHED_MODELS"
-        self.gradient_norm_dir = self.opt_folder / "GRADIENT_NORMS"
 
     @property
     def task_path(self):
