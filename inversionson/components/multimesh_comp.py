@@ -257,7 +257,17 @@ class MultiMeshComponent(Component):
             remote_proc_file_name = f"{event}_{proc_filename}"
             remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
 
-            if not hpc_cluster.remote_exists(remote_proc_path):
+            # ALso add a check if the forward_dict exists here
+            forward_simulation_dict = (
+                    self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                    / f"SIMULATION_DICTS"
+                    / event
+                    / "simulation_dict.toml"
+            )
+            # Submit a job either if the local dict is missing or
+            # if the processed data is missing on the remote
+            if not hpc_cluster.remote_exists(remote_proc_path) \
+                    or not os.path.exists(forward_simulation_dict):
                 wall_time += self.comm.project.remote_data_proc_wall_time
             else:
                 self.comm.project.change_attribute(
@@ -373,7 +383,7 @@ class MultiMeshComponent(Component):
             # dict again in the interpolation job.
             local_simulation_dict = (
                 self.comm.lasif.lasif_comm.project.paths["salvus_files"]
-                / f"SIMULATIONS_DICTS"
+                / f"SIMULATION_DICTS"
                 / event
                 / "simulation_dict.toml"
             )
@@ -484,20 +494,9 @@ class MultiMeshComponent(Component):
         Get the interpolation commands needed to do remote interpolations.
         If not gradient, we will look for a smoothie mesh and create it if needed.
         """
-        iteration = self.comm.project.current_iteration
-        if "validation_" in iteration:
-            validation = True
-        else:
-            validation = False
-        if iteration in ["validation_it0000_model", "validation_model_00000"]:
-            validation = False  # Here there can't be any mesh averaging
 
-        mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
-            event=event,
-            gradient=gradient,
-            interpolate_to=False,
-            validation=validation,
-        )
+        # TODO Add average model option here
+        mesh_to_interpolate_from = self.comm.lasif.get_remote_model_path()
         interpolation_script = self.find_interpolation_script()
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         interpolation_toml = self.prepare_interpolation_toml(

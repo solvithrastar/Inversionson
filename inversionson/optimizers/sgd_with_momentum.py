@@ -246,41 +246,6 @@ class SGDM(Optimize):
         with open(self.task_path, "w+") as fh:
             toml.dump(self.task_dict, fh)
 
-    def _pick_data_for_iteration(self, validation=False):
-        if validation:
-            events = self.comm.project.validation_dataset
-        else:
-            all_events = self.comm.lasif.list_events()
-            blocked_data = list(
-                set(
-                    self.comm.project.validation_dataset
-                    + self.comm.project.test_dataset
-                )
-            )
-            all_events = list(set(all_events) - set(blocked_data))
-            n_events = self.comm.project.batch_size
-            doc_path = self.comm.project.paths["inversion_root"] / "OPTIMIZATION" / "GRADIENT_NORMS"
-            all_norms_path = doc_path / "all_norms.toml"
-            if os.path.exists(all_norms_path):
-                norm_dict = toml.load(all_norms_path)
-                unused_events = list(set(all_events).difference(set(norm_dict.keys())))
-                list_of_vals = np.array(list(norm_dict.values()))
-                max_norm = np.max(list_of_vals)
-
-                # Assign high norm values to unused events to make them
-                # more likely to be chosen
-                for event in unused_events:
-                    norm_dict[event] = max_norm
-                events = get_random_mitchell_subset(
-                    self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
-                )
-            else:
-                events = get_random_mitchell_subset(
-                    self.comm.lasif.lasif_comm, n_events, all_events
-                )
-
-        return events
-
     def _compute_raw_update(self):
         """Computes the raw update"""
 
@@ -537,8 +502,9 @@ class SGDM(Optimize):
 
         if not self.task_dict["summing_completed"]:
             adjoint_helper = AdjointHelper(
-                comm=self.comm, events=self.comm.project.events_in_iteration
+                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
             )
+            adjoint_helper.dispatch_adjoint_simulations()
             adjoint_helper.process_gradients(
                 interpolate=interpolate,
                 smooth_individual=False,
@@ -546,12 +512,12 @@ class SGDM(Optimize):
             )
             assert adjoint_helper.assert_all_simulations_retrieved()
             interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.events_in_iteration)
+                comm=self.comm, events=self.comm.project.non_val_events_in_iteration)
             interp_listener.monitor_interpolations()
 
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(
-                events=self.comm.project.events_in_iteration,
+                events=self.comm.project.non_val_events_in_iteration,
                 output_location=self.raw_gradient_path,
                 batch_average=True,
                 sum_vpv_vph=True,
@@ -591,30 +557,6 @@ class SGDM(Optimize):
             self.print("Iteration already finalized")
 
         self.finish_task()
-
-    def do_validation_iteration(self, verbose=False):
-        """
-        This function computes the validation misfits.
-        """
-        if self.task_dict["validated"]:
-            self.print("Validation misfit already computed")
-            return
-
-        it_name = f"validation_{self.iteration_name}"
-        if not self.comm.lasif.has_iteration(it_name):
-            self.prepare_iteration(validation=True)
-        else:
-            self.comm.project.get_iteration_attributes(validation=True)
-        super().compute_validation_misfit(verbose=verbose)
-        iteration = self.comm.project.current_iteration
-        iteration = iteration[11:]
-        self.comm.project.change_attribute(
-            attribute="current_iteration", new_value=iteration
-        )
-        self.comm.project.get_iteration_attributes()
-
-        self.task_dict["validated"] = True
-        self._update_task_file()
 
     def perform_task(self, verbose=False):
         """

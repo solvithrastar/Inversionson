@@ -9,7 +9,6 @@ from inversionson import InversionsonError
 from inversionson.helpers.interpolation_helper import InterpolationListener
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
-from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.autoinverter_helpers import AdjointHelper
 
@@ -187,7 +186,8 @@ class AdamOpt(Optimize):
         with open(self.task_path, "w+") as fh:
             toml.dump(task_dict, fh)
 
-    def _get_path_for_iteration(self, iteration_number, path):
+    @staticmethod
+    def _get_path_for_iteration(iteration_number, path):
         filename = path.stem
         separator = "_"
         reconstructed_filename = (
@@ -264,41 +264,6 @@ class AdamOpt(Optimize):
     def _update_task_file(self):
         with open(self.task_path, "w+") as fh:
             toml.dump(self.task_dict, fh)
-
-    def _pick_data_for_iteration(self, validation=False):
-        if validation:
-            events = self.comm.project.validation_dataset
-        else:
-            all_events = self.comm.lasif.list_events()
-            blocked_data = list(
-                set(
-                    self.comm.project.validation_dataset
-                    + self.comm.project.test_dataset
-                )
-            )
-            all_events = list(set(all_events) - set(blocked_data))
-            n_events = self.comm.project.batch_size
-            doc_path = self.comm.project.paths["inversion_root"] / "OPTIMIZATION" / "GRADIENT_NORMS"
-            all_norms_path = doc_path / "all_norms.toml"
-            if os.path.exists(all_norms_path):
-                norm_dict = toml.load(all_norms_path)
-                unused_events = list(set(all_events).difference(set(norm_dict.keys())))
-                list_of_vals = np.array(list(norm_dict.values()))
-                max_norm = np.max(list_of_vals)
-
-                # Assign high norm values to unused events to make them
-                # more likely to be chosen
-                for event in unused_events:
-                    norm_dict[event] = max_norm
-                events = get_random_mitchell_subset(
-                    self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
-                )
-            else:
-                events = get_random_mitchell_subset(
-                    self.comm.lasif.lasif_comm, n_events, all_events
-                )
-
-        return events
 
     def _compute_raw_update(self):
         """Computes the raw update"""
@@ -473,14 +438,14 @@ class AdamOpt(Optimize):
             theta_physical,
         )
 
-    def _finalize_iteration(self, verbose: bool):
+    def _finalize_iteration(self):
         """
         Here we can do some documentation. Maybe just call a base function for that
         """
         super().delete_remote_files()
         self.comm.storyteller.document_task(task="adam_documentation")
 
-    def _update_model(self, verbose: bool, raw=True, smooth=False):
+    def _update_model(self, raw=True, smooth=False):
         """
         Apply an Adam style update to the model
         """
@@ -502,26 +467,16 @@ class AdamOpt(Optimize):
     def ready_for_validation(self) -> bool:
         return "validated" in self.task_dict.keys() and not self.task_dict["validated"]
 
-    def prepare_iteration(self, validation=False):
-        if validation:
-            it_name = f"validation_{self.iteration_name}"
-        else:
-            it_name = self.iteration_name
-
-        move_meshes = "00000" in it_name if validation else True
-        self.comm.project.change_attribute("current_iteration", it_name)
-
-        if self.comm.lasif.has_iteration(it_name):
-            raise InversionsonError(f"Iteration {it_name} already exists")
-
+    def prepare_iteration(self):
+        """Prepare the iteration"""
+        self.comm.project.change_attribute("current_iteration", self.iteration_name)
         self.print("Picking data for iteration")
-        events = self._pick_data_for_iteration(validation=validation)
+        events = self._pick_data_for_iteration()
 
         super().prepare_iteration(
-            it_name=it_name, move_meshes=move_meshes, events=events
+            it_name=self.iteration_name, events=events
         )
-        if not validation:
-            self.finish_task()
+        self.finish_task()
 
     def perform_smoothing(self):
         tasks = {}
@@ -566,7 +521,7 @@ class AdamOpt(Optimize):
                 tasks=tasks)
             reg_helper.monitor_tasks()
 
-    def compute_gradient(self, verbose):
+    def compute_gradient(self, verbose=False):
         """
         This task does forward simulations and then gradient computations straight
         afterwards
@@ -593,7 +548,7 @@ class AdamOpt(Optimize):
             self.print("Gradients already computed")
         self.finish_task()
 
-    def update_model(self, verbose):
+    def update_model(self, verbose=False):
         """
         This task takes the raw gradient and does all the regularisation and everything
         to update the model.
@@ -606,8 +561,10 @@ class AdamOpt(Optimize):
 
         if not self.task_dict["summing_completed"]:
             adjoint_helper = AdjointHelper(
-                comm=self.comm, events=self.comm.project.events_in_iteration
+                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
             )
+            # Dispatch anything that may have failed
+            adjoint_helper.dispatch_adjoint_simulations()
             adjoint_helper.process_gradients(
                 interpolate=interpolate,
                 smooth_individual=False,
@@ -615,12 +572,12 @@ class AdamOpt(Optimize):
             )
             assert adjoint_helper.assert_all_simulations_retrieved()
             interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.events_in_iteration)
+                comm=self.comm, events=self.comm.project.non_val_events_in_iteration)
             interp_listener.monitor_interpolations()
 
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(
-                events=self.comm.project.events_in_iteration,
+                events=self.comm.project.non_val_events_in_iteration,
                 output_location=self.raw_gradient_path,
                 batch_average=True,
                 sum_vpv_vph=True,
@@ -632,7 +589,7 @@ class AdamOpt(Optimize):
             self.print("Summing already done")
 
         if not self.task_dict["raw_update_completed"]:
-            self._update_model(raw=True, smooth=False, verbose=verbose)
+            self._update_model(raw=True, smooth=False)
             self.task_dict["raw_update_completed"] = True
             self._update_task_file()
         else:
@@ -646,44 +603,20 @@ class AdamOpt(Optimize):
             self.print("Smoothing already done")
 
         if not self.task_dict["smooth_update_completed"]:
-            self._update_model(raw=False, smooth=True, verbose=verbose)
+            self._update_model(raw=False, smooth=True)
             self.task_dict["smooth_update_completed"] = True
             self._update_task_file()
         else:
            self.print("Smooth updating already completed")
 
         if not self.task_dict["iteration_finalized"]:
-            self._finalize_iteration(verbose=verbose)
+            self._finalize_iteration()
             self.task_dict["iteration_finalized"] = True
             self._update_task_file()
         else:
             self.print("Iteration already finalized")
 
         self.finish_task()
-
-    def do_validation_iteration(self, verbose=False):
-        """
-        This function computes the validation misfits.
-        """
-        if self.task_dict["validated"]:
-            self.print("Validation misfit already computed")
-            return
-
-        it_name = f"validation_{self.iteration_name}"
-        if not self.comm.lasif.has_iteration(it_name):
-            self.prepare_iteration(validation=True)
-        else:
-            self.comm.project.get_iteration_attributes(validation=True)
-        super().compute_validation_misfit(verbose=verbose)
-        iteration = self.comm.project.current_iteration
-        iteration = iteration[11:]
-        self.comm.project.change_attribute(
-            attribute="current_iteration", new_value=iteration
-        )
-        self.comm.project.get_iteration_attributes()
-
-        self.task_dict["validated"] = True
-        self._update_task_file()
 
     def perform_task(self, verbose=False):
         """
@@ -698,21 +631,21 @@ class AdamOpt(Optimize):
                     self.print(
                         f"Iteration {self.iteration_name} exists. Will load its attributes"
                     )
-                    self.comm.project.get_iteration_attributes(validation=False)
+                    self.comm.project.get_iteration_attributes()
                     self.finish_task()
                 else:
-                    self.prepare_iteration(validation=False)
+                    self.prepare_iteration()
             else:
                 self.print("Iteration already prepared")
         elif task_name == "compute_gradient":
             if not self.task_dict["finished"]:
-                self.comm.project.get_iteration_attributes(validation=False)
+                self.comm.project.get_iteration_attributes()
                 self.compute_gradient(verbose=verbose)
             else:
                 self.print("Gradient already computed")
         elif task_name == "update_model":
             if not self.task_dict["finished"]:
-                self.comm.project.get_iteration_attributes(validation=False)
+                self.comm.project.get_iteration_attributes()
                 self.update_model(verbose=verbose)
             else:
                 self.print("Model already updated")

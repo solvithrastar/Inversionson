@@ -551,9 +551,6 @@ class ProjectComponent(Component):
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
-        validation = False
-        if "validation" in iteration:
-            validation = True
 
         remote_interp = False
         if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
@@ -576,11 +573,11 @@ class ProjectComponent(Component):
         job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
 
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
-            if validation:
+            if self.is_validation_event(event):
                 jobs = {"forward": job_dict}
                 if self.prepare_forward:
                     jobs["prepare_forward"] = job_dict
-            if not validation:
+            if not self.is_validation_event(event):
                 jobs = {
                     "forward": job_dict,
                     "adjoint": job_dict,
@@ -589,13 +586,13 @@ class ProjectComponent(Component):
                     jobs["prepare_forward"] = job_dict
                 if remote_interp:
                     jobs["gradient_interp"] = job_dict
-                if self.hpc_processing and not validation:
+                if self.hpc_processing and not self.is_validation_event(event):
                     jobs["hpc_processing"] = job_dict
             it_dict["events"][str(_i)] = {
                 "name": event,
                 "job_info": jobs,
             }
-            if not validation:
+            if not self.is_validation_event(event):
                 it_dict["events"][str(_i)]["misfit"] = float(0.0)
                 it_dict["events"][str(_i)]["usage_updated"] = False
 
@@ -637,10 +634,7 @@ class ProjectComponent(Component):
         """
         if iteration == "current":
             iteration = self.current_iteration
-        if "validation" in iteration:
-            validation = True
-        if validation and "validation" not in iteration:
-            iteration = f"validation_{iteration}"
+
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
@@ -654,34 +648,31 @@ class ProjectComponent(Component):
 
         it_dict = toml.load(iteration_toml)
 
-        if self.meshes == "mono-mesh":
-            it_dict["remote_simulation_mesh"] = self.remote_mesh
-
         # This definitely needs improvement
         for _i, event in enumerate(self.comm.lasif.list_events(iteration=iteration)):
             jobs = {"forward": self.forward_job[event]}
-            if not validation:
+            if not self.is_validation_event(event):
                 jobs["adjoint"] = self.adjoint_job[event]
             if self.prepare_forward:
                 jobs["prepare_forward"] = self.prepare_forward_job[event]
 
-            if remote_interp and not validation:
+            if remote_interp and not self.is_validation_event(event):
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
-            if self.hpc_processing and not validation:
+            if self.hpc_processing and not self.is_validation_event(event):
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
 
             it_dict["events"][str(_i)] = {
                 "name": event,
                 "job_info": jobs,
             }
-            if not validation:
+            if not self.is_validation_event(event):
                 it_dict["events"][str(_i)]["misfit"] = float(self.misfits[event])
                 it_dict["events"][str(_i)]["usage_updated"] = self.updated[event]
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
-    def get_iteration_attributes(self, validation=False):
+    def get_iteration_attributes(self):
         """
         Save the attributes of the current iteration into memory
 
@@ -691,8 +682,6 @@ class ProjectComponent(Component):
         optimizer = self.get_optimizer()
         iteration = optimizer.iteration_name
 
-        if validation:
-            iteration = f"validation_{iteration}"
         remote_interp = False
         if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
             remote_interp = True
@@ -707,30 +696,25 @@ class ProjectComponent(Component):
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
         self.events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
-        if not validation:
-            self.adjoint_job = {}
-            self.smoothing_job = {}
-            self.misfits = {}
-            self.updated = {}
+        self.non_val_events_in_iteration = list(set(self.events_in_iteration) -
+                                                 set(self.validation_dataset))
+        self.adjoint_job = {}
+        self.smoothing_job = {}
+        self.misfits = {}
+        self.updated = {}
         self.forward_job = {}
+
         if self.prepare_forward:
             self.prepare_forward_job = {}
         if remote_interp:
             self.gradient_interp_job = {}
-        if self.hpc_processing and not validation:
+        if self.hpc_processing:
             self.hpc_processing_job = {}
 
-        if self.meshes == "mono-mesh":
-            if "remote_simulation_mesh" not in it_dict.keys():
-                self.remote_mesh = None
-            else:
-                self.remote_mesh = it_dict["remote_simulation_mesh"]
-        else:
-            self.remote_mesh = None
 
         # Not sure if it's worth it to include station misfits
         for _i, event in enumerate(self.events_in_iteration):
-            if not validation:
+            if not self.is_validation_event(event):
                 self.updated[event] = it_dict["events"][str(_i)]["usage_updated"]
                 self.misfits[event] = it_dict["events"][str(_i)]["misfit"]
 
@@ -743,11 +727,11 @@ class ProjectComponent(Component):
                     "prepare_forward"
                 ]
             if remote_interp:
-                if not validation:
+                if not self.is_validation_event(event):
                     self.gradient_interp_job[event] = it_dict["events"][str(_i)][
                         "job_info"
                     ]["gradient_interp"]
-            if self.hpc_processing and not validation:
+            if self.hpc_processing and not self.is_validation_event(event):
                 self.hpc_processing_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "hpc_processing"
                 ]
@@ -770,6 +754,12 @@ class ProjectComponent(Component):
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)
         return it_dict
+
+    def is_validation_event(self, event: str):
+        if event in self.validation_dataset:
+            return True
+        else:
+            return False
 
     def get_key_number_for_event(self, event: str, iteration: str = "current") -> str:
         """

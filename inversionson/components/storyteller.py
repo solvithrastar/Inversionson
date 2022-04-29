@@ -150,7 +150,7 @@ class StoryTellerComponent(Component):
         """
         To keep track of how often events are used.
         """
-        for event in self.comm.project.events_in_iteration:
+        for event in self.comm.project.non_val_events_in_iteration:
             if not self.comm.project.updated[event]:
                 if event not in self.events_used.keys():
                     self.events_used[event] = 0

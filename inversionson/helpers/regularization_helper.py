@@ -152,8 +152,8 @@ class RegularizationHelper(object):
         return True
 
     def monitor_tasks(self):
-        self.print("Monitoring smoothing jobs...")
         self.dispatch_smoothing_tasks()
+        self.print("Monitoring smoothing jobs...")
         self.update_task_status_and_retrieve()  # Start with retrieval to skip loop
         while not self.all_retrieved():
             sleep_or_process(self.comm)

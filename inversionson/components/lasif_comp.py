@@ -113,6 +113,14 @@ class LasifComponent(Component):
 
         return hpc_cluster.remote_exists(mesh), mesh
 
+    def get_remote_model_path(self, iteration=None):
+        """ Gets the path to storage location of the remote
+        model path. """
+        if iteration is None:
+            iteration = self.comm.project.current_iteration
+        remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+        return remote_mesh_dir / "models" / iteration / "mesh.h5"
+
     def find_remote_mesh(
         self,
         event: str,
@@ -151,17 +159,7 @@ class LasifComponent(Component):
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        if (
-            "validation" in iteration
-            and "it0000" not in iteration
-            and "00000" not in iteration
-        ):
-            validation = True
-        else:
-            validation = False
 
-        if iteration in ["validation_it0000_model", "validation_model_00000"]:
-            iteration = iteration[11:]  # Just use the same as the initial model
         if gradient:
             if interpolate_to:
                 mesh = (
@@ -700,15 +698,13 @@ class LasifComponent(Component):
         lapi.compute_station_weights(self.lasif_comm, weight_set=event, events=[event])
 
     def misfit_quantification(
-        self, event: str, mpi=False, n=4, validation=False, window_set=None
+        self, event: str, validation=False, window_set=None
     ):
         """
         Quantify misfit and calculate adjoint sources.
 
         :param event: Name of event
         :type event: str
-        :param mpi: If you want to run with MPI, default True
-        :type mpi: bool
         :param n: How many ranks to run on
         :type n: int
         :param validation: Whether this is for a validation set, default False
@@ -779,9 +775,6 @@ class LasifComponent(Component):
                 / "misfits.toml"
             )
             misfit = toml.load(misfit_toml_path)[event]["event_misfit"]
-            # misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
-            #     event=event, weight_set_name=event, iteration=iteration
-            # )
         else:
             misfit = self.comm.project.misfits[event]
             self.print(

@@ -56,7 +56,6 @@ class ForwardHelper(object):
         windows=True,
         window_set=None,
         verbose=False,
-        validation=False,
     ):
         """
         Get the data from the forward simulations and perform whatever
@@ -70,7 +69,6 @@ class ForwardHelper(object):
             windows=windows,
             window_set=window_set,
             verbose=verbose,
-            validation=validation,
         )
 
     def report_total_validation_misfit(self):
@@ -115,7 +113,7 @@ class ForwardHelper(object):
                 break
         return all
 
-    def __prepare_forward(self, event: str, validation):
+    def __prepare_forward(self, event: str):
         """
         Interpolate model to a simulation mesh
 
@@ -137,7 +135,7 @@ class ForwardHelper(object):
             event=event
         )
 
-        self.comm.project.update_iteration_toml(validation=validation)
+        self.comm.project.update_iteration_toml()
 
     def __submitted_retrieved(self, event: str, sim_type="forward"):
         """
@@ -159,8 +157,7 @@ class ForwardHelper(object):
             job_info = self.comm.project.hpc_processing_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
-    def __run_forward_simulation(self, event: str, verbose=False,
-                                 validation=False):
+    def __run_forward_simulation(self, event: str, verbose=False):
         """
         Submit forward simulation to daint and possibly monitor aswell
 
@@ -186,46 +183,35 @@ class ForwardHelper(object):
             self.print(f"Event: {event}")
 
         if simulation_created_remotely:
-            w = self.comm.salvus_flow.construct_simulation_from_dict(event,
-                                                                     validation)
+            w = self.comm.salvus_flow.construct_simulation_from_dict(event)
         else:
             receivers = self.comm.salvus_flow.get_receivers(event)
             source = self.comm.salvus_flow.get_source_object(event)
             w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
-
-            if (
-                self.comm.project.remote_mesh is not None
-                and self.comm.project.meshes == "mono-mesh"
-            ):
-                w.set_mesh(self.comm.project.remote_mesh)
 
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w,
             sim_type="forward",
             site=self.comm.project.site_name,
-            wall_time=self.comm.project.wall_time,
             ranks=self.comm.project.ranks,
         )
 
         self.print(f"Submitted forward job for event: {event}")
 
-    def __compute_station_weights(self, event: str,
-                                  validation=False, verbose=False):
+    def __compute_station_weights(self, event: str, verbose=False):
         """
         Calculate station weights to reduce the effect of data coverage
 
         :param event: Name of event
         :type event: str
-        :param validation: Validation dataset
-        :type validation: bool
         """
         # Skip this in the event of remote weight set calculations
         # as part of the HPC processing job.
         if self.comm.project.hpc_processing:
             return
 
-        if validation:
+        if self.comm.project.is_validation_event(event):
             return
 
         if verbose:
@@ -497,7 +483,6 @@ class ForwardHelper(object):
         self,
         event: str,
         window_set=None,
-        validation=False,
     ):
         """
         Compute Misfits and Adjoint sources
@@ -505,13 +490,13 @@ class ForwardHelper(object):
         :param event: Name of event
         :type event: str
         """
-        if validation:
+        if self.comm.project.is_validation_event(event):
             self.__validation_misfit_quantification(
                 event=event, window_set=self.comm.project.current_iteration
             )
             return
         misfit = self.comm.lasif.misfit_quantification(
-            event, validation=validation, window_set=window_set
+            event, window_set=window_set
         )
 
         self.comm.project.change_attribute(
@@ -529,6 +514,9 @@ class ForwardHelper(object):
         :param hpc_processing: Use reomate adjoint file
         :type hpc_processing: bool
         """
+        if self.comm.project.is_validation_event(event):
+            return
+
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
         if submitted:
             return
@@ -561,7 +549,6 @@ class ForwardHelper(object):
             simulation=w_adjoint,
             sim_type="adjoint",
             site=self.comm.project.site_name,
-            wall_time=self.comm.project.wall_time,
             ranks=self.comm.project.ranks,
         )
         self.comm.project.change_attribute(
@@ -574,7 +561,6 @@ class ForwardHelper(object):
         event: str,
         windows: bool,
         window_set: str,
-        validation=False,
         verbose=False,
     ):
         """
@@ -596,7 +582,7 @@ class ForwardHelper(object):
         self.__process_data(event)
 
         # Skip window selection in case of validation data
-        if windows and not validation:
+        if windows and not self.comm.project.is_validation_event(event):
             if verbose:
                 self.print(
                     "Select windows",
@@ -612,10 +598,10 @@ class ForwardHelper(object):
             )
 
         self.__misfit_quantification(
-            event, window_set=window_set, validation=validation
+            event, window_set=window_set
         )
 
-    def dispatch_forward_simulations(self, verbose, validation=False):
+    def dispatch_forward_simulations(self, verbose):
         """
         Dispatches the forward events
         """
@@ -631,29 +617,24 @@ class ForwardHelper(object):
                 ],
             )
 
-        if validation:
-            events = self.comm.project.validation_dataset
-        else:
-            events = self.events
+        events = self.events
 
         if self.comm.project.prepare_forward:
             self.print("Will dispatch all prepare_forward jobs")
             for _i, event in enumerate(events):
                 if verbose:
                     self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
-                self.__prepare_forward(event=event, validation=validation)
+                self.__prepare_forward(event=event)
             self.print("All prepare_forward jobs have been dispatched")
 
-            self.__listen_to_prepare_forward(events=events,
-                                             validation=validation, verbose=verbose)
+            self.__listen_to_prepare_forward(events=events, verbose=verbose)
 
         #
         for _i, event in enumerate(events):
-            self.__run_forward_simulation(event, verbose=verbose,
-                                          validation=validation)
-            self.__compute_station_weights(event, validation, verbose)
+            self.__run_forward_simulation(event, verbose=verbose)
+            self.__compute_station_weights(event, verbose)
 
-    def __listen_to_prepare_forward(self, events, validation, verbose):
+    def __listen_to_prepare_forward(self, events, verbose):
         """
         Listens to prepare forward jobs and waits for them to be done.
         Also submits simulations.
@@ -664,21 +645,20 @@ class ForwardHelper(object):
         while True:
             vint_job_listener.monitor_jobs()
             for event in vint_job_listener.events_retrieved_now:
-                self.__run_forward_simulation(event, verbose=verbose,
-                                              validation=validation)
-                self.__compute_station_weights(event, validation, verbose)
+                self.__run_forward_simulation(event, verbose=verbose)
+                self.__compute_station_weights(event, verbose)
                 self.comm.project.change_attribute(
                     attribute=f'prepare_forward_job["{event}"]["retrieved"]',
                     new_value=True,
                 )
-                self.comm.project.update_iteration_toml(validation=validation)
+                self.comm.project.update_iteration_toml()
             for event in vint_job_listener.to_repost:
                 self.comm.project.change_attribute(
                     attribute=f'prepare_forward_job["{event}"]["submitted"]',
                     new_value=False,
                 )
-                self.comm.project.update_iteration_toml(validation=validation)
-                self.__prepare_forward(event=event, validation=validation)
+                self.comm.project.update_iteration_toml()
+                self.__prepare_forward(event=event)
             if len(vint_job_listener.events_retrieved_now) > 0:
                 self.print(
                     f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
@@ -701,37 +681,37 @@ class ForwardHelper(object):
         windows,
         window_set,
         verbose,
-        validation,
     ):
         for_job_listener = RemoteJobListener(
             comm=self.comm, job_type="forward", events=events
         )
         hpc_proc_job_listener = RemoteJobListener(
-            comm=self.comm, job_type="hpc_processing", events=events
+            comm=self.comm, job_type="hpc_processing", events=
+            self.comm.project.non_val_events_in_iteration
         )
         while True:
             for_job_listener.monitor_jobs()
             # submit remote jobs for the ones that did not get
             # submitted yet, although forwards are done.
             for event in for_job_listener.events_already_retrieved:
-                if self.comm.project.hpc_processing and not validation:
+                if self.comm.project.hpc_processing and not \
+                        self.comm.project.is_validation_event(event):
                     self._launch_hpc_processing_job(event)
             for event in for_job_listener.events_retrieved_now:
                 # Still retrieve synthetics for validation data. NO QA
-                if not self.comm.project.hpc_processing or validation:
+                if not self.comm.project.hpc_processing or self.comm.project.is_validation_event(event):
                     self.__retrieve_seismograms(event=event, verbose=verbose)
 
                 # Here I need to replace this with remote hpc job,
                 # then this actually needs be finished before any adjoint
                 # jobs are launched
-                if self.comm.project.hpc_processing and not validation:
+                if self.comm.project.hpc_processing and not self.comm.project.is_validation_event(event):
                     self._launch_hpc_processing_job(event)
                 else:
                     self.__work_with_retrieved_seismograms(
                         event,
                         windows,
                         window_set,
-                        validation,
                         verbose,
                     )
                 self.comm.project.change_attribute(
@@ -747,7 +727,7 @@ class ForwardHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
-                self.__run_forward_simulation(event=event, validation=validation)
+                self.__run_forward_simulation(event=event)
             if len(for_job_listener.events_retrieved_now) > 0:
                 self.print(
                     f"Retrieved {len(for_job_listener.events_retrieved_now)} "
@@ -760,15 +740,8 @@ class ForwardHelper(object):
                 and not self.comm.project.hpc_processing
             ):
                 break
-            elif (
-                len(for_job_listener.events_retrieved_now)
-                + len(for_job_listener.events_already_retrieved)
-                == len(events)
-                and validation
-            ):
-                break
 
-            if self.comm.project.hpc_processing and adjoint and not validation:
+            if self.comm.project.hpc_processing and adjoint:
                 hpc_proc_job_listener.monitor_jobs()
                 for event in hpc_proc_job_listener.events_retrieved_now:
                     self.comm.project.change_attribute(
@@ -787,7 +760,7 @@ class ForwardHelper(object):
                     self._launch_hpc_processing_job(event)
                 if len(hpc_proc_job_listener.events_retrieved_now) + len(
                     hpc_proc_job_listener.events_already_retrieved
-                ) == len(events):
+                ) == len(self.comm.project.non_val_events_in_iteration):
                     break
 
                 hpc_proc_job_listener.to_repost = []
@@ -1020,62 +993,55 @@ class AdjointHelper(object):
 
     def __dispatch_adjoint_simulation(self, event: str, verbose=False):
         """
-        Dispatch an adjoint simulation
+        Dispatch an adjoint simulation after finishing the forward
+        processing
+
         :param event: Name of event
         :type event: str
+        :param hpc_processing: Use reomate adjoint file
+        :type hpc_processing: bool
         """
+        if self.comm.project.is_validation_event(event):
+            return
+
         submitted, retrieved = self.__submitted_retrieved(event, "adjoint")
-        iteration = self.comm.project.current_iteration
         if submitted:
             return
+
         if verbose:
             self.print(
                 "Run adjoint simulation", line_above=True, emoji_alias=":rocket:"
             )
             self.print(f"Event: {event}")
-        adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
-        w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(event, adj_src)
+
+        if (
+            self.comm.project.meshes == "multi-mesh"
+            or self.comm.project.hpc_processing
+        ):
+            simulation_created_remotely = True
+        else:
+            simulation_created_remotely = False
+        if simulation_created_remotely:
+            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation_from_dict(
+                event
+            )
+        else:
+            adj_src = self.comm.salvus_flow.get_adjoint_source_object(event)
+            w_adjoint = self.comm.salvus_flow.construct_adjoint_simulation(
+                event, adj_src
+            )
 
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w_adjoint,
             sim_type="adjoint",
             site=self.comm.project.site_name,
-            wall_time=self.comm.project.wall_time,
             ranks=self.comm.project.ranks,
         )
-
-    def __dispatch_smoothing(
-        self, event: str, interpolate: bool, verbose: bool = False
-    ):
-        """
-        Dispatch a smoothing job for event
-
-        :param event: Name of event
-        :type event: str
-        :param interpolate: Are we using the multi_mesh approach?
-        :type interpolate: bool
-        :param verbose: Print information, defaults to False
-        :type verbose: bool, optional
-        """
-        submitted, _ = self.__submitted_retrieved(event, "smoothing")
-        if submitted:
-            if verbose:
-                self.print(f"Already submitted event {event} for smoothing")
-            return
-
-        if interpolate:
-            # make sure interpolation has been retrieved
-            _, retrieved = self.__submitted_retrieved(event, "gradient_interp")
-            if not retrieved:
-                if verbose:
-                    self.print(f"Event {event} has not been interpolated")
-                return
-        if self.comm.project.inversion_mode == "mono-batch":
-            self.comm.salvus_flow.retrieve_outputs(event_name=event, sim_type="adjoint")
-            self.print(f"Gradient for event {event} has been retrieved.")
-        else:
-            self.comm.smoother.run_remote_smoother(event)
+        self.comm.project.change_attribute(
+            attribute=f'adjoint_job["{event}"]["submitted"]', new_value=True
+        )
+        self.comm.project.update_iteration_toml()
 
     def __cut_and_clip_gradient(self, event, verbose=False):
         """
