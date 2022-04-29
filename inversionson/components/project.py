@@ -453,6 +453,7 @@ class ProjectComponent(Component):
         self.lasif_root = pathlib.Path(self.info["lasif_root"])
         self.inversion_mode = "mini-batch"
         self.meshes = self.info["meshes"]
+        self.remote_interp = True if self.meshes == "multi-mesh" else False
         self.optimizer = self.info["optimizer"].lower()
         self.elem_per_quarter = self.info["Meshing"]["elements_per_azimuthal_quarter"]
         self.elem_per_wavelength = self.info["Meshing"]["elements_per_wavelength"]
@@ -552,10 +553,6 @@ class ProjectComponent(Component):
             self.paths["iteration_tomls"], iteration + ".toml"
         )
 
-        remote_interp = False
-        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
-            remote_interp = True
-
         if os.path.exists(iteration_toml):
             warnings.warn(
                 f"Iteration toml for iteration: {iteration} already exists. backed it up",
@@ -584,7 +581,7 @@ class ProjectComponent(Component):
                 }
                 if self.prepare_forward:
                     jobs["prepare_forward"] = job_dict
-                if remote_interp:
+                if self.remote_interp:
                     jobs["gradient_interp"] = job_dict
                 if self.hpc_processing and not self.is_validation_event(event):
                     jobs["hpc_processing"] = job_dict
@@ -638,9 +635,6 @@ class ProjectComponent(Component):
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
-        remote_interp = False
-        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
-            remote_interp = True
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
                 f"Iteration toml for iteration: {iteration} does not exists"
@@ -656,7 +650,7 @@ class ProjectComponent(Component):
             if self.prepare_forward:
                 jobs["prepare_forward"] = self.prepare_forward_job[event]
 
-            if remote_interp and not self.is_validation_event(event):
+            if self.remote_interp and not self.is_validation_event(event):
                     jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.hpc_processing and not self.is_validation_event(event):
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
@@ -682,9 +676,6 @@ class ProjectComponent(Component):
         optimizer = self.get_optimizer()
         iteration = optimizer.iteration_name
 
-        remote_interp = False
-        if self.meshes == "multi-mesh" and self.interpolation_mode == "remote":
-            remote_interp = True
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"
         )
@@ -699,18 +690,13 @@ class ProjectComponent(Component):
         self.non_val_events_in_iteration = list(set(self.events_in_iteration) -
                                                  set(self.validation_dataset))
         self.adjoint_job = {}
-        self.smoothing_job = {}
         self.misfits = {}
         self.updated = {}
+
+        self.prepare_forward_job = {}
         self.forward_job = {}
-
-        if self.prepare_forward:
-            self.prepare_forward_job = {}
-        if remote_interp:
-            self.gradient_interp_job = {}
-        if self.hpc_processing:
-            self.hpc_processing_job = {}
-
+        self.hpc_processing_job = {}
+        self.gradient_interp_job = {}
 
         # Not sure if it's worth it to include station misfits
         for _i, event in enumerate(self.events_in_iteration):
@@ -726,7 +712,7 @@ class ProjectComponent(Component):
                 self.prepare_forward_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "prepare_forward"
                 ]
-            if remote_interp:
+            if self.remote_interp:
                 if not self.is_validation_event(event):
                     self.gradient_interp_job[event] = it_dict["events"][str(_i)][
                         "job_info"
