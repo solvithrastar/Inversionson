@@ -473,7 +473,6 @@ class ProjectComponent(Component):
             "gradient_wall_time"
         ]
         self.interpolation_site = self.site_name
-
         self.remote_data_processing = self.info["HPC"]["remote_data_processing"]["use"]
         self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"][
             "wall_time"
@@ -496,9 +495,10 @@ class ProjectComponent(Component):
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
         self.fast_mesh_dir = self.remote_inversionson_dir / "MESHES"
         self.batch_size = self.info["batch_size"]
-        self.when_to_validate = self.info["inversion_monitoring"][
+        self.val_it_interval = self.info["inversion_monitoring"][
             "iterations_between_validation_checks"
         ]
+        self.use_model_averaging = self.info["inversion_monitoring"]["use_model_averaging"]
         self.validation_dataset = self.info["inversion_monitoring"][
             "validation_dataset"
         ]

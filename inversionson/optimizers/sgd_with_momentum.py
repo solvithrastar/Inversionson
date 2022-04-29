@@ -90,9 +90,6 @@ class SGDM(Optimize):
             self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
         )
 
-    def _model_for_iteration(self, iteration_number):
-        return self.model_dir / f"model_{iteration_number:05d}.h5"
-
     def _write_initial_config(self):
         """
         Writes the initial config file.
@@ -156,6 +153,7 @@ class SGDM(Optimize):
         """
         folders = [
             self.model_dir,
+            self.average_model_dir,
             self.raw_gradient_dir,
             self.moment_dir,
             self.raw_update_dir,

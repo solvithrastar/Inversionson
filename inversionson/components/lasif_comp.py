@@ -113,14 +113,6 @@ class LasifComponent(Component):
 
         return hpc_cluster.remote_exists(mesh), mesh
 
-    def get_remote_model_path(self, iteration=None):
-        """ Gets the path to storage location of the remote
-        model path. """
-        if iteration is None:
-            iteration = self.comm.project.current_iteration
-        remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
-        return remote_mesh_dir / "models" / iteration / "mesh.h5"
-
     def find_remote_mesh(
         self,
         event: str,
@@ -586,7 +578,7 @@ class LasifComponent(Component):
             if "validation" in iteration and "it0000" and "00000" not in iteration:
                 optimizer = self.comm.project.get_optimizer()
                 new_it_num = optimizer.iteration_number
-                old_it_num = new_it_num - self.comm.project.when_to_validate + 1
+                old_it_num = new_it_num - self.comm.project.val_it_interval + 1
                 return os.path.join(
                     self.comm.salvus_mesher.average_meshes,
                     f"it_{old_it_num}_to_{new_it_num}",

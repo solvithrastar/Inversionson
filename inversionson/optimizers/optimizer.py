@@ -10,6 +10,7 @@ from pathlib import Path
 import os
 import glob
 import h5py
+import pathlib
 import toml
 import numpy as np
 from typing import List, Union
@@ -118,6 +119,9 @@ class Optimize(object):
     @staticmethod
     def _get_path_for_iteration(iteration_number, path):
         pass
+
+    def _model_for_iteration(self, iteration_number):
+        return self.model_dir / f"model_{iteration_number:05d}.h5"
 
     @_abstractmethod
     def _initialize_derived_class_folders(self):
@@ -259,7 +263,7 @@ class Optimize(object):
         events: List[str] = None,
     ):
         """
-        Prepa
+        Prepare iteration.
 
         :param it_name: Name of iteration
         :type it_name: "str", optional
@@ -290,6 +294,29 @@ class Optimize(object):
             emoji_alias=":package:",
         )
         hpc_cluster.remote_put(model, remote_mesh_file)
+
+        if self.time_for_validation() and self.comm.project.use_model_averaging\
+                and self.iteration_number > 0:
+            remote_avg_mesh_file = (
+                    self.comm.project.remote_mesh_dir / "average_models" / it_name / "mesh.h5"
+            )
+            # this enters when the iteration number is 4
+            print("writing average validation model")
+            # 4 - 5 + 1 = 0
+            starting_it_number = self.iteration_number - self.comm.project.val_it_interval + 1
+            self.write_average_model(starting_it_number,
+                                     self.iteration_number)
+            self.print(
+                f"Moving average_model to {self.comm.project.interpolation_site}",
+                emoji_alias=":package:",
+            )
+            if not hpc_cluster.remote_exists(remote_avg_mesh_file.parent):
+                hpc_cluster.remote_mkdir(remote_avg_mesh_file.parent)
+            hpc_cluster.remote_put(
+                self.get_average_model_name(starting_it_number, self.iteration_number),
+                remote_avg_mesh_file
+            )
+
         self.comm.lasif.upload_stf(iteration=it_name)
 
     def run_forward(self, verbose: bool = False):
@@ -313,13 +340,25 @@ class Optimize(object):
         """
         return True
 
+    def get_remote_model_path(self, iteration=None, model_average=False):
+        """ Gets the path to storage location of the remote
+        model path. """
+        if iteration is None:
+            iteration = self.comm.project.current_iteration
+        remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+
+        if model_average:
+            return remote_mesh_dir / "average_models" / iteration / "mesh.h5"
+        else:
+            return remote_mesh_dir / "models" / iteration / "mesh.h5"
+
     def time_for_validation(self) -> bool:
         validation = False
-        if self.comm.project.when_to_validate == 0:
+        if self.comm.project.val_it_interval == 0:
             return False
         if self.iteration_number == 0:
             validation = True
-        if (self.iteration_number + 1) % self.comm.project.when_to_validate == 0:
+        if (self.iteration_number + 1) % self.comm.project.val_it_interval == 0:
             validation = True
 
         return validation
@@ -383,6 +422,38 @@ class Optimize(object):
         Not yet implemented for the standard optimization.
         """
         pass
+
+    def get_average_model_name(self, first_iteration_number=None,
+                               last_iteration_number=None):
+        """
+        Gets the filename of the average model.
+        """
+        if first_iteration_number is None:
+            first_iteration_number = self.iteration_number - \
+                                     self.comm.project.val_it_interval + 1
+        if last_iteration_number is None:
+            self.iteration_number
+        filename = f"average_model_{first_iteration_number}_to_{last_iteration_number}.h5"
+        return os.path.join(self.average_model_dir, filename)
+
+    def write_average_model(self, first_iteration_number, last_iteration_number):
+        """
+        Writes an average over the models from the first to last iteration
+        number. Needs a minimum of 2 iterations to work and make sense.
+        """
+        import shutil
+        total_num_models = 1
+        average_model = self.get_h5_data(self._model_for_iteration(first_iteration_number))
+
+        for i in range(first_iteration_number+1, last_iteration_number+1):
+            average_model += self.get_h5_data(self._model_for_iteration(i))
+            total_num_models += 1
+        average_model /= total_num_models
+        avg_model_name = self.get_average_model_name(first_iteration_number,
+                                                last_iteration_number)
+        shutil.copy(self._model_for_iteration(first_iteration_number),
+                    avg_model_name)
+        self.set_h5_data(filename=avg_model_name, data=average_model)
 
     def get_parameter_indices(self, filename):
         """Get parameter indices in h5 file"""

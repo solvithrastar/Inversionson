@@ -34,6 +34,8 @@ variable = ""
 [inversion_monitoring]
 # If you want to check misfit of validation set every few iterations you give a number N here if you want to do a validation check every N iterations. Put 0 if you do not want to perform a validation check.
 iterations_between_validation_checks = 0
+# Set to true if you want to use the average of models between validation checks.
+use_model_averaging = false
 # A validation dataset is used to monitor state of inversion, it is used to tune parameters such as smoothing lengths. It is not used in the inversion in any other way. This parameter is optional. If you keep the above parameter at zero, you can still reserve sources for validation without it happening automatically.
 validation_dataset = []
 # A test dataset is not used at all in the inversion and can only be used at the end of an inversion to test how reliable the inversion actually was. The only thing Inveversionson does with these events is to make sure they are not used in inversion. This parameter is optional.

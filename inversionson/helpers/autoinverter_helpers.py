@@ -177,6 +177,28 @@ class ForwardHelper(object):
             source = self.comm.salvus_flow.get_source_object(event)
             w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
 
+        if self.comm.project.meshes == "multi_mesh":
+            already_interpolated = True
+        else:
+            already_interpolated = False
+
+        # Get the average model when validation event
+        if self.comm.project.is_validation_event(event) and self.comm.project.use_model_averaging \
+                and "00000" not in self.comm.project.current_iteration:
+            validation = True
+        else:
+            validation = False
+        hpc_cluster = get_site(self.comm.project.interpolation_site)
+        remote_mesh = self.comm.lasif.find_remote_mesh(
+            event=event,
+            gradient=False,
+            interpolate_to=False,
+            hpc_cluster=hpc_cluster,
+            validation=validation,
+            already_interpolated=already_interpolated)
+        w.set_mesh("REMOTE:" + str(remote_mesh))
+        # make the mesh use
+
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w,
