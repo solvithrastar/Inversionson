@@ -813,7 +813,7 @@ class AdjointHelper(object):
             self.__dispatch_adjoint_simulation(event, verbose=verbose)
 
     def process_gradients(
-        self, events=None, interpolate=False, smooth_individual=False, verbose=False
+        self, events=None, interpolate=False, verbose=False
     ):
         """
         Wait for adjoint simulations. As soon as one is finished,
@@ -826,7 +826,6 @@ class AdjointHelper(object):
         self.__process_gradients(
             events=events,
             interpolate=interpolate,
-            smooth_individual=smooth_individual,
             verbose=verbose,
         )
 
@@ -862,12 +861,10 @@ class AdjointHelper(object):
             job_info = self.comm.project.adjoint_job[event]
         elif sim_type == "gradient_interp":
             job_info = self.comm.project.gradient_interp_job[event]
-        elif sim_type == "smoothing":
-            job_info = self.comm.project.smoothing_job
         return job_info["submitted"], job_info["retrieved"]
 
     def __process_gradients(
-        self, events: list, interpolate: bool, smooth_individual: bool, verbose: bool
+        self, events: list, interpolate: bool, verbose: bool
     ):
 
         adj_job_listener = RemoteJobListener(
@@ -896,17 +893,6 @@ class AdjointHelper(object):
                         self.__dispatch_raw_gradient_interpolation(
                             event, verbose=verbose
                         )
-                    else:
-                        # Here we do interpolate as false as the interpolate
-                        # refers to remote interpolation in this case.
-                        # It is related to where the gradient can be found.
-                        if smooth_individual:
-                            self.__dispatch_smoothing(
-                                event, interpolate=False, verbose=verbose
-                            )
-                else:
-                    if smooth_individual:
-                        self.__dispatch_smoothing(event, interpolate, verbose=verbose)
 
             for event in adj_job_listener.to_repost:
                 self.comm.project.change_attribute(
@@ -915,11 +901,7 @@ class AdjointHelper(object):
                 )
                 self.comm.project.update_iteration_toml()
                 self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
-                if len(adj_job_listener.events_retrieved_now) > 0:
-                    self.print(
-                        f"Sent {len(adj_job_listener.events_retrieved_now)} "
-                        "smoothing jobs to regularisation"
-                    )
+
             if interpolate:
                 interp_job_listener.monitor_jobs()
                 for event in interp_job_listener.events_retrieved_now:
@@ -928,8 +910,7 @@ class AdjointHelper(object):
                         new_value=True,
                     )
                     self.comm.project.update_iteration_toml()
-                    if smooth_individual:
-                        self.__dispatch_smoothing(event, interpolate, verbose=verbose)
+
                 for event in interp_job_listener.to_repost:
                     self.comm.project.change_attribute(
                         attribute=f'gradient_interp_job["{event}"]["submitted"]',
@@ -957,7 +938,7 @@ class AdjointHelper(object):
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
         """
         Take the gradient out of the adjoint simulations and
-        interpolate them to the inversion grid prior to smoothing.
+        interpolate them to the inversion grid.
         """
         submitted, retrieved = self.__submitted_retrieved(event, "gradient_interp")
         if submitted:
@@ -1045,7 +1026,8 @@ class AdjointHelper(object):
 
     def __cut_and_clip_gradient(self, event, verbose=False):
         """
-        Cut sources and receivers from gradient before smoothing.
+        Cut sources and receivers from gradient before summing or potential
+        smoothing.
         We also clip the gradient to some percentile
         This can all be configured in information toml.
 
@@ -1058,7 +1040,7 @@ class AdjointHelper(object):
         hpc_cluster = get_site(self.comm.project.site_name)
 
         remote_inversionson_dir = os.path.join(
-            self.comm.project.remote_diff_model_dir, "..", "smoothing_info"
+            self.comm.project.remote_inversionson_dir, "GRADIENT_PROCESSING"
         )
 
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
