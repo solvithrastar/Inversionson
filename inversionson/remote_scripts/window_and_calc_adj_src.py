@@ -146,7 +146,10 @@ def get_station_weights(list_of_stations, processed_data,
     :param list_of_stations: List of windows
     :type list_of_stations: List
     """
-
+    weight_set = {}
+    if len(list_of_stations) == 1:
+        weight_set[list_of_stations[0]]["station_weight"] = 1.0
+        return weight_set
     print("Getting station weights...")
     list_of_recs = build_or_get_receiver_info(receiver_json_path, processed_data)
     coordinates = {}
