@@ -567,7 +567,6 @@ class AdamOpt(Optimize):
             adjoint_helper.dispatch_adjoint_simulations()
             adjoint_helper.process_gradients(
                 interpolate=interpolate,
-                smooth_individual=False,
                 verbose=verbose,
             )
             assert adjoint_helper.assert_all_simulations_retrieved()

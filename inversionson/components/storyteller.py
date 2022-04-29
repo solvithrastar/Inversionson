@@ -181,49 +181,6 @@ class StoryTellerComponent(Component):
 
         self.markdown.add_paragraph(text=text)
 
-    def _add_image_of_data_coverage(self):
-        """
-        Include an image of event distribution to story file.
-        """
-        self.markdown.add_header(header_style=3, text="Data Used")
-        im_file = self.comm.lasif.plot_iteration_events()
-        text = "Data coverage:"
-        self.markdown.add_paragraph(text=text)
-        self.markdown.add_image(
-            image_url=im_file,
-            image_title=f"Event distribution for "
-            f"{self.comm.project.current_iteration}",
-            alt_text="text",
-        )
-        # print("Preparing Ray density image")
-        # text = "Ray density plot"
-        # ray_file = self.comm.lasif.plot_iteration_raydensity()
-        # self.markdown.add_paragraph(text=text)
-        # self.markdown.add_image(
-        #     image_url=ray_file,
-        #     image_title=f"Ray density plot for "
-        #     f"{self.comm.project.current_iteration}",
-        #     alt_text="text",
-        # )
-
-    def _add_image_of_event_misfits(self):
-        """
-        Include and image for each event of misfits of stations.
-        """
-        self.markdown.add_header(header_style=3, text="Event misfits")
-        iteration = self.comm.project.current_iteration
-        for event in self.comm.project.events_in_iteration:
-            im_file = self.comm.lasif.plot_event_misfits(
-                event=event,
-                iteration=iteration,
-            )
-            self.markdown.add_paragraph(text=f"Misfits for {event}")
-            self.markdown.add_image(
-                image_url=im_file,
-                image_title=f"Station misfits for {event}",
-                alt_text="failed event misfit picture",
-            )
-
     def _report_acceptance_of_model(self):
         """
         When model gets accepted and we compute additional misfits,

@@ -71,18 +71,6 @@ class ForwardHelper(object):
             verbose=verbose,
         )
 
-    def report_total_validation_misfit(self):
-        """
-        Write the computed validation misfit for the iteration into the
-        right place
-        """
-        iteration = self.comm.project.current_iteration
-        self.comm.storyteller.report_validation_misfit(
-            iteration=iteration,
-            event=None,
-            total_sum=True,
-        )
-
     def assert_all_simulations_dispatched(self) -> bool:
         """
         Check whether all simulations have been dispatched

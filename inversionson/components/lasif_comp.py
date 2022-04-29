@@ -517,81 +517,6 @@ class LasifComponent(Component):
                 / "stf.h5",
             )
 
-    def plot_iteration_events(self) -> str:
-        """
-        Return the path to a file containing an illustration of
-        event distribution for the current iteration
-
-        :return: Path to figure
-        :rtype: str
-        """
-        lapi.plot_events(
-            self.lasif_comm,
-            type_of_plot="map",
-            iteration=self.comm.project.current_iteration,
-            save=True,
-        )
-        filename = os.path.join(
-            self.lasif_root,
-            "OUTPUT",
-            "event_plots",
-            "events",
-            f"events_{self.comm.project.current_iteration}.png",
-        )
-        return filename
-
-    def plot_event_misfits(self, event: str, iteration: str = "current") -> str:
-        """
-        Make a plot where stations are color coded by their respective misfits
-
-        :param event: Name of event
-        :type event: str
-        :param iteration: Name of iteration, defaults to "current"
-        :type iteration: str, optional
-        :return: Path to figure
-        :rtype: str
-        """
-        if iteration == "current":
-            iteration = self.comm.project.current_iteration
-
-        lapi.plot_station_misfits(
-            self.lasif_comm,
-            event=event,
-            iteration=iteration,
-            save=True,
-        )
-        filename = os.path.join(
-            self.lasif_root,
-            "OUTPUT",
-            "event_plots",
-            "events",
-            f"misfit_{event}_{iteration}.png",
-        )
-        return filename
-
-    def plot_iteration_raydensity(self) -> str:
-        """
-        Return the path to a file containing an illustration of
-        event distribution for the current iteration
-
-        :return: Path to figure
-        :rtype: str
-        """
-        lapi.plot_raydensity(
-            self.lasif_comm,
-            iteration=self.comm.project.current_iteration,
-            plot_stations=True,
-            save=True,
-        )
-        filename = os.path.join(
-            self.lasif_root,
-            "OUTPUT",
-            "raydensity_plots",
-            f"ITERATION_{self.comm.project.current_iteration}",
-            "raydensity.png",
-        )
-        return filename
-
     def get_master_model(self) -> str:
         """
         Get the path to the inversion grid used in inversion
@@ -799,48 +724,6 @@ class LasifComponent(Component):
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
 
-    def write_misfit(self, events=None, details=None):  # Not used currently
-        """
-        Write the iteration's misfit into a toml file.
-        TODO: I might want to add this to make it do more statistics
-        """
-        self.print("Writing Misfit")
-        iteration = self.comm.project.current_iteration
-        misfit_path = os.path.join(
-            self.lasif_root,
-            "ITERATIONS",
-            f"ITERATION_{iteration}",
-            "misfits.toml",
-        )
-        if os.path.exists(misfit_path):
-            if details and "compute additional" in details:
-                # Reason for this that I have to append to path in this
-                # specific case.
-                self.print("Misfit file exists, will append additional events")
-                # Need to see if the misfit is already in there or not
-                misfits = toml.load(misfit_path)
-                append = False
-                for event in events:
-                    if event in misfits.keys():
-                        if misfits[event]["event_misfit"] == 0.0:
-                            append = True
-                    else:
-                        append = True
-                if not append:
-                    self.print(
-                        "Misfit already exists. If you want it rewritten, "
-                        "delete the misfit toml in the lasif_project"
-                    )
-                    return
-                self.print("Misfit file exists, will append additional events")
-            else:
-                self.print(
-                    "Misfit already exists. If you want it rewritten, "
-                    "delete the misfit toml in the lasif_project"
-                )
-                return
-        lapi.write_misfit(self.lasif_comm, iteration=iteration, events=events)
-
     def _already_processed(self, event: str) -> bool:
         """
         Looks for processed data for a certain event
@@ -988,37 +871,3 @@ class LasifComponent(Component):
             os.mkdir(event_folder)
 
         return os.path.join(event_folder, "receivers.h5")
-
-    def get_list_of_iterations(
-        self, include_validation=False, only_validation=False
-    ) -> list:
-        """
-        Filter the list of iterations
-
-        :return: List of validation iterations
-        :rtype: list
-        """
-        iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
-        if only_validation:
-            return [x for x in iterations if "validation" in x]
-        if not include_validation:
-            return [x for x in iterations if "validation" not in x]
-        return iterations
-
-    def get_validation_iteration_numbers(self) -> dict:
-        """
-        List lasif iterations, give dict of them with numbers as keys
-
-        :return: [description]
-        :rtype: dict
-        """
-        iterations = self.get_list_of_iterations(only_validation=True)
-        iteration_dict = {}
-        for iteration in iterations:
-            strip_validation = iteration[11:]
-            if strip_validation == "it0000_model":
-                iteration_dict[-1] = iteration
-            else:
-                iteration_dict[int(strip_validation[2:6])] = iteration
-
-        return iteration_dict
