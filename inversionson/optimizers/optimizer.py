@@ -55,6 +55,7 @@ class Optimize(object):
         # These folders are universally needed
         self.model_dir = self.opt_folder / "MODELS"
         self.task_dir = self.opt_folder / "TASKS"
+        self.average_model_dir = self.opt_folder / "AVERAGE_MODELS"
         self.raw_gradient_dir = self.opt_folder / "RAW_GRADIENTS"
         self.raw_update_dir = self.opt_folder / "RAW_UPDATES"
         self.regularization_dir = self.opt_folder / "REGULARIZATION"
@@ -113,6 +114,10 @@ class Optimize(object):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
+
+    @staticmethod
+    def _get_path_for_iteration(iteration_number, path):
+        pass
 
     @_abstractmethod
     def _initialize_derived_class_folders(self):
