@@ -63,8 +63,8 @@ class RemoteJobListener(object):
             job_dict = self.comm.project.forward_job
         elif self.job_type == "adjoint":
             job_dict = self.comm.project.adjoint_job
-        elif self.job_type == "model_interp":
-            job_dict = self.comm.project.model_interp_job
+        elif self.job_type == "prepare_forward":
+            job_dict = self.comm.project.prepare_forward_job
         elif self.job_type == "gradient_interp":
             job_dict = self.comm.project.gradient_interp_job
         elif self.job_type == "hpc_processing":
@@ -74,7 +74,7 @@ class RemoteJobListener(object):
         if self.job_type in [
             "forward",
             "adjoint",
-            "model_interp",
+            "prepare_forward",
             "gradient_interp",
             "hpc_processing",
         ]:

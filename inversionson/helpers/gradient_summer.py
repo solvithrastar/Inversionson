@@ -72,7 +72,7 @@ class GradientSummer(object):
         gradient_paths = []
         iteration = self.comm.project.current_iteration
 
-        for event in self.comm.project.events_in_iteration:
+        for event in events:
             if self.comm.project.meshes == "multi-mesh":
                 job = self.comm.salvus_flow.get_job(event, "gradient_interp")
                 gradient_path = os.path.join(

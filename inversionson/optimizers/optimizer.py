@@ -11,7 +11,10 @@ import os
 import glob
 import h5py
 import toml
+import numpy as np
 from typing import List, Union
+
+from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from inversionson.helpers import autoinverter_helpers as helpers
@@ -55,6 +58,7 @@ class Optimize(object):
         self.raw_gradient_dir = self.opt_folder / "RAW_GRADIENTS"
         self.raw_update_dir = self.opt_folder / "RAW_UPDATES"
         self.regularization_dir = self.opt_folder / "REGULARIZATION"
+        self.gradient_norm_dir = self.opt_folder / "GRADIENT_NORMS"
 
         # Do any folder initilization for the derived classes
         self._initialize_derived_class_folders()
@@ -194,13 +198,47 @@ class Optimize(object):
             iteration_numbers.append(int(model.split(".")[0].split("_")[-1]))
         return iteration_numbers
 
+    def _pick_data_for_iteration(self):
+        all_events = self.comm.lasif.list_events()
+        blocked_data = list(
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
+        )
+        all_events = list(set(all_events) - set(blocked_data))
+        n_events = self.comm.project.batch_size
+        all_norms_path = self.gradient_norm_dir / "all_norms.toml"
+        if os.path.exists(all_norms_path):
+            norm_dict = toml.load(all_norms_path)
+            unused_events = list(set(all_events).difference(set(norm_dict.keys())))
+            list_of_vals = np.array(list(norm_dict.values()))
+            max_norm = np.max(list_of_vals)
+
+            # Assign high norm values to unused events to make them
+            # more likely to be chosen
+            for event in unused_events:
+                norm_dict[event] = max_norm
+            events = get_random_mitchell_subset(
+                self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
+            )
+        else:
+            events = get_random_mitchell_subset(
+                self.comm.lasif.lasif_comm, n_events, all_events
+            )
+
+        if self.time_for_validation():
+            print(
+                "This is a validation iteration. Will add validation events to the iteration"
+            )
+            events += self.comm.project.validation_dataset
+
+        return events
+
     def delete_remote_files(self):
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
 
         if self.comm.project.meshes == "multi-mesh":
             self.comm.salvus_flow.delete_stored_wavefields(
-                self.iteration_name, "model_interp"
+                self.iteration_name, "prepare_forward"
             )
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "gradient_interp"
@@ -212,61 +250,41 @@ class Optimize(object):
 
     def prepare_iteration(
         self,
-        it_name: str = None,
-        move_meshes: bool = False,
-        first_try: bool = True,
+        it_name: str,
         events: List[str] = None,
     ):
         """
-        A base function for preparing iterations
+        Prepa
 
-        :param it_name: Name of iteration, will use autoname if None is passed, defaults to None
+        :param it_name: Name of iteration
         :type it_name: "str", optional
-        :param move_meshes: Do meshes need to be moved to remote, defaults to False
-        :type move_meshes: bool, optional
-        :param first_try: Only change in trust region methods if region is being reduced, defaults to True
-        :type first_try: bool, optional
         :param events: Pass a list of events if you want them to be predefined, defaults to None
         :type events: List[str], optional
         """
-        it_name = self.iteration_name if it_name is None else it_name
         self.comm.project.change_attribute("current_iteration", it_name)
-        validation = "validation" in it_name
-
+        print("Preparing iteration for", it_name)
         if self.comm.lasif.has_iteration(it_name):
             raise InversionsonError(f"Iteration {it_name} already exists")
 
-        if events is None and not validation:
-            events = self.comm.lasif.list_events()
-        elif events is None and validation:
-            events = self.comm.project.validation_dataset
         self.comm.lasif.set_up_iteration(it_name, events)
         self.comm.project.create_iteration_toml(it_name)
-        self.comm.project.get_iteration_attributes(validation)
+        self.comm.project.get_iteration_attributes()
 
-        if self.comm.project.meshes == "multi-mesh" and move_meshes:
-            if self.comm.project.interpolation_mode == "remote":
-                interp_site = get_site(self.comm.project.interpolation_site)
-            else:
-                interp_site = None
-            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
-            self.print(
-                f"Moving mesh to {self.comm.project.interpolation_site}",
-                emoji_alias=":package:",
-            )
-            self.comm.lasif.move_mesh(
-                event=None, iteration=it_name, hpc_cluster=interp_site
-            )
-        elif self.comm.project.meshes == "mono-mesh" and move_meshes:
-            self.print(
-                f"Moving mesh to {self.comm.project.interpolation_site}",
-                emoji_alias=":package:",
-            )
-            self.comm.lasif.move_mesh(event=None, iteration=it_name)
+        optimizer = self.comm.project.get_optimizer()
+        model = optimizer.model_path
+
+        # WIP no average models being uploaded yet.
+        remote_mesh_file = (
+            self.comm.project.remote_mesh_dir / "models" / it_name / "mesh.h5"
+        )
+        hpc_cluster = get_site(self.comm.project.site_name)
+        if not hpc_cluster.remote_exists(remote_mesh_file.parent):
+            hpc_cluster.remote_mkdir(remote_mesh_file.parent)
         self.print(
-            f"Uploading source time function to {self.comm.project.site_name}",
+            f"Moving mesh to {self.comm.project.interpolation_site}",
             emoji_alias=":package:",
         )
+        hpc_cluster.remote_put(model, remote_mesh_file)
         self.comm.lasif.upload_stf(iteration=it_name)
 
     def run_forward(self, verbose: bool = False):
@@ -290,33 +308,16 @@ class Optimize(object):
         """
         return True
 
-    def compute_validation_misfit(self, verbose: bool = False):
-        """
-        Compute misfits for validation dataset
-        """
-        if verbose:
-            print("Creating average mesh for validation")
-        if self.iteration_number != 0:
-            to_it = self.iteration_number
-            from_it = self.iteration_number - self.comm.project.when_to_validate + 1
-            self.comm.salvus_mesher.get_average_model(iteration_range=(from_it, to_it))
-            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
-            if self.comm.project.interpolation_mode == "remote":
-                self.comm.lasif.move_mesh(
-                    event=None,
-                    iteration=None,
-                    validation=True,
-                )
-        val_forward_helper = helpers.ForwardHelper(
-            self.comm, self.comm.project.validation_dataset
-        )
-        assert "validation_" in self.comm.project.current_iteration
-        val_forward_helper.dispatch_forward_simulations(verbose=verbose)
-        assert val_forward_helper.assert_all_simulations_dispatched()
-        val_forward_helper.retrieve_forward_simulations(
-            adjoint=False, verbose=verbose, validation=True
-        )
-        val_forward_helper.report_total_validation_misfit()
+    def time_for_validation(self) -> bool:
+        validation = False
+        if self.comm.project.when_to_validate == 0:
+            return False
+        if self.iteration_number == 0:
+            validation = True
+        if (self.iteration_number + 1) % self.comm.project.when_to_validate == 0:
+            validation = True
+
+        return validation
 
     def compute_misfit(
         self,
@@ -353,12 +354,18 @@ class Optimize(object):
         :param verbose: Do we want the details?, defaults to False
         :type verbose: bool, optional
         """
-
         self.adjoint_helper = helpers.AdjointHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
+            comm=self.comm, events=self.comm.project.non_val_events_in_iteration
         )
         self.adjoint_helper.dispatch_adjoint_simulations(verbose=verbose)
         assert self.adjoint_helper.assert_all_simulations_dispatched()
+
+        # At this stage the validation misfit is definitely completed
+        # so report it
+        if self.time_for_validation():
+            self.comm.storyteller.report_validation_misfit(
+                iteration=self.iteration_name, event=None, total_sum=True
+            )
 
     def regularization(self):
         """

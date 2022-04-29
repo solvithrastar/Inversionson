@@ -106,10 +106,9 @@ class MultiMeshComponent(Component):
                 overwrite=False,
             )
 
-    def interpolate_to_simulation_mesh(
+    def prepare_forward(
         self,
         event: str,
-        interp_folder=None,
     ):
         """
         Interpolate current master model to a simulation mesh.
@@ -117,42 +116,25 @@ class MultiMeshComponent(Component):
         :param event: Name of event
         :type event: str
         """
-        iteration = self.comm.project.current_iteration
-        mode = self.comm.project.interpolation_mode
-        if mode == "remote":
-            job = self.construct_remote_interpolation_job(
-                event=event,
-                gradient=False,
-            )
+        job = self.construct_remote_interpolation_job(
+            event=event,
+            gradient=False,
+        )
+        if job is not None:
             self.comm.project.change_attribute(
-                attribute=f'model_interp_job["{event}"]["name"]',
+                attribute=f'prepare_forward_job["{event}"]["name"]',
                 new_value=job.job_name,
             )
             job.launch()
             self.comm.project.change_attribute(
-                attribute=f'model_interp_job["{event}"]["submitted"]',
+                attribute=f'prepare_forward_job["{event}"]["submitted"]',
                 new_value=True,
             )
             self.print(
-                f"Interpolation job for event {event} submitted",
+                f"Prepare forward job for event {event} submitted",
                 emoji_alias=":white_check_mark:",
             )
-        else:
-            simulation_mesh = lapi.get_simulation_mesh(
-                self.comm.lasif.lasif_comm, event, iteration
-            )
-            model = self.find_model_file(iteration)
 
-            # There are many more knobs to tune but for now lets stick to
-            # defaults.
-            mapi.gll_2_gll_layered(
-                from_gll=model,
-                to_gll=simulation_mesh,
-                layers="nocore",
-                nelem_to_search=20,
-                parameters=self.comm.project.modelling_params,
-                stored_array=interp_folder,
-            )
 
     def interpolate_gradient_to_model(
         self, event: str, smooth=True, interp_folder=None
@@ -256,7 +238,10 @@ class MultiMeshComponent(Component):
         description = "Interpolation of "
         description += "gradient " if gradient else "model "
         description += f"for event {event}"
-        wall_time = self.comm.project.model_interp_wall_time
+
+        wall_time = 0.0
+        if self.comm.project.meshes == "multi-mesh":
+            wall_time += self.comm.project.model_interp_wall_time
 
         # Add wall time when the data needs to be processed, this way
         # we can get through the queue faster for jobs that were finished already.
@@ -272,8 +257,28 @@ class MultiMeshComponent(Component):
             remote_proc_file_name = f"{event}_{proc_filename}"
             remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
 
-            if not hpc_cluster.remote_exists(remote_proc_path):
+            # ALso add a check if the forward_dict exists here
+            forward_simulation_dict = (
+                    self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                    / f"SIMULATION_DICTS"
+                    / event
+                    / "simulation_dict.toml"
+            )
+            # Submit a job either if the local dict is missing or
+            # if the processed data is missing on the remote
+            if not hpc_cluster.remote_exists(remote_proc_path) \
+                    or not os.path.exists(forward_simulation_dict):
                 wall_time += self.comm.project.remote_data_proc_wall_time
+            else:
+                self.comm.project.change_attribute(
+                    attribute=f'prepare_forward_job["{event}"]["submitted"]',
+                    new_value=True,
+                )
+                self.comm.project.change_attribute(
+                    attribute=f'prepare_forward_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                return None
 
         if gradient:
             wall_time = self.comm.project.grad_interp_wall_time
@@ -290,7 +295,7 @@ class MultiMeshComponent(Component):
         return int_job
 
     def prepare_interpolation_toml(self, gradient, event, hpc_cluster=None):
-        toml_name = "gradient_interp.toml" if gradient else "model_interp.toml"
+        toml_name = "gradient_interp.toml" if gradient else "prepare_forward.toml"
         toml_filename = (
             self.comm.project.inversion_root / "INTERPOLATION" / event / toml_name
         )
@@ -325,6 +330,11 @@ class MultiMeshComponent(Component):
             information["data_processing"] = True
         else:
             information["data_processing"] = False
+
+        if self.comm.project.meshes == "multi-mesh":
+            information["multi-mesh"] = True
+        else:
+            information["multi-mesh"] = False
 
         # Provide information for cut and clipping
         if gradient:
@@ -373,7 +383,7 @@ class MultiMeshComponent(Component):
             # dict again in the interpolation job.
             local_simulation_dict = (
                 self.comm.lasif.lasif_comm.project.paths["salvus_files"]
-                / f"SIMULATIONS_DICTS"
+                / f"SIMULATION_DICTS"
                 / event
                 / "simulation_dict.toml"
             )
@@ -484,20 +494,9 @@ class MultiMeshComponent(Component):
         Get the interpolation commands needed to do remote interpolations.
         If not gradient, we will look for a smoothie mesh and create it if needed.
         """
-        iteration = self.comm.project.current_iteration
-        if "validation_" in iteration:
-            validation = True
-        else:
-            validation = False
-        if iteration in ["validation_it0000_model", "validation_model_00000"]:
-            validation = False  # Here there can't be any mesh averaging
 
-        mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
-            event=event,
-            gradient=gradient,
-            interpolate_to=False,
-            validation=validation,
-        )
+        # TODO Add average model option here
+        mesh_to_interpolate_from = self.comm.lasif.get_remote_model_path()
         interpolation_script = self.find_interpolation_script()
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         interpolation_toml = self.prepare_interpolation_toml(
