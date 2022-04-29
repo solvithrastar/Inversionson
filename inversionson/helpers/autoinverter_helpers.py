@@ -402,33 +402,9 @@ class ForwardHelper(object):
             window_set_name = iteration + "_" + event
         else:
             window_set_name = event
-            if "validation_" not in iteration:
-                self.comm.lasif.select_windows(
-                    window_set_name=window_set_name, event=event
-                )
-                return
 
-        if "validation_" in iteration:
-            # We only compute full trace misfits here, legacy code below.
-            return
-            ## Legacy code below
-            # window_set_name = iteration
-            # if self.comm.project.forward_job[event]["windows_selected"]:
-            #     print(f"Windows already selected for event {event}")
-            #     return
-            # self.comm.lasif.select_windows(
-            #     window_set_name=window_set_name,
-            #     event=event,
-            #     validation=True,
-            # )
-            # self.comm.project.change_attribute(
-            #     attribute=f"forward_job['{event}']['windows_selected']",
-            #     new_value=True,
-            # )
-            # self.comm.project.update_iteration_toml(validation=True)
-            # return
-
-        self.comm.lasif.select_windows(window_set_name=window_set_name, event=event)
+        self.comm.lasif.select_windows(window_set_name=window_set_name,
+                                       event=event)
 
     def __need_misfit_quantification(self, iteration, event, window_set):
         """
