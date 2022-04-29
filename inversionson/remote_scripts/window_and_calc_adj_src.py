@@ -209,7 +209,6 @@ def run(info):
     # READ INPUT DICT
     processed_filename = info["processed_filename"]
     synthetic_filename = info["synthetic_filename"]
-    window_set_name = info["window_set_name"]
     event_name = info["event_name"]
     delta = info["delta"]
     npts = info["npts"]
@@ -451,7 +450,6 @@ def run(info):
                     min_period=minimum_period,
                     max_period=maximum_period,
                     adj_src_type=ad_src_type,
-                    window_set=window_set_name,
                     taper_ratio=0.15,
                     taper_type="cosine",
                     envelope_scaling=env_scaling,
