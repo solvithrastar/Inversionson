@@ -179,6 +179,12 @@ class Optimize(object):
     def model_path(self):
         return self.model_dir / f"model_{self.iteration_number:05d}.h5"
 
+    @property
+    def regularization_job_toml(self):
+        return (
+            self.regularization_dir / f"regularization_{self.iteration_number:05}.toml"
+        )
+
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
         if len(models) == 0:

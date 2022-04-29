@@ -34,6 +34,7 @@ class SGDM(Optimize):
         self.smooth_update_dir = self.opt_folder / "SMOOTHED_UPDATES"
         self.moment_dir = self.opt_folder / "MOMENTS"
         self.smoothed_model_dir = self.opt_folder / "SMOOTHED_MODELS"
+        self.gradient_norm_dir = self.opt_folder / "GRADIENT_NORMS"
 
     @property
     def task_path(self):
@@ -65,7 +66,9 @@ class SGDM(Optimize):
 
     @property
     def smoothed_model_path(self):
-        return self.smoothed_model_dir / f"smoothed_model_{self.iteration_number:05d}.h5"
+        return (
+            self.smoothed_model_dir / f"smoothed_model_{self.iteration_number:05d}.h5"
+        )
 
     @property
     def raw_update_path(self):
@@ -74,6 +77,19 @@ class SGDM(Optimize):
     @property
     def smooth_update_path(self):
         return self.smooth_update_dir / f"smooth_update_{self.iteration_number:05d}.h5"
+
+    @property
+    def relative_perturbation_path(self):
+        return (
+            self.regularization_dir
+            / f"relative_perturbations_{self.iteration_number:05d}.h5"
+        )
+
+    @property
+    def gradient_norm_path(self):
+        return (
+            self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
+        )
 
     def _model_for_iteration(self, iteration_number):
         return self.model_dir / f"model_{iteration_number:05d}.h5"
@@ -86,7 +102,7 @@ class SGDM(Optimize):
             "alpha": 0.001,
             "beta": 0.9,
             "perturbation_decay": 0.001,
-            "roughness_decay_type": "relative_perturbation", # or absolute
+            "roughness_decay_type": "relative_perturbation",  # or absolute
             "update_smoothing_length": [0.5, 1.0, 1.0],
             "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
             "gradient_scaling_factor": 1e17,
@@ -118,10 +134,14 @@ class SGDM(Optimize):
         self.perturbation_decay = config["perturbation_decay"]
         self.roughness_decay_type = config["roughness_decay_type"]
         if self.roughness_decay_type not in ["relative_perturbation", "absolute"]:
-            raise Exception("Roughness decay type should be either "
-                            "'relative_perturbation' or 'absolute'")
+            raise Exception(
+                "Roughness decay type should be either "
+                "'relative_perturbation' or 'absolute'"
+            )
         self.update_smoothing_length = config["update_smoothing_length"]
-        self.roughness_decay_smoothing_length = config["roughness_decay_smoothing_length"]
+        self.roughness_decay_smoothing_length = config[
+            "roughness_decay_smoothing_length"
+        ]
 
         # Gradient scaling factor to avoid issues with floats, this should be constant throughout the inversion
         self.grad_scaling_fac = config["gradient_scaling_factor"]
@@ -144,6 +164,7 @@ class SGDM(Optimize):
             self.task_dir,
             self.regularization_dir,
             self.smoothed_model_dir,
+            self.gradient_norm_dir,
         ]
 
         for folder in folders:
@@ -259,8 +280,8 @@ class SGDM(Optimize):
             )
             all_events = list(set(all_events) - set(blocked_data))
             n_events = self.comm.project.batch_size
-            doc_path = self.comm.project.paths["inversion_root"] / "OPTIMIZATION" / "GRADIENT_NORMS"
-            all_norms_path = doc_path / "all_norms.toml"
+
+            all_norms_path = self.gradient_norm_dir / "all_norms.toml"
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
                 unused_events = list(set(all_events).difference(set(norm_dict.keys())))
@@ -308,23 +329,15 @@ class SGDM(Optimize):
                 for i in indices:
                     data[:, i, :] = np.zeros_like(data[:, i, :])
 
-
-        v_t = (
-            self.beta * self.get_h5_data(self.moment_path)
-            + (1 - self.beta) * g_t
-        )
+        v_t = self.beta * self.get_h5_data(self.moment_path) + (1 - self.beta) * g_t
 
         # Store first moment
         shutil.copy(
             self.moment_path,
-            self._get_path_for_iteration(
-                self.iteration_number + 1, self.moment_path
-            ),
+            self._get_path_for_iteration(self.iteration_number + 1, self.moment_path),
         )
         self.set_h5_data(
-            self._get_path_for_iteration(
-                self.iteration_number + 1, self.moment_path
-            ),
+            self._get_path_for_iteration(self.iteration_number + 1, self.moment_path),
             v_t,
         )
 
@@ -349,8 +362,7 @@ class SGDM(Optimize):
         """
         Apply the smoothed update.
         """
-        self.print("SGD with Momentum: Applying smooth update...",
-                   line_above=True)
+        self.print("SGD with Momentum: Applying smooth update...", line_above=True)
 
         raw_update = self.get_h5_data(self.raw_update_path)
         update = self.get_h5_data(self.smooth_update_path)
@@ -366,8 +378,10 @@ class SGDM(Optimize):
 
         update_scaling_fac_alpha = self.alpha / max_upd
 
-        self.print(f"Recaling based on alpha: {update_scaling_fac_alpha},"
-              f"New maximum update is: {max_upd * update_scaling_fac_alpha}")
+        self.print(
+            f"Recaling based on alpha: {update_scaling_fac_alpha},"
+            f"New maximum update is: {max_upd * update_scaling_fac_alpha}"
+        )
 
         update *= update_scaling_fac_alpha
 
@@ -389,9 +403,11 @@ class SGDM(Optimize):
 
         # Make sure that the model is only updated where theta is non_zero
         theta_new = np.zeros_like(theta_0)
-        theta_new[theta_0 != 0] = \
-            theta_prev[theta_0 != 0] - update[theta_0 != 0] - \
-            (1-self.beta) * self.perturbation_decay * theta_prev[theta_0 != 0]
+        theta_new[theta_0 != 0] = (
+            theta_prev[theta_0 != 0]
+            - update[theta_0 != 0]
+            - (1 - self.beta) * self.perturbation_decay * theta_prev[theta_0 != 0]
+        )
 
         # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
@@ -457,12 +473,13 @@ class SGDM(Optimize):
     def perform_smoothing(self):
         tasks = {}
         if max(self.update_smoothing_length) > 0.0:
-            tasks["smooth_raw_update"] = {"reference_model": str(
-                    self.comm.lasif.get_master_model()),
-                    "model_to_smooth": str(self.raw_update_path),
-                    "smoothing_lengths": self.update_smoothing_length,
-                    "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smooth_update_path)}
+            tasks["smooth_raw_update"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(self.raw_update_path),
+                "smoothing_lengths": self.update_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smooth_update_path),
+            }
 
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
@@ -474,27 +491,33 @@ class SGDM(Optimize):
             else:
                 model_to_smooth = os.path.join(
                     self.regularization_dir,
-                    f"relative_perturbation_{self.iteration_name}")
+                    f"relative_perturbation_{self.iteration_name}",
+                )
                 shutil.copy(self.model_path, model_to_smooth)
 
                 # relative perturbation = (latest - start) / start
                 theta_prev = self.get_h5_data(self.model_path)
-                theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
+                theta_0 = self.get_h5_data(
+                    self._get_path_for_iteration(0, self.model_path)
+                )
 
-                theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                theta_prev[theta_0 != 0] = (
+                    theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                )
                 self.set_h5_data(model_to_smooth, theta_prev)
 
-            tasks["roughness_decay"] = {"reference_model": str(
-                    self.comm.lasif.get_master_model()),
-                    "model_to_smooth": str(model_to_smooth),
-                    "smoothing_lengths": self.roughness_decay_smoothing_length,
-                    "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smoothed_model_path)}
+            tasks["roughness_decay"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(model_to_smooth),
+                "smoothing_lengths": self.roughness_decay_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smoothed_model_path),
+            }
 
         if len(tasks.keys()) > 0:
             reg_helper = RegularizationHelper(
-                comm=self.comm, iteration_name=self.iteration_name,
-                tasks=tasks)
+                comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
+            )
             reg_helper.monitor_tasks()
 
     def compute_gradient(self, verbose):
@@ -546,7 +569,8 @@ class SGDM(Optimize):
             )
             assert adjoint_helper.assert_all_simulations_retrieved()
             interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.events_in_iteration)
+                comm=self.comm, events=self.comm.project.events_in_iteration
+            )
             interp_listener.monitor_interpolations()
 
             grad_summer = GradientSummer(comm=self.comm)
@@ -555,7 +579,7 @@ class SGDM(Optimize):
                 output_location=self.raw_gradient_path,
                 batch_average=True,
                 sum_vpv_vph=True,
-                store_norms=True
+                store_norms=True,
             )
             self.task_dict["summing_completed"] = True
             self._update_task_file()
@@ -581,7 +605,7 @@ class SGDM(Optimize):
             self.task_dict["smooth_update_completed"] = True
             self._update_task_file()
         else:
-           self.print("Smooth updating already completed")
+            self.print("Smooth updating already completed")
 
         if not self.task_dict["iteration_finalized"]:
             self._finalize_iteration(verbose=verbose)
@@ -668,7 +692,7 @@ class SGDM(Optimize):
             "smooth_update_completed",
             "misfit_completed",
             "summing_completed",
-            "validated:"
+            "validated:",
         ]
         for path in paths:
             if path in self.task_dict.keys():

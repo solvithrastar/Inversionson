@@ -44,6 +44,7 @@ class AdamOpt(Optimize):
         self.first_moment_dir = self.opt_folder / "FIRST_MOMENTS"
         self.second_moment_dir = self.opt_folder / "SECOND_MOMENTS"
         self.smoothed_model_dir = self.opt_folder / "SMOOTHED_MODELS"
+        self.gradient_norm_dir = self.opt_folder / "GRADIENT_NORMS"
 
     @property
     def task_path(self):
@@ -79,7 +80,9 @@ class AdamOpt(Optimize):
 
     @property
     def smoothed_model_path(self):
-        return self.smoothed_model_dir / f"smoothed_model_{self.iteration_number:05d}.h5"
+        return (
+            self.smoothed_model_dir / f"smoothed_model_{self.iteration_number:05d}.h5"
+        )
 
     @property
     def raw_update_path(self):
@@ -88,6 +91,19 @@ class AdamOpt(Optimize):
     @property
     def smooth_update_path(self):
         return self.smooth_update_dir / f"smooth_update_{self.iteration_number:05d}.h5"
+
+    @property
+    def relative_perturbation_path(self):
+        return (
+            self.regularization_dir
+            / f"relative_perturbations_{self.iteration_number:05d}.h5"
+        )
+
+    @property
+    def gradient_norm_path(self):
+        return (
+            self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
+        )
 
     def _model_for_iteration(self, iteration_number):
         return self.model_dir / f"model_{iteration_number:05d}.h5"
@@ -101,7 +117,7 @@ class AdamOpt(Optimize):
             "beta_1": 0.9,
             "beta_2": 0.999,
             "perturbation_decay": 0.001,
-            "roughness_decay_type": "relative_perturbation", # or absolute
+            "roughness_decay_type": "relative_perturbation",  # or absolute
             "update_smoothing_length": [0.5, 1.0, 1.0],
             "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
             "gradient_scaling_factor": 1e17,
@@ -135,10 +151,14 @@ class AdamOpt(Optimize):
         self.perturbation_decay = config["perturbation_decay"]
         self.roughness_decay_type = config["roughness_decay_type"]
         if self.roughness_decay_type not in ["relative_perturbation", "absolute"]:
-            raise Exception("Roughness decay type should be either "
-                            "'relative_perturbation' or 'absolute'")
+            raise Exception(
+                "Roughness decay type should be either "
+                "'relative_perturbation' or 'absolute'"
+            )
         self.update_smoothing_length = config["update_smoothing_length"]
-        self.roughness_decay_smoothing_length = config["roughness_decay_smoothing_length"]
+        self.roughness_decay_smoothing_length = config[
+            "roughness_decay_smoothing_length"
+        ]
 
         # Gradient scaling factor to avoid issues with floats, this should be constant throughout the inversion
         self.grad_scaling_fac = config["gradient_scaling_factor"]
@@ -163,6 +183,7 @@ class AdamOpt(Optimize):
             self.task_dir,
             self.regularization_dir,
             self.smoothed_model_dir,
+            self.gradient_norm_dir,
         ]
 
         for folder in folders:
@@ -278,8 +299,7 @@ class AdamOpt(Optimize):
             )
             all_events = list(set(all_events) - set(blocked_data))
             n_events = self.comm.project.batch_size
-            doc_path = self.comm.project.paths["inversion_root"] / "OPTIMIZATION" / "GRADIENT_NORMS"
-            all_norms_path = doc_path / "all_norms.toml"
+            all_norms_path = self.gradient_norm_dir / "all_norms.toml"
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
                 unused_events = list(set(all_events).difference(set(norm_dict.keys())))
@@ -405,8 +425,8 @@ class AdamOpt(Optimize):
         max_raw_update = np.max(np.abs(raw_update))
         update = self.get_h5_data(self.smooth_update_path)
 
-        raw_update_norm = np.sqrt(np.sum(raw_update ** 2))
-        update_norm = np.sqrt(np.sum(update ** 2))
+        raw_update_norm = np.sqrt(np.sum(raw_update**2))
+        update_norm = np.sqrt(np.sum(update**2))
 
         if np.sum(np.isnan(update)) > 1:
             raise Exception(
@@ -425,19 +445,24 @@ class AdamOpt(Optimize):
         update_scaling_fac_alpha = self.alpha / max_upd
         update_scaling_fac_peak = max_raw_update / max_upd
 
-        update_scaling_fac = min(update_scaling_fac_norm,
-                                 update_scaling_fac_alpha,
-                                 update_scaling_fac_peak)
-        print("Update scaling factor norm:", update_scaling_fac_norm,
-              "Update scaling factor alpha:", update_scaling_fac_alpha,
-              "Update scaling factor peak:", update_scaling_fac_peak,
-              )
+        update_scaling_fac = min(
+            update_scaling_fac_norm, update_scaling_fac_alpha, update_scaling_fac_peak
+        )
+        print(
+            "Update scaling factor norm:",
+            update_scaling_fac_norm,
+            "Update scaling factor alpha:",
+            update_scaling_fac_alpha,
+            "Update scaling factor peak:",
+            update_scaling_fac_peak,
+        )
 
-        self.print(f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
-              f"New maximum update is: {max_upd * update_scaling_fac}")
+        self.print(
+            f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
+            f"New maximum update is: {max_upd * update_scaling_fac}"
+        )
 
         update *= update_scaling_fac
-
 
         # normalise theta and apply update
         theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
@@ -458,9 +483,11 @@ class AdamOpt(Optimize):
 
         # Make sure that the model is only updated where theta is non_zero
         theta_new = np.zeros_like(theta_0)
-        theta_new[theta_0 != 0] = \
-            theta_prev[theta_0 != 0] - update[theta_0 != 0] - \
-            self.perturbation_decay * theta_prev[theta_0 != 0]
+        theta_new[theta_0 != 0] = (
+            theta_prev[theta_0 != 0]
+            - update[theta_0 != 0]
+            - self.perturbation_decay * theta_prev[theta_0 != 0]
+        )
 
         # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
@@ -526,12 +553,13 @@ class AdamOpt(Optimize):
     def perform_smoothing(self):
         tasks = {}
         if max(self.update_smoothing_length) > 0.0:
-            tasks["smooth_raw_update"] = {"reference_model": str(
-                    self.comm.lasif.get_master_model()),
-                    "model_to_smooth": str(self.raw_update_path),
-                    "smoothing_lengths": self.update_smoothing_length,
-                    "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smooth_update_path)}
+            tasks["smooth_raw_update"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(self.raw_update_path),
+                "smoothing_lengths": self.update_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smooth_update_path),
+            }
 
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
@@ -543,28 +571,38 @@ class AdamOpt(Optimize):
             else:
                 model_to_smooth = os.path.join(
                     self.regularization_dir,
-                    f"relative_perturbation_{self.iteration_name}")
+                    f"relative_perturbation_{self.iteration_name}.h5",
+                )
                 shutil.copy(self.model_path, model_to_smooth)
 
                 # relative perturbation = (latest - start) / start
                 theta_prev = self.get_h5_data(self.model_path)
-                theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
+                theta_0 = self.get_h5_data(
+                    self._get_path_for_iteration(0, self.model_path)
+                )
 
-                theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                theta_prev[theta_0 != 0] = (
+                    theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                )
                 self.set_h5_data(model_to_smooth, theta_prev)
 
-            tasks["roughness_decay"] = {"reference_model": str(
-                    self.comm.lasif.get_master_model()),
-                    "model_to_smooth": str(model_to_smooth),
-                    "smoothing_lengths": self.roughness_decay_smoothing_length,
-                    "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smoothed_model_path)}
+            tasks["roughness_decay"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(model_to_smooth),
+                "smoothing_lengths": self.roughness_decay_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smoothed_model_path),
+            }
 
         if len(tasks.keys()) > 0:
             reg_helper = RegularizationHelper(
-                comm=self.comm, iteration_name=self.iteration_name,
-                tasks=tasks)
+                comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
+            )
             reg_helper.monitor_tasks()
+        else:
+            raise InversionsonError(
+                "We require some sort of smoothing in Adam Optimization"
+            )
 
     def compute_gradient(self, verbose):
         """
@@ -615,7 +653,8 @@ class AdamOpt(Optimize):
             )
             assert adjoint_helper.assert_all_simulations_retrieved()
             interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.events_in_iteration)
+                comm=self.comm, events=self.comm.project.events_in_iteration
+            )
             interp_listener.monitor_interpolations()
 
             grad_summer = GradientSummer(comm=self.comm)
@@ -624,7 +663,7 @@ class AdamOpt(Optimize):
                 output_location=self.raw_gradient_path,
                 batch_average=True,
                 sum_vpv_vph=True,
-                store_norms=True
+                store_norms=True,
             )
             self.task_dict["summing_completed"] = True
             self._update_task_file()
@@ -650,7 +689,7 @@ class AdamOpt(Optimize):
             self.task_dict["smooth_update_completed"] = True
             self._update_task_file()
         else:
-           self.print("Smooth updating already completed")
+            self.print("Smooth updating already completed")
 
         if not self.task_dict["iteration_finalized"]:
             self._finalize_iteration(verbose=verbose)
@@ -737,7 +776,7 @@ class AdamOpt(Optimize):
             "smooth_update_completed",
             "misfit_completed",
             "summing_completed",
-            "validated:"
+            "validated:",
         ]
         for path in paths:
             if path in self.task_dict.keys():

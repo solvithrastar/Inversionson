@@ -28,6 +28,7 @@ class GradientSummer(object):
         :param comm: Inversionson communicator
         """
         self.comm = comm
+        self.optimizer = self.comm.project.get_optimizer()
 
     def print(
         self,
@@ -129,16 +130,13 @@ class GradientSummer(object):
         self.print("Remote summing completed...")
 
         if store_norms:
-            doc_path = os.path.join(
-                self.comm.project.paths["inversion_root"], "OPTIMIZATION",
-                "GRADIENT_NORMS")
-            if not os.path.exists(doc_path):
-                os.mkdir(doc_path)
 
-            norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
+            norm_dict_toml = self.optimizer.gradient_norm_path
 
             hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
-            all_norms_path = os.path.join(doc_path, "all_norms.toml")
+            all_norms_path = os.path.join(
+                self.optimizer.gradient_norm_dir, "all_norms.toml"
+            )
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
             else:
