@@ -636,7 +636,8 @@ class SalvusFlowComponent(Component):
             gradient=False,
             interpolate_to=False,
             hpc_cluster=hpc_cluster,
-            already_interpolated=already_interpolated)
+            already_interpolated=already_interpolated,
+        )
 
         local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
             "domain_settings"
@@ -857,7 +858,9 @@ class SalvusFlowComponent(Component):
 
         return job.get_output_files()
 
-    def delete_stored_wavefields(self, iteration: str, sim_type: str):
+    def delete_stored_wavefields(
+        self, iteration: str, sim_type: str, event_name: str = None
+    ):
         """
         Delete all stored jobs for a certain simulation type of an iteration
 
@@ -865,12 +868,28 @@ class SalvusFlowComponent(Component):
         :type iteration: str
         :param sim_type: Type of simulation, forward or adjoint
         :type sim_type: str
+        :param event_name: Name of an event if only for a single event, this can
+            for example be used after a job fails and needs to be reposted.
+            Defaults to None
+        :type event_name: str, optional
         """
+        if event_name is not None:
+            try:
+                job = self.get_job(event=event_name, sim_type=sim_type)
+                job.delete()
+            except:
+                self.print(
+                    f"Could not delete job {sim_type} for event {event}",
+                    emoji_alias=":hankey:",
+                )
+            return
         events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
         non_val_tasks = ["gradient_interp", "hpc_processing"]
         for _i, event in enumerate(events_in_iteration):
-            if self.comm.project.is_validation_event(event) \
-                    and sim_type in non_val_tasks:
+            if (
+                self.comm.project.is_validation_event(event)
+                and sim_type in non_val_tasks
+            ):
                 continue
             try:
                 job = self.get_job(event=event, sim_type=sim_type)

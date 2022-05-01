@@ -119,9 +119,7 @@ class ForwardHelper(object):
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
 
-        self.comm.multi_mesh.prepare_forward(
-            event=event
-        )
+        self.comm.multi_mesh.prepare_forward(event=event)
 
         self.comm.project.update_iteration_toml()
 
@@ -483,9 +481,7 @@ class ForwardHelper(object):
                 event=event, window_set=self.comm.project.current_iteration
             )
             return
-        misfit = self.comm.lasif.misfit_quantification(
-            event, window_set=window_set
-        )
+        misfit = self.comm.lasif.misfit_quantification(event, window_set=window_set)
 
         self.comm.project.change_attribute(
             attribute=f'misfits["{event}"]', new_value=misfit
@@ -515,10 +511,7 @@ class ForwardHelper(object):
             )
             self.print(f"Event: {event}")
 
-        if (
-            self.comm.project.meshes == "multi-mesh"
-            or self.comm.project.hpc_processing
-        ):
+        if self.comm.project.meshes == "multi-mesh" or self.comm.project.hpc_processing:
             simulation_created_remotely = True
         else:
             simulation_created_remotely = False
@@ -585,9 +578,7 @@ class ForwardHelper(object):
                 "Quantify Misfit", color="magenta", line_above=True, emoji_alias=":zap:"
             )
 
-        self.__misfit_quantification(
-            event, window_set=window_set
-        )
+        self.__misfit_quantification(event, window_set=window_set)
 
     def dispatch_forward_simulations(self, verbose):
         """
@@ -646,6 +637,11 @@ class ForwardHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
+                self.comm.salvus_flow.delete_stored_wavefields(
+                    iteration=self.comm.project.current_iteration,
+                    sim_type="prepare_forward",
+                    event_name=event,
+                )
                 self.__prepare_forward(event=event)
             if len(vint_job_listener.events_retrieved_now) > 0:
                 self.print(
@@ -674,26 +670,35 @@ class ForwardHelper(object):
             comm=self.comm, job_type="forward", events=events
         )
         hpc_proc_job_listener = RemoteJobListener(
-            comm=self.comm, job_type="hpc_processing", events=
-            self.comm.project.non_val_events_in_iteration
+            comm=self.comm,
+            job_type="hpc_processing",
+            events=self.comm.project.non_val_events_in_iteration,
         )
         while True:
             for_job_listener.monitor_jobs()
             # submit remote jobs for the ones that did not get
             # submitted yet, although forwards are done.
             for event in for_job_listener.events_already_retrieved:
-                if self.comm.project.hpc_processing and not \
-                        self.comm.project.is_validation_event(event):
+                if (
+                    self.comm.project.hpc_processing
+                    and not self.comm.project.is_validation_event(event)
+                ):
                     self._launch_hpc_processing_job(event)
             for event in for_job_listener.events_retrieved_now:
                 # Still retrieve synthetics for validation data. NO QA
-                if not self.comm.project.hpc_processing or self.comm.project.is_validation_event(event):
+                if (
+                    not self.comm.project.hpc_processing
+                    or self.comm.project.is_validation_event(event)
+                ):
                     self.__retrieve_seismograms(event=event, verbose=verbose)
 
                 # Here I need to replace this with remote hpc job,
                 # then this actually needs be finished before any adjoint
                 # jobs are launched
-                if self.comm.project.hpc_processing and not self.comm.project.is_validation_event(event):
+                if (
+                    self.comm.project.hpc_processing
+                    and not self.comm.project.is_validation_event(event)
+                ):
                     self._launch_hpc_processing_job(event)
                 else:
                     self.__work_with_retrieved_seismograms(
@@ -715,6 +720,11 @@ class ForwardHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
+                self.comm.salvus_flow.delete_stored_wavefields(
+                    iteration=self.comm.project.current_iteration,
+                    sim_type="forward",
+                    event_name=event,
+                )
                 self.__run_forward_simulation(event=event)
             if len(for_job_listener.events_retrieved_now) > 0:
                 self.print(
@@ -745,6 +755,11 @@ class ForwardHelper(object):
                         new_value=False,
                     )
                     self.comm.project.update_iteration_toml()
+                    self.comm.salvus_flow.delete_stored_wavefields(
+                        iteration=self.comm.project.current_iteration,
+                        sim_type="hpc_processing",
+                        event_name=event,
+                    )
                     self._launch_hpc_processing_job(event)
                 if len(hpc_proc_job_listener.events_retrieved_now) + len(
                     hpc_proc_job_listener.events_already_retrieved
@@ -800,9 +815,7 @@ class AdjointHelper(object):
         for event in self.events:
             self.__dispatch_adjoint_simulation(event, verbose=verbose)
 
-    def process_gradients(
-        self, events=None, interpolate=False, verbose=False
-    ):
+    def process_gradients(self, events=None, interpolate=False, verbose=False):
         """
         Wait for adjoint simulations. As soon as one is finished,
         we do the appropriate processing of the gradient.
@@ -851,9 +864,7 @@ class AdjointHelper(object):
             job_info = self.comm.project.gradient_interp_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
-    def __process_gradients(
-        self, events: list, interpolate: bool, verbose: bool
-    ):
+    def __process_gradients(self, events: list, interpolate: bool, verbose: bool):
 
         adj_job_listener = RemoteJobListener(
             comm=self.comm, job_type="adjoint", events=events
@@ -888,6 +899,11 @@ class AdjointHelper(object):
                     new_value=False,
                 )
                 self.comm.project.update_iteration_toml()
+                self.comm.salvus_flow.delete_stored_wavefields(
+                    iteration=self.comm.project.current_iteration,
+                    sim_type="adjoint",
+                    event_name=event,
+                )
                 self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
 
             if interpolate:
@@ -905,6 +921,11 @@ class AdjointHelper(object):
                         new_value=False,
                     )
                     self.comm.project.update_iteration_toml()
+                    self.comm.salvus_flow.delete_stored_wavefields(
+                        iteration=self.comm.project.current_iteration,
+                        sim_type="gradient_interp",
+                        event_name=event,
+                    )
                     self.__dispatch_raw_gradient_interpolation(event)
                 interp_job_listener.events_retrieved_now = []
                 interp_job_listener.to_repost = []
@@ -983,10 +1004,7 @@ class AdjointHelper(object):
             )
             self.print(f"Event: {event}")
 
-        if (
-            self.comm.project.meshes == "multi-mesh"
-            or self.comm.project.hpc_processing
-        ):
+        if self.comm.project.meshes == "multi-mesh" or self.comm.project.hpc_processing:
             simulation_created_remotely = True
         else:
             simulation_created_remotely = False

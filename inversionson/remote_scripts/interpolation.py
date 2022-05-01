@@ -149,8 +149,9 @@ def move_nodal_field_to_gradient(mesh_info, field):
     print(f"Moved {field} to gradient")
 
 
-def create_simulation_object(mesh_info, source_info, receiver_info,
-                             simulation_info, multi_mesh):
+def create_simulation_object(
+    mesh_info, source_info, receiver_info, simulation_info, multi_mesh
+):
     """
     Create the simulation object remotely and write it into a dictionary toml file.
     This dictionary is then downloaded and used locally to create the simulation object,
@@ -313,6 +314,10 @@ if __name__ == "__main__":
             print("Meshed moved to longer term storage")
         if info["create_simulation_dict"]:
             print("Creating simulation object")
-            create_simulation_object(mesh_info, source_info,
-                                     receiver_info, simulation_info,
-                                     info["multi-mesh"])
+            create_simulation_object(
+                mesh_info,
+                source_info,
+                receiver_info,
+                simulation_info,
+                info["multi-mesh"],
+            )

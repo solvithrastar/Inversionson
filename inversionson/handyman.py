@@ -152,7 +152,9 @@ class HandyMan(object):
             self._move_to_initial_task_of_iteration()
             if verbose:
                 self._print(
-                    f"Ok, you're all set here. Your newest iteration is now {self.optimizer.iteration_name}. Thanks for the coffee!",
+                    f"Ok, you're all set here. Your newest iteration is now {self.optimizer.iteration_name}. \n"
+                    "There might be files on the remote machine for you to delete. "
+                    "That's above my paygrade right now. Thanks for the coffee!",
                     emoji_alias=[":coffee:", ":hatched_chick:", ":toolbox:"],
                     line_above=True,
                     line_below=True,
@@ -200,7 +202,9 @@ class HandyMan(object):
             if self.optimizer.iteration_name == iteration and self.task_number != 0:
                 self.go_back_one_iteration(verbose=False)
             self._print(
-                f"Ok, you're at the beginning of iteration {self.optimizer.iteration_name}. Thanks for the doughnut!",
+                f"Ok, you're at the beginning of iteration {self.optimizer.iteration_name}. \n"
+                "There might be files on the remote machine for you to delete. "
+                "That's above my paygrade right now. Thanks for the doughnut!",
                 emoji_alias=[":doughnut:", ":hatched_chick:", ":toolbox:"],
                 line_above=True,
                 line_below=True,
