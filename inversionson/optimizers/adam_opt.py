@@ -9,7 +9,6 @@ from inversionson import InversionsonError
 from inversionson.helpers.interpolation_helper import InterpolationListener
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
-from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.autoinverter_helpers import AdjointHelper
 
@@ -79,7 +78,9 @@ class AdamOpt(Optimize):
 
     @property
     def smoothed_model_path(self):
-        return self.smoothed_model_dir / f"smoothed_model_{self.iteration_number:05d}.h5"
+        return (
+            self.smoothed_model_dir / f"smoothed_model_{self.iteration_number:05d}.h5"
+        )
 
     @property
     def raw_update_path(self):
@@ -89,8 +90,18 @@ class AdamOpt(Optimize):
     def smooth_update_path(self):
         return self.smooth_update_dir / f"smooth_update_{self.iteration_number:05d}.h5"
 
-    def _model_for_iteration(self, iteration_number):
-        return self.model_dir / f"model_{iteration_number:05d}.h5"
+    @property
+    def relative_perturbation_path(self):
+        return (
+            self.regularization_dir
+            / f"relative_perturbations_{self.iteration_number:05d}.h5"
+        )
+
+    @property
+    def gradient_norm_path(self):
+        return (
+            self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
+        )
 
     def _write_initial_config(self):
         """
@@ -101,9 +112,9 @@ class AdamOpt(Optimize):
             "beta_1": 0.9,
             "beta_2": 0.999,
             "perturbation_decay": 0.001,
-            "roughness_decay_type": "relative_perturbation", # or absolute
+            "roughness_decay_type": "relative_perturbation",  # or absolute
             "update_smoothing_length": [0.5, 1.0, 1.0],
-            "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
+            "roughness_decay_smoothing_length": [0.0, 0.0, 0.0],
             "gradient_scaling_factor": 1e17,
             "epsilon": 1e-1,
             "initial_model": "",
@@ -135,10 +146,14 @@ class AdamOpt(Optimize):
         self.perturbation_decay = config["perturbation_decay"]
         self.roughness_decay_type = config["roughness_decay_type"]
         if self.roughness_decay_type not in ["relative_perturbation", "absolute"]:
-            raise Exception("Roughness decay type should be either "
-                            "'relative_perturbation' or 'absolute'")
+            raise Exception(
+                "Roughness decay type should be either "
+                "'relative_perturbation' or 'absolute'"
+            )
         self.update_smoothing_length = config["update_smoothing_length"]
-        self.roughness_decay_smoothing_length = config["roughness_decay_smoothing_length"]
+        self.roughness_decay_smoothing_length = config[
+            "roughness_decay_smoothing_length"
+        ]
 
         # Gradient scaling factor to avoid issues with floats, this should be constant throughout the inversion
         self.grad_scaling_fac = config["gradient_scaling_factor"]
@@ -155,6 +170,7 @@ class AdamOpt(Optimize):
         """
         folders = [
             self.model_dir,
+            self.average_model_dir,
             self.raw_gradient_dir,
             self.first_moment_dir,
             self.second_moment_dir,
@@ -163,6 +179,7 @@ class AdamOpt(Optimize):
             self.task_dir,
             self.regularization_dir,
             self.smoothed_model_dir,
+            self.gradient_norm_dir,
         ]
 
         for folder in folders:
@@ -187,7 +204,8 @@ class AdamOpt(Optimize):
         with open(self.task_path, "w+") as fh:
             toml.dump(task_dict, fh)
 
-    def _get_path_for_iteration(self, iteration_number, path):
+    @staticmethod
+    def _get_path_for_iteration(iteration_number, path):
         filename = path.stem
         separator = "_"
         reconstructed_filename = (
@@ -264,41 +282,6 @@ class AdamOpt(Optimize):
     def _update_task_file(self):
         with open(self.task_path, "w+") as fh:
             toml.dump(self.task_dict, fh)
-
-    def _pick_data_for_iteration(self, validation=False):
-        if validation:
-            events = self.comm.project.validation_dataset
-        else:
-            all_events = self.comm.lasif.list_events()
-            blocked_data = list(
-                set(
-                    self.comm.project.validation_dataset
-                    + self.comm.project.test_dataset
-                )
-            )
-            all_events = list(set(all_events) - set(blocked_data))
-            n_events = self.comm.project.batch_size
-            doc_path = self.comm.project.paths["inversion_root"] / "OPTIMIZATION" / "GRADIENT_NORMS"
-            all_norms_path = doc_path / "all_norms.toml"
-            if os.path.exists(all_norms_path):
-                norm_dict = toml.load(all_norms_path)
-                unused_events = list(set(all_events).difference(set(norm_dict.keys())))
-                list_of_vals = np.array(list(norm_dict.values()))
-                max_norm = np.max(list_of_vals)
-
-                # Assign high norm values to unused events to make them
-                # more likely to be chosen
-                for event in unused_events:
-                    norm_dict[event] = max_norm
-                events = get_random_mitchell_subset(
-                    self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
-                )
-            else:
-                events = get_random_mitchell_subset(
-                    self.comm.lasif.lasif_comm, n_events, all_events
-                )
-
-        return events
 
     def _compute_raw_update(self):
         """Computes the raw update"""
@@ -405,8 +388,8 @@ class AdamOpt(Optimize):
         max_raw_update = np.max(np.abs(raw_update))
         update = self.get_h5_data(self.smooth_update_path)
 
-        raw_update_norm = np.sqrt(np.sum(raw_update ** 2))
-        update_norm = np.sqrt(np.sum(update ** 2))
+        raw_update_norm = np.sqrt(np.sum(raw_update**2))
+        update_norm = np.sqrt(np.sum(update**2))
 
         if np.sum(np.isnan(update)) > 1:
             raise Exception(
@@ -425,19 +408,24 @@ class AdamOpt(Optimize):
         update_scaling_fac_alpha = self.alpha / max_upd
         update_scaling_fac_peak = max_raw_update / max_upd
 
-        update_scaling_fac = min(update_scaling_fac_norm,
-                                 update_scaling_fac_alpha,
-                                 update_scaling_fac_peak)
-        print("Update scaling factor norm:", update_scaling_fac_norm,
-              "Update scaling factor alpha:", update_scaling_fac_alpha,
-              "Update scaling factor peak:", update_scaling_fac_peak,
-              )
+        update_scaling_fac = min(
+            update_scaling_fac_norm, update_scaling_fac_alpha, update_scaling_fac_peak
+        )
+        print(
+            "Update scaling factor norm:",
+            update_scaling_fac_norm,
+            "Update scaling factor alpha:",
+            update_scaling_fac_alpha,
+            "Update scaling factor peak:",
+            update_scaling_fac_peak,
+        )
 
-        self.print(f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
-              f"New maximum update is: {max_upd * update_scaling_fac}")
+        self.print(
+            f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
+            f"New maximum update is: {max_upd * update_scaling_fac}"
+        )
 
         update *= update_scaling_fac
-
 
         # normalise theta and apply update
         theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
@@ -458,9 +446,11 @@ class AdamOpt(Optimize):
 
         # Make sure that the model is only updated where theta is non_zero
         theta_new = np.zeros_like(theta_0)
-        theta_new[theta_0 != 0] = \
-            theta_prev[theta_0 != 0] - update[theta_0 != 0] - \
-            self.perturbation_decay * theta_prev[theta_0 != 0]
+        theta_new[theta_0 != 0] = (
+            theta_prev[theta_0 != 0]
+            - update[theta_0 != 0]
+            - self.perturbation_decay * theta_prev[theta_0 != 0]
+        )
 
         # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
@@ -473,14 +463,14 @@ class AdamOpt(Optimize):
             theta_physical,
         )
 
-    def _finalize_iteration(self, verbose: bool):
+    def _finalize_iteration(self):
         """
         Here we can do some documentation. Maybe just call a base function for that
         """
         super().delete_remote_files()
         self.comm.storyteller.document_task(task="adam_documentation")
 
-    def _update_model(self, verbose: bool, raw=True, smooth=False):
+    def _update_model(self, raw=True, smooth=False):
         """
         Apply an Adam style update to the model
         """
@@ -502,36 +492,25 @@ class AdamOpt(Optimize):
     def ready_for_validation(self) -> bool:
         return "validated" in self.task_dict.keys() and not self.task_dict["validated"]
 
-    def prepare_iteration(self, validation=False):
-        if validation:
-            it_name = f"validation_{self.iteration_name}"
-        else:
-            it_name = self.iteration_name
-
-        move_meshes = "00000" in it_name if validation else True
-        self.comm.project.change_attribute("current_iteration", it_name)
-
-        if self.comm.lasif.has_iteration(it_name):
-            raise InversionsonError(f"Iteration {it_name} already exists")
-
+    def prepare_iteration(self):
+        """Prepare the iteration"""
+        self.comm.project.change_attribute("current_iteration", self.iteration_name)
         self.print("Picking data for iteration")
-        events = self._pick_data_for_iteration(validation=validation)
+        events = self._pick_data_for_iteration()
 
-        super().prepare_iteration(
-            it_name=it_name, move_meshes=move_meshes, events=events
-        )
-        if not validation:
-            self.finish_task()
+        super().prepare_iteration(it_name=self.iteration_name, events=events)
+        self.finish_task()
 
     def perform_smoothing(self):
         tasks = {}
         if max(self.update_smoothing_length) > 0.0:
-            tasks["smooth_raw_update"] = {"reference_model": str(
-                    self.comm.lasif.get_master_model()),
-                    "model_to_smooth": str(self.raw_update_path),
-                    "smoothing_lengths": self.update_smoothing_length,
-                    "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smooth_update_path)}
+            tasks["smooth_raw_update"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(self.raw_update_path),
+                "smoothing_lengths": self.update_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smooth_update_path),
+            }
 
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
@@ -543,30 +522,40 @@ class AdamOpt(Optimize):
             else:
                 model_to_smooth = os.path.join(
                     self.regularization_dir,
-                    f"relative_perturbation_{self.iteration_name}")
+                    f"relative_perturbation_{self.iteration_name}.h5",
+                )
                 shutil.copy(self.model_path, model_to_smooth)
 
                 # relative perturbation = (latest - start) / start
                 theta_prev = self.get_h5_data(self.model_path)
-                theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
+                theta_0 = self.get_h5_data(
+                    self._get_path_for_iteration(0, self.model_path)
+                )
 
-                theta_prev[theta_0 != 0] = theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                theta_prev[theta_0 != 0] = (
+                    theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                )
                 self.set_h5_data(model_to_smooth, theta_prev)
 
-            tasks["roughness_decay"] = {"reference_model": str(
-                    self.comm.lasif.get_master_model()),
-                    "model_to_smooth": str(model_to_smooth),
-                    "smoothing_lengths": self.roughness_decay_smoothing_length,
-                    "smoothing_parameters": self.parameters,
-                    "output_location": str(self.smoothed_model_path)}
+            tasks["roughness_decay"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(model_to_smooth),
+                "smoothing_lengths": self.roughness_decay_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smoothed_model_path),
+            }
 
         if len(tasks.keys()) > 0:
             reg_helper = RegularizationHelper(
-                comm=self.comm, iteration_name=self.iteration_name,
-                tasks=tasks)
+                comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
+            )
             reg_helper.monitor_tasks()
+        else:
+            raise InversionsonError(
+                "We require some sort of smoothing in Adam Optimization"
+            )
 
-    def compute_gradient(self, verbose):
+    def compute_gradient(self, verbose=False):
         """
         This task does forward simulations and then gradient computations straight
         afterwards
@@ -593,7 +582,7 @@ class AdamOpt(Optimize):
             self.print("Gradients already computed")
         self.finish_task()
 
-    def update_model(self, verbose):
+    def update_model(self, verbose=False):
         """
         This task takes the raw gradient and does all the regularisation and everything
         to update the model.
@@ -606,25 +595,27 @@ class AdamOpt(Optimize):
 
         if not self.task_dict["summing_completed"]:
             adjoint_helper = AdjointHelper(
-                comm=self.comm, events=self.comm.project.events_in_iteration
+                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
             )
+            # Dispatch anything that may have failed
+            adjoint_helper.dispatch_adjoint_simulations()
             adjoint_helper.process_gradients(
                 interpolate=interpolate,
-                smooth_individual=False,
                 verbose=verbose,
             )
             assert adjoint_helper.assert_all_simulations_retrieved()
             interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.events_in_iteration)
+                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
+            )
             interp_listener.monitor_interpolations()
 
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(
-                events=self.comm.project.events_in_iteration,
+                events=self.comm.project.non_val_events_in_iteration,
                 output_location=self.raw_gradient_path,
                 batch_average=True,
                 sum_vpv_vph=True,
-                store_norms=True
+                store_norms=True,
             )
             self.task_dict["summing_completed"] = True
             self._update_task_file()
@@ -632,7 +623,7 @@ class AdamOpt(Optimize):
             self.print("Summing already done")
 
         if not self.task_dict["raw_update_completed"]:
-            self._update_model(raw=True, smooth=False, verbose=verbose)
+            self._update_model(raw=True, smooth=False)
             self.task_dict["raw_update_completed"] = True
             self._update_task_file()
         else:
@@ -646,44 +637,20 @@ class AdamOpt(Optimize):
             self.print("Smoothing already done")
 
         if not self.task_dict["smooth_update_completed"]:
-            self._update_model(raw=False, smooth=True, verbose=verbose)
+            self._update_model(raw=False, smooth=True)
             self.task_dict["smooth_update_completed"] = True
             self._update_task_file()
         else:
-           self.print("Smooth updating already completed")
+            self.print("Smooth updating already completed")
 
         if not self.task_dict["iteration_finalized"]:
-            self._finalize_iteration(verbose=verbose)
+            self._finalize_iteration()
             self.task_dict["iteration_finalized"] = True
             self._update_task_file()
         else:
             self.print("Iteration already finalized")
 
         self.finish_task()
-
-    def do_validation_iteration(self, verbose=False):
-        """
-        This function computes the validation misfits.
-        """
-        if self.task_dict["validated"]:
-            self.print("Validation misfit already computed")
-            return
-
-        it_name = f"validation_{self.iteration_name}"
-        if not self.comm.lasif.has_iteration(it_name):
-            self.prepare_iteration(validation=True)
-        else:
-            self.comm.project.get_iteration_attributes(validation=True)
-        super().compute_validation_misfit(verbose=verbose)
-        iteration = self.comm.project.current_iteration
-        iteration = iteration[11:]
-        self.comm.project.change_attribute(
-            attribute="current_iteration", new_value=iteration
-        )
-        self.comm.project.get_iteration_attributes()
-
-        self.task_dict["validated"] = True
-        self._update_task_file()
 
     def perform_task(self, verbose=False):
         """
@@ -698,21 +665,21 @@ class AdamOpt(Optimize):
                     self.print(
                         f"Iteration {self.iteration_name} exists. Will load its attributes"
                     )
-                    self.comm.project.get_iteration_attributes(validation=False)
+                    self.comm.project.get_iteration_attributes()
                     self.finish_task()
                 else:
-                    self.prepare_iteration(validation=False)
+                    self.prepare_iteration()
             else:
                 self.print("Iteration already prepared")
         elif task_name == "compute_gradient":
             if not self.task_dict["finished"]:
-                self.comm.project.get_iteration_attributes(validation=False)
+                self.comm.project.get_iteration_attributes()
                 self.compute_gradient(verbose=verbose)
             else:
                 self.print("Gradient already computed")
         elif task_name == "update_model":
             if not self.task_dict["finished"]:
-                self.comm.project.get_iteration_attributes(validation=False)
+                self.comm.project.get_iteration_attributes()
                 self.update_model(verbose=verbose)
             else:
                 self.print("Model already updated")
@@ -737,7 +704,7 @@ class AdamOpt(Optimize):
             "smooth_update_completed",
             "misfit_completed",
             "summing_completed",
-            "validated:"
+            "validated:",
         ]
         for path in paths:
             if path in self.task_dict.keys():

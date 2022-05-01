@@ -151,14 +151,7 @@ class LasifComponent(Component):
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        if (
-            "validation" in iteration
-            and "it0000" not in iteration
-            and "00000" not in iteration
-        ):
-            validation = True
-        if iteration in ["validation_it0000_model", "validation_model_00000"]:
-            iteration = iteration[11:]  # Just use the same as the initial model
+
         if gradient:
             if interpolate_to:
                 mesh = (
@@ -177,7 +170,7 @@ class LasifComponent(Component):
             if already_interpolated:
                 job = self.comm.salvus_flow.get_job(
                     event=event,
-                    sim_type="model_interp",
+                    sim_type="prepare_forward",
                     iteration=iteration,
                 )
                 mesh = job.stdout_path.parent / "output" / "mesh.h5"
@@ -516,81 +509,6 @@ class LasifComponent(Component):
                 / "stf.h5",
             )
 
-    def plot_iteration_events(self) -> str:
-        """
-        Return the path to a file containing an illustration of
-        event distribution for the current iteration
-
-        :return: Path to figure
-        :rtype: str
-        """
-        lapi.plot_events(
-            self.lasif_comm,
-            type_of_plot="map",
-            iteration=self.comm.project.current_iteration,
-            save=True,
-        )
-        filename = os.path.join(
-            self.lasif_root,
-            "OUTPUT",
-            "event_plots",
-            "events",
-            f"events_{self.comm.project.current_iteration}.png",
-        )
-        return filename
-
-    def plot_event_misfits(self, event: str, iteration: str = "current") -> str:
-        """
-        Make a plot where stations are color coded by their respective misfits
-
-        :param event: Name of event
-        :type event: str
-        :param iteration: Name of iteration, defaults to "current"
-        :type iteration: str, optional
-        :return: Path to figure
-        :rtype: str
-        """
-        if iteration == "current":
-            iteration = self.comm.project.current_iteration
-
-        lapi.plot_station_misfits(
-            self.lasif_comm,
-            event=event,
-            iteration=iteration,
-            save=True,
-        )
-        filename = os.path.join(
-            self.lasif_root,
-            "OUTPUT",
-            "event_plots",
-            "events",
-            f"misfit_{event}_{iteration}.png",
-        )
-        return filename
-
-    def plot_iteration_raydensity(self) -> str:
-        """
-        Return the path to a file containing an illustration of
-        event distribution for the current iteration
-
-        :return: Path to figure
-        :rtype: str
-        """
-        lapi.plot_raydensity(
-            self.lasif_comm,
-            iteration=self.comm.project.current_iteration,
-            plot_stations=True,
-            save=True,
-        )
-        filename = os.path.join(
-            self.lasif_root,
-            "OUTPUT",
-            "raydensity_plots",
-            f"ITERATION_{self.comm.project.current_iteration}",
-            "raydensity.png",
-        )
-        return filename
-
     def get_master_model(self) -> str:
         """
         Get the path to the inversion grid used in inversion
@@ -660,7 +578,7 @@ class LasifComponent(Component):
             if "validation" in iteration and "it0000" and "00000" not in iteration:
                 optimizer = self.comm.project.get_optimizer()
                 new_it_num = optimizer.iteration_number
-                old_it_num = new_it_num - self.comm.project.when_to_validate + 1
+                old_it_num = new_it_num - self.comm.project.val_it_interval + 1
                 return os.path.join(
                     self.comm.salvus_mesher.average_meshes,
                     f"it_{old_it_num}_to_{new_it_num}",
@@ -697,15 +615,13 @@ class LasifComponent(Component):
         lapi.compute_station_weights(self.lasif_comm, weight_set=event, events=[event])
 
     def misfit_quantification(
-        self, event: str, mpi=False, n=4, validation=False, window_set=None
+        self, event: str, validation=False, window_set=None
     ):
         """
         Quantify misfit and calculate adjoint sources.
 
         :param event: Name of event
         :type event: str
-        :param mpi: If you want to run with MPI, default True
-        :type mpi: bool
         :param n: How many ranks to run on
         :type n: int
         :param validation: Whether this is for a validation set, default False
@@ -776,9 +692,6 @@ class LasifComponent(Component):
                 / "misfits.toml"
             )
             misfit = toml.load(misfit_toml_path)[event]["event_misfit"]
-            # misfit = self.lasif_comm.adj_sources.get_misfit_for_event(
-            #     event=event, weight_set_name=event, iteration=iteration
-            # )
         else:
             misfit = self.comm.project.misfits[event]
             self.print(
@@ -802,48 +715,6 @@ class LasifComponent(Component):
         adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
         it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
         return os.path.join(adj_sources, it_name, event, adjoint_filename)
-
-    def write_misfit(self, events=None, details=None):  # Not used currently
-        """
-        Write the iteration's misfit into a toml file.
-        TODO: I might want to add this to make it do more statistics
-        """
-        self.print("Writing Misfit")
-        iteration = self.comm.project.current_iteration
-        misfit_path = os.path.join(
-            self.lasif_root,
-            "ITERATIONS",
-            f"ITERATION_{iteration}",
-            "misfits.toml",
-        )
-        if os.path.exists(misfit_path):
-            if details and "compute additional" in details:
-                # Reason for this that I have to append to path in this
-                # specific case.
-                self.print("Misfit file exists, will append additional events")
-                # Need to see if the misfit is already in there or not
-                misfits = toml.load(misfit_path)
-                append = False
-                for event in events:
-                    if event in misfits.keys():
-                        if misfits[event]["event_misfit"] == 0.0:
-                            append = True
-                    else:
-                        append = True
-                if not append:
-                    self.print(
-                        "Misfit already exists. If you want it rewritten, "
-                        "delete the misfit toml in the lasif_project"
-                    )
-                    return
-                self.print("Misfit file exists, will append additional events")
-            else:
-                self.print(
-                    "Misfit already exists. If you want it rewritten, "
-                    "delete the misfit toml in the lasif_project"
-                )
-                return
-        lapi.write_misfit(self.lasif_comm, iteration=iteration, events=events)
 
     def _already_processed(self, event: str) -> bool:
         """
@@ -992,37 +863,3 @@ class LasifComponent(Component):
             os.mkdir(event_folder)
 
         return os.path.join(event_folder, "receivers.h5")
-
-    def get_list_of_iterations(
-        self, include_validation=False, only_validation=False
-    ) -> list:
-        """
-        Filter the list of iterations
-
-        :return: List of validation iterations
-        :rtype: list
-        """
-        iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
-        if only_validation:
-            return [x for x in iterations if "validation" in x]
-        if not include_validation:
-            return [x for x in iterations if "validation" not in x]
-        return iterations
-
-    def get_validation_iteration_numbers(self) -> dict:
-        """
-        List lasif iterations, give dict of them with numbers as keys
-
-        :return: [description]
-        :rtype: dict
-        """
-        iterations = self.get_list_of_iterations(only_validation=True)
-        iteration_dict = {}
-        for iteration in iterations:
-            strip_validation = iteration[11:]
-            if strip_validation == "it0000_model":
-                iteration_dict[-1] = iteration
-            else:
-                iteration_dict[int(strip_validation[2:6])] = iteration
-
-        return iteration_dict

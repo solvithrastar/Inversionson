@@ -10,8 +10,12 @@ from pathlib import Path
 import os
 import glob
 import h5py
+import pathlib
 import toml
+import numpy as np
 from typing import List, Union
+
+from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from inversionson.helpers import autoinverter_helpers as helpers
@@ -52,9 +56,11 @@ class Optimize(object):
         # These folders are universally needed
         self.model_dir = self.opt_folder / "MODELS"
         self.task_dir = self.opt_folder / "TASKS"
+        self.average_model_dir = self.opt_folder / "AVERAGE_MODELS"
         self.raw_gradient_dir = self.opt_folder / "RAW_GRADIENTS"
         self.raw_update_dir = self.opt_folder / "RAW_UPDATES"
         self.regularization_dir = self.opt_folder / "REGULARIZATION"
+        self.gradient_norm_dir = self.opt_folder / "GRADIENT_NORMS"
 
         # Do any folder initilization for the derived classes
         self._initialize_derived_class_folders()
@@ -109,6 +115,13 @@ class Optimize(object):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
+
+    @staticmethod
+    def _get_path_for_iteration(iteration_number, path):
+        pass
+
+    def _model_for_iteration(self, iteration_number):
+        return self.model_dir / f"model_{iteration_number:05d}.h5"
 
     @_abstractmethod
     def _initialize_derived_class_folders(self):
@@ -179,6 +192,12 @@ class Optimize(object):
     def model_path(self):
         return self.model_dir / f"model_{self.iteration_number:05d}.h5"
 
+    @property
+    def regularization_job_toml(self):
+        return (
+            self.regularization_dir / f"regularization_{self.iteration_number:05}.toml"
+        )
+
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
         if len(models) == 0:
@@ -188,13 +207,47 @@ class Optimize(object):
             iteration_numbers.append(int(model.split(".")[0].split("_")[-1]))
         return iteration_numbers
 
+    def _pick_data_for_iteration(self):
+        all_events = self.comm.lasif.list_events()
+        blocked_data = list(
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
+        )
+        all_events = list(set(all_events) - set(blocked_data))
+        n_events = self.comm.project.batch_size
+        all_norms_path = self.gradient_norm_dir / "all_norms.toml"
+        if os.path.exists(all_norms_path):
+            norm_dict = toml.load(all_norms_path)
+            unused_events = list(set(all_events).difference(set(norm_dict.keys())))
+            list_of_vals = np.array(list(norm_dict.values()))
+            max_norm = np.max(list_of_vals)
+
+            # Assign high norm values to unused events to make them
+            # more likely to be chosen
+            for event in unused_events:
+                norm_dict[event] = max_norm
+            events = get_random_mitchell_subset(
+                self.comm.lasif.lasif_comm, n_events, all_events, norm_dict
+            )
+        else:
+            events = get_random_mitchell_subset(
+                self.comm.lasif.lasif_comm, n_events, all_events
+            )
+
+        if self.time_for_validation():
+            print(
+                "This is a validation iteration. Will add validation events to the iteration"
+            )
+            events += self.comm.project.validation_dataset
+
+        return events
+
     def delete_remote_files(self):
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
 
         if self.comm.project.meshes == "multi-mesh":
             self.comm.salvus_flow.delete_stored_wavefields(
-                self.iteration_name, "model_interp"
+                self.iteration_name, "prepare_forward"
             )
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "gradient_interp"
@@ -206,61 +259,64 @@ class Optimize(object):
 
     def prepare_iteration(
         self,
-        it_name: str = None,
-        move_meshes: bool = False,
-        first_try: bool = True,
+        it_name: str,
         events: List[str] = None,
     ):
         """
-        A base function for preparing iterations
+        Prepare iteration.
 
-        :param it_name: Name of iteration, will use autoname if None is passed, defaults to None
+        :param it_name: Name of iteration
         :type it_name: "str", optional
-        :param move_meshes: Do meshes need to be moved to remote, defaults to False
-        :type move_meshes: bool, optional
-        :param first_try: Only change in trust region methods if region is being reduced, defaults to True
-        :type first_try: bool, optional
         :param events: Pass a list of events if you want them to be predefined, defaults to None
         :type events: List[str], optional
         """
-        it_name = self.iteration_name if it_name is None else it_name
         self.comm.project.change_attribute("current_iteration", it_name)
-        validation = "validation" in it_name
-
+        print("Preparing iteration for", it_name)
         if self.comm.lasif.has_iteration(it_name):
             raise InversionsonError(f"Iteration {it_name} already exists")
 
-        if events is None and not validation:
-            events = self.comm.lasif.list_events()
-        elif events is None and validation:
-            events = self.comm.project.validation_dataset
         self.comm.lasif.set_up_iteration(it_name, events)
         self.comm.project.create_iteration_toml(it_name)
-        self.comm.project.get_iteration_attributes(validation)
+        self.comm.project.get_iteration_attributes()
 
-        if self.comm.project.meshes == "multi-mesh" and move_meshes:
-            if self.comm.project.interpolation_mode == "remote":
-                interp_site = get_site(self.comm.project.interpolation_site)
-            else:
-                interp_site = None
-            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
-            self.print(
-                f"Moving mesh to {self.comm.project.interpolation_site}",
-                emoji_alias=":package:",
-            )
-            self.comm.lasif.move_mesh(
-                event=None, iteration=it_name, hpc_cluster=interp_site
-            )
-        elif self.comm.project.meshes == "mono-mesh" and move_meshes:
-            self.print(
-                f"Moving mesh to {self.comm.project.interpolation_site}",
-                emoji_alias=":package:",
-            )
-            self.comm.lasif.move_mesh(event=None, iteration=it_name)
+        optimizer = self.comm.project.get_optimizer()
+        model = optimizer.model_path
+
+        # WIP no average models being uploaded yet.
+        remote_mesh_file = (
+            self.comm.project.remote_mesh_dir / "models" / it_name / "mesh.h5"
+        )
+        hpc_cluster = get_site(self.comm.project.site_name)
+        if not hpc_cluster.remote_exists(remote_mesh_file.parent):
+            hpc_cluster.remote_mkdir(remote_mesh_file.parent)
         self.print(
-            f"Uploading source time function to {self.comm.project.site_name}",
+            f"Moving mesh to {self.comm.project.interpolation_site}",
             emoji_alias=":package:",
         )
+        hpc_cluster.remote_put(model, remote_mesh_file)
+
+        if self.time_for_validation() and self.comm.project.use_model_averaging\
+                and self.iteration_number > 0:
+            remote_avg_mesh_file = (
+                    self.comm.project.remote_mesh_dir / "average_models" / it_name / "mesh.h5"
+            )
+            # this enters when the iteration number is 4
+            print("writing average validation model")
+            # 4 - 5 + 1 = 0
+            starting_it_number = self.iteration_number - self.comm.project.val_it_interval + 1
+            self.write_average_model(starting_it_number,
+                                     self.iteration_number)
+            self.print(
+                f"Moving average_model to {self.comm.project.interpolation_site}",
+                emoji_alias=":package:",
+            )
+            if not hpc_cluster.remote_exists(remote_avg_mesh_file.parent):
+                hpc_cluster.remote_mkdir(remote_avg_mesh_file.parent)
+            hpc_cluster.remote_put(
+                self.get_average_model_name(starting_it_number, self.iteration_number),
+                remote_avg_mesh_file
+            )
+
         self.comm.lasif.upload_stf(iteration=it_name)
 
     def run_forward(self, verbose: bool = False):
@@ -284,33 +340,28 @@ class Optimize(object):
         """
         return True
 
-    def compute_validation_misfit(self, verbose: bool = False):
-        """
-        Compute misfits for validation dataset
-        """
-        if verbose:
-            print("Creating average mesh for validation")
-        if self.iteration_number != 0:
-            to_it = self.iteration_number
-            from_it = self.iteration_number - self.comm.project.when_to_validate + 1
-            self.comm.salvus_mesher.get_average_model(iteration_range=(from_it, to_it))
-            self.comm.multi_mesh.add_fields_for_interpolation_to_mesh()
-            if self.comm.project.interpolation_mode == "remote":
-                self.comm.lasif.move_mesh(
-                    event=None,
-                    iteration=None,
-                    validation=True,
-                )
-        val_forward_helper = helpers.ForwardHelper(
-            self.comm, self.comm.project.validation_dataset
-        )
-        assert "validation_" in self.comm.project.current_iteration
-        val_forward_helper.dispatch_forward_simulations(verbose=verbose)
-        assert val_forward_helper.assert_all_simulations_dispatched()
-        val_forward_helper.retrieve_forward_simulations(
-            adjoint=False, verbose=verbose, validation=True
-        )
-        val_forward_helper.report_total_validation_misfit()
+    def get_remote_model_path(self, iteration=None, model_average=False):
+        """ Gets the path to storage location of the remote
+        model path. """
+        if iteration is None:
+            iteration = self.comm.project.current_iteration
+        remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+
+        if model_average:
+            return remote_mesh_dir / "average_models" / iteration / "mesh.h5"
+        else:
+            return remote_mesh_dir / "models" / iteration / "mesh.h5"
+
+    def time_for_validation(self) -> bool:
+        validation = False
+        if self.comm.project.val_it_interval == 0:
+            return False
+        if self.iteration_number == 0:
+            validation = True
+        if (self.iteration_number + 1) % self.comm.project.val_it_interval == 0:
+            validation = True
+
+        return validation
 
     def compute_misfit(
         self,
@@ -347,12 +398,18 @@ class Optimize(object):
         :param verbose: Do we want the details?, defaults to False
         :type verbose: bool, optional
         """
-
         self.adjoint_helper = helpers.AdjointHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
+            comm=self.comm, events=self.comm.project.non_val_events_in_iteration
         )
         self.adjoint_helper.dispatch_adjoint_simulations(verbose=verbose)
         assert self.adjoint_helper.assert_all_simulations_dispatched()
+
+        # At this stage the validation misfit is definitely completed
+        # so report it
+        if self.time_for_validation():
+            self.comm.storyteller.report_validation_misfit(
+                iteration=self.iteration_name, event=None, total_sum=True
+            )
 
     def regularization(self):
         """
@@ -365,6 +422,38 @@ class Optimize(object):
         Not yet implemented for the standard optimization.
         """
         pass
+
+    def get_average_model_name(self, first_iteration_number=None,
+                               last_iteration_number=None):
+        """
+        Gets the filename of the average model.
+        """
+        if first_iteration_number is None:
+            first_iteration_number = self.iteration_number - \
+                                     self.comm.project.val_it_interval + 1
+        if last_iteration_number is None:
+            self.iteration_number
+        filename = f"average_model_{first_iteration_number}_to_{last_iteration_number}.h5"
+        return os.path.join(self.average_model_dir, filename)
+
+    def write_average_model(self, first_iteration_number, last_iteration_number):
+        """
+        Writes an average over the models from the first to last iteration
+        number. Needs a minimum of 2 iterations to work and make sense.
+        """
+        import shutil
+        total_num_models = 1
+        average_model = self.get_h5_data(self._model_for_iteration(first_iteration_number))
+
+        for i in range(first_iteration_number+1, last_iteration_number+1):
+            average_model += self.get_h5_data(self._model_for_iteration(i))
+            total_num_models += 1
+        average_model /= total_num_models
+        avg_model_name = self.get_average_model_name(first_iteration_number,
+                                                last_iteration_number)
+        shutil.copy(self._model_for_iteration(first_iteration_number),
+                    avg_model_name)
+        self.set_h5_data(filename=avg_model_name, data=average_model)
 
     def get_parameter_indices(self, filename):
         """Get parameter indices in h5 file"""

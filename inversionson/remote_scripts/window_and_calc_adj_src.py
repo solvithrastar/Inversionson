@@ -146,7 +146,10 @@ def get_station_weights(list_of_stations, processed_data,
     :param list_of_stations: List of windows
     :type list_of_stations: List
     """
-
+    weight_set = {}
+    if len(list_of_stations) == 1:
+        weight_set[list_of_stations[0]]["station_weight"] = 1.0
+        return weight_set
     print("Getting station weights...")
     list_of_recs = build_or_get_receiver_info(receiver_json_path, processed_data)
     coordinates = {}
@@ -206,7 +209,6 @@ def run(info):
     # READ INPUT DICT
     processed_filename = info["processed_filename"]
     synthetic_filename = info["synthetic_filename"]
-    window_set_name = info["window_set_name"]
     event_name = info["event_name"]
     delta = info["delta"]
     npts = info["npts"]
@@ -448,7 +450,6 @@ def run(info):
                     min_period=minimum_period,
                     max_period=maximum_period,
                     adj_src_type=ad_src_type,
-                    window_set=window_set_name,
                     taper_ratio=0.15,
                     taper_type="cosine",
                     envelope_scaling=env_scaling,

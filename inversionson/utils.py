@@ -29,7 +29,7 @@ def _print(
     )
 
 
-def sleep_or_process(comm):
+def sleep_or_process(comm, color=None, emoji_alias=None):
     """
     This functions tries to process a random unprocessed event
     or sleeps if all are processed.
@@ -48,7 +48,8 @@ def sleep_or_process(comm):
         _print(
             comm,
             f"Waiting {comm.project.sleep_time_in_s} seconds before trying again",
-            emoji_alias=":hourglass:",
+            emoji_alias=":hourglass:" if emoji_alias is None else emoji_alias,
+            color=color,
         )
         time.sleep(comm.project.sleep_time_in_s)
 

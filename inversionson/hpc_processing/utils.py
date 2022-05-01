@@ -2,6 +2,38 @@ import obspy
 import pyasdf
 import os
 import json
+import math
+
+
+def elliptic_to_geocentric_latitude(
+    lat: float, axis_a: float = 6378137.0, axis_b: float = 6356752.314245
+) -> float:
+    """
+    Convert latitudes defined on an ellipsoid to a geocentric one.
+    Based on Salvus Seismo
+
+    :param lat: Latitude to convert
+    :type lat: float
+    :param axis_a: Major axis of planet in m, defaults to 6378137.0
+    :type axis_a: float, optional
+    :param axis_b: Minor axis of planet in m, defaults to 6356752.314245
+    :type axis_b: float, optional
+    :return: Converted latitude
+    :rtype: float
+
+    >>> elliptic_to_geocentric_latitude(0.0)
+    0.0
+    >>> elliptic_to_geocentric_latitude(90.0)
+    90.0
+    >>> elliptic_to_geocentric_latitude(-90.0)
+    -90.0
+    """
+    _f = (axis_a - axis_b) / axis_a
+    E_2 = 2 * _f - _f**2
+    if abs(lat) < 1e-6 or abs(lat - 90) < 1e-6 or abs(lat + 90) < 1e-6:
+        return lat
+
+    return math.degrees(math.atan((1 - E_2) * math.tan(math.radians(lat))))
 
 
 def build_or_get_receiver_info(receiver_json_path, asdf_file_path):
@@ -31,7 +63,7 @@ def build_or_get_receiver_info(receiver_json_path, asdf_file_path):
                 lat = all_coords[station]["latitude"]
                 lon = all_coords[station]["longitude"]
 
-                rec["latitude"] = lat
+                rec["latitude"] = elliptic_to_geocentric_latitude(lat)
                 rec["longitude"] = lon
                 rec["network-code"] = net
                 rec["station-code"] = sta
@@ -42,7 +74,7 @@ def build_or_get_receiver_info(receiver_json_path, asdf_file_path):
         return all_recs
     else:
         # Opening JSON file
-        with open(receiver_json_path, 'r') as openfile:
+        with open(receiver_json_path, "r") as openfile:
             # Reading from json file
             all_recs = json.load(openfile)
         return all_recs
@@ -64,12 +96,9 @@ def select_component_from_stream(st: obspy.core.Stream, component: str):
     component = component.upper()
     component = [tr for tr in st if tr.stats.channel[-1].upper() == component]
     if not component:
-        raise Exception(
-            "Component %s not found in Stream." % component
-        )
+        raise Exception("Component %s not found in Stream." % component)
     elif len(component) > 1:
         raise Exception(
-            "More than 1 Trace with component %s found "
-            "in Stream." % component
+            "More than 1 Trace with component %s found " "in Stream." % component
         )
     return component[0]

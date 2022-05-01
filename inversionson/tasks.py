@@ -9,25 +9,7 @@ class TaskManager(object):
         self.comm = comm
         self.optimization = self.comm.project.get_optimizer()
 
-    def _time_for_validation(self) -> bool:
-        validation = False
-        if self.comm.project.when_to_validate == 0:
-            return False
-        if self.optimization.iteration_number == 0:
-            validation = True
-        if (
-            self.optimization.iteration_number + 1
-        ) % self.comm.project.when_to_validate == 0:
-            validation = True
-
-        if validation:
-            validation = self.optimization.ready_for_validation()
-
-        return validation
-
     def perform_task(self, verbose=False):
-        if self._time_for_validation():
-            self.optimization.do_validation_iteration()
         self.optimization.perform_task(verbose=verbose)
 
     def finish_task(self):

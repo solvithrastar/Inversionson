@@ -19,8 +19,6 @@ class GradientSummer(object):
     """
     This class helps with summing gradients.
     Currently only implemented for remote summing.
-
-    #TODO: Add option for local summing (not needed at the moment)
     """
 
     def __init__(self, comm):
@@ -28,6 +26,7 @@ class GradientSummer(object):
         :param comm: Inversionson communicator
         """
         self.comm = comm
+        self.optimizer = self.comm.project.get_optimizer()
 
     def print(
         self,
@@ -71,7 +70,7 @@ class GradientSummer(object):
         gradient_paths = []
         iteration = self.comm.project.current_iteration
 
-        for event in self.comm.project.events_in_iteration:
+        for event in events:
             if self.comm.project.meshes == "multi-mesh":
                 job = self.comm.salvus_flow.get_job(event, "gradient_interp")
                 gradient_path = os.path.join(
@@ -129,16 +128,12 @@ class GradientSummer(object):
         self.print("Remote summing completed...")
 
         if store_norms:
-            doc_path = os.path.join(
-                self.comm.project.paths["inversion_root"], "OPTIMIZATION",
-                "GRADIENT_NORMS")
-            if not os.path.exists(doc_path):
-                os.mkdir(doc_path)
-
-            norm_dict_toml = os.path.join(doc_path, f"{iteration}_gradient_norms.toml")
+            norm_dict_toml = self.optimizer.gradient_norm_path
 
             hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
-            all_norms_path = os.path.join(doc_path, "all_norms.toml")
+            all_norms_path = os.path.join(
+                self.optimizer.gradient_norm_dir, "all_norms.toml"
+            )
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
             else:
@@ -156,6 +151,11 @@ class GradientSummer(object):
         # Only sum the raw gradient in AdamOpt, not the update
         if sum_vpv_vph:
             sum_two_parameters_h5(output_location, ["VPV", "VPH"])
+
+
+# The below is an old implementation for local summing. We don't expect
+# to be doing this again, but keep it here in case we want to implement it
+# again.
 
     # def sum_local_gradients(self):
     #     from inversionson.utils import sum_gradients
