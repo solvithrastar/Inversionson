@@ -181,8 +181,11 @@ class ForwardHelper(object):
             already_interpolated = False
 
         # Get the average model when validation event
-        if self.comm.project.is_validation_event(event) and self.comm.project.use_model_averaging \
-                and "00000" not in self.comm.project.current_iteration:
+        if (
+            self.comm.project.is_validation_event(event)
+            and self.comm.project.use_model_averaging
+            and "00000" not in self.comm.project.current_iteration
+        ):
             validation = True
         else:
             validation = False
@@ -193,7 +196,8 @@ class ForwardHelper(object):
             interpolate_to=False,
             hpc_cluster=hpc_cluster,
             validation=validation,
-            already_interpolated=already_interpolated)
+            already_interpolated=already_interpolated,
+        )
         w.set_mesh("REMOTE:" + str(remote_mesh))
         # make the mesh use
 
@@ -265,7 +269,9 @@ class ForwardHelper(object):
         iteration = self.comm.project.current_iteration
         forward_job = sapi.get_job(
             site_name=self.comm.project.site_name,
-            job_name= self.comm.salvus_flow.get_job_name(event=event, sim_type="forward")
+            job_name=self.comm.salvus_flow.get_job_name(
+                event=event, sim_type="forward"
+            ),
         )
 
         # Get forward paths
@@ -274,8 +280,10 @@ class ForwardHelper(object):
 
         # Get local proc filename
         lasif_root = self.comm.project.lasif_root
-        proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_" \
-                        f"to_{int(self.comm.project.max_period)}s.h5"
+        proc_filename = (
+            f"preprocessed_{int(self.comm.project.min_period)}s_"
+            f"to_{int(self.comm.project.max_period)}s.h5"
+        )
         local_proc_file = os.path.join(
             lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event, proc_filename
         )
@@ -323,7 +331,9 @@ class ForwardHelper(object):
             minimum_period=self.comm.project.min_period,
             maximum_period=self.comm.project.max_period,
             start_time_in_s=self.comm.project.simulation_dict["start_time"],
-            receiver_json_path=os.path.join(remote_receiver_dir, f"{event}_receivers.json"),
+            receiver_json_path=os.path.join(
+                remote_receiver_dir, f"{event}_receivers.json"
+            ),
             ad_src_type=self.comm.project.ad_src_type,
         )
 
@@ -401,8 +411,7 @@ class ForwardHelper(object):
         else:
             window_set_name = event
 
-        self.comm.lasif.select_windows(window_set_name=window_set_name,
-                                       event=event)
+        self.comm.lasif.select_windows(window_set_name=window_set_name, event=event)
 
     def __need_misfit_quantification(self, iteration, event, window_set):
         """
@@ -731,7 +740,11 @@ class ForwardHelper(object):
             ):
                 break
 
-            if self.comm.project.hpc_processing and adjoint:
+            if (
+                self.comm.project.hpc_processing
+                and adjoint
+                and len(for_job_listener.events_already_retrieved) > 0
+            ):
                 hpc_proc_job_listener.monitor_jobs()
                 for event in hpc_proc_job_listener.events_retrieved_now:
                     self.comm.project.change_attribute(
@@ -898,7 +911,7 @@ class AdjointHelper(object):
                 )
                 self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
 
-            if interpolate:
+            if interpolate and len(adj_job_listener.events_already_retrieved) > 0:
                 interp_job_listener.monitor_jobs()
                 for event in interp_job_listener.events_retrieved_now:
                     self.comm.project.change_attribute(
