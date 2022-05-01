@@ -638,6 +638,7 @@ class SalvusFlowComponent(Component):
             hpc_cluster=hpc_cluster,
             already_interpolated=already_interpolated,
         )
+        # remote_mesh = interp_job.stdout_path.parent / "output" / "mesh.h5"
 
         local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
             "domain_settings"
@@ -646,6 +647,7 @@ class SalvusFlowComponent(Component):
             sim_dict["domain"][key]["filename"] = local_dummy_mesh
 
         w = simulation.Waveform().from_dict(sim_dict)
+        w.set_mesh("REMOTE:" + str(remote_mesh))
 
         return w
 
