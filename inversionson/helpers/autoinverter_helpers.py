@@ -175,7 +175,7 @@ class ForwardHelper(object):
             source = self.comm.salvus_flow.get_source_object(event)
             w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
 
-        if self.comm.project.meshes == "multi_mesh":
+        if self.comm.project.meshes == "multi-mesh":
             already_interpolated = True
         else:
             already_interpolated = False
