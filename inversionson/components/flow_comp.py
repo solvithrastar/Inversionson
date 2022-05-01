@@ -878,7 +878,7 @@ class SalvusFlowComponent(Component):
                 job.delete()
             except:
                 self.print(
-                    f"Could not delete job {sim_type} for event {event}",
+                    f"Could not delete job {sim_type} for event {event_name}",
                     emoji_alias=":hankey:",
                 )
             return
