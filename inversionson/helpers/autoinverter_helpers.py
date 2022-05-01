@@ -175,6 +175,28 @@ class ForwardHelper(object):
             source = self.comm.salvus_flow.get_source_object(event)
             w = self.comm.salvus_flow.construct_simulation(event, source, receivers)
 
+        if self.comm.project.meshes == "multi_mesh":
+            already_interpolated = True
+        else:
+            already_interpolated = False
+
+        # Get the average model when validation event
+        if self.comm.project.is_validation_event(event) and self.comm.project.use_model_averaging \
+                and "00000" not in self.comm.project.current_iteration:
+            validation = True
+        else:
+            validation = False
+        hpc_cluster = get_site(self.comm.project.interpolation_site)
+        remote_mesh = self.comm.lasif.find_remote_mesh(
+            event=event,
+            gradient=False,
+            interpolate_to=False,
+            hpc_cluster=hpc_cluster,
+            validation=validation,
+            already_interpolated=already_interpolated)
+        w.set_mesh("REMOTE:" + str(remote_mesh))
+        # make the mesh use
+
         self.comm.salvus_flow.submit_job(
             event=event,
             simulation=w,
@@ -241,20 +263,19 @@ class ForwardHelper(object):
             self.__process_data(event)
 
         iteration = self.comm.project.current_iteration
-
-        job_name = self.comm.salvus_flow.get_job_name(event=event, sim_type="forward")
         forward_job = sapi.get_job(
-            site_name=self.comm.project.site_name, job_name=job_name
+            site_name=self.comm.project.site_name,
+            job_name= self.comm.salvus_flow.get_job_name(event=event, sim_type="forward")
         )
 
-        # remote synthetics
+        # Get forward paths
         remote_syn_path = str(forward_job.output_path / "receivers.h5")
         forward_meta_json_filename = str(forward_job.output_path / "meta.json")
-        # local processed_data
-        min_period = self.comm.project.min_period
-        max_period = self.comm.project.max_period
+
+        # Get local proc filename
         lasif_root = self.comm.project.lasif_root
-        proc_filename = f"preprocessed_{int(min_period)}s_to_{int(max_period)}s.h5"
+        proc_filename = f"preprocessed_{int(self.comm.project.min_period)}s_" \
+                        f"to_{int(self.comm.project.max_period)}s.h5"
         local_proc_file = os.path.join(
             lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event, proc_filename
         )
@@ -265,8 +286,15 @@ class ForwardHelper(object):
         remote_processed_dir = os.path.join(
             self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
         )
-        if not hpc_cluster.remote_exists(remote_processed_dir):
-            hpc_cluster.remote_mkdir(remote_processed_dir)
+        remote_adj_dir = os.path.join(
+            self.comm.project.remote_inversionson_dir, "ADJOINT_SOURCES"
+        )
+        remote_receiver_dir = os.path.join(
+            self.comm.project.remote_inversionson_dir, "RECEIVERS"
+        )
+        for dir_name in [remote_processed_dir, remote_adj_dir, remote_receiver_dir]:
+            if not hpc_cluster.remote_exists(dir_name):
+                hpc_cluster.remote_mkdir(remote_processed_dir)
 
         remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
         tmp_remote_path = remote_proc_path + "_tmp"
@@ -278,40 +306,28 @@ class ForwardHelper(object):
             self.comm.project.remote_inversionson_dir, "ADJOINT_SOURCES"
         )
 
-        if not hpc_cluster.remote_exists(remote_adj_dir):
-            hpc_cluster.remote_mkdir(remote_adj_dir)
-
         if "VPV" in self.comm.project.inversion_params:
             parameterization = "tti"
         elif "VP" in self.comm.project.inversion_params:
             parameterization = "rho-vp-vs"
 
-        remote_receiver_dir = os.path.join(
-            self.comm.project.remote_inversionson_dir, "RECEIVERS"
+        info = dict(
+            processed_filename=remote_proc_path,
+            synthetic_filename=remote_syn_path,
+            forward_meta_json_filename=forward_meta_json_filename,
+            parameterization=parameterization,
+            event_name=event,
+            delta=self.comm.project.simulation_dict["time_step"],
+            npts=self.comm.project.simulation_dict["number_of_time_steps"],
+            iteration_name=iteration,
+            minimum_period=self.comm.project.min_period,
+            maximum_period=self.comm.project.max_period,
+            start_time_in_s=self.comm.project.simulation_dict["start_time"],
+            receiver_json_path=os.path.join(remote_receiver_dir, f"{event}_receivers.json"),
+            ad_src_type=self.comm.project.ad_src_type,
         )
-        if not hpc_cluster.remote_exists(remote_receiver_dir):
-            hpc_cluster.remote_mkdir(remote_receiver_dir)
-
-        info = {}
-        info["processed_filename"] = remote_proc_path
-        info["synthetic_filename"] = remote_syn_path
-        info["forward_meta_json_filename"] = forward_meta_json_filename
-        info["parameterization"] = parameterization
-        info["window_set_name"] = "A"  # Not used
-        info["event_name"] = event
-        info["delta"] = self.comm.project.simulation_dict["time_step"]
-        info["npts"] = self.comm.project.simulation_dict["number_of_time_steps"]
-        info["iteration_name"] = iteration
-        info["minimum_period"] = self.comm.project.min_period
-        info["maximum_period"] = self.comm.project.max_period
-        info["start_time_in_s"] = self.comm.project.simulation_dict["start_time"]
-        info["receiver_json_path"] = os.path.join(
-            remote_receiver_dir, f"{event}_receivers.json"
-        )
-        info["ad_src_type"] = self.comm.project.ad_src_type
 
         toml_filename = f"{iteration}_{event}_adj_info.toml"
-
         with open(toml_filename, "w") as fh:
             toml.dump(info, fh)
 
@@ -384,33 +400,9 @@ class ForwardHelper(object):
             window_set_name = iteration + "_" + event
         else:
             window_set_name = event
-            if "validation_" not in iteration:
-                self.comm.lasif.select_windows(
-                    window_set_name=window_set_name, event=event
-                )
-                return
 
-        if "validation_" in iteration:
-            # We only compute full trace misfits here, legacy code below.
-            return
-            ## Legacy code below
-            # window_set_name = iteration
-            # if self.comm.project.forward_job[event]["windows_selected"]:
-            #     print(f"Windows already selected for event {event}")
-            #     return
-            # self.comm.lasif.select_windows(
-            #     window_set_name=window_set_name,
-            #     event=event,
-            #     validation=True,
-            # )
-            # self.comm.project.change_attribute(
-            #     attribute=f"forward_job['{event}']['windows_selected']",
-            #     new_value=True,
-            # )
-            # self.comm.project.update_iteration_toml(validation=True)
-            # return
-
-        self.comm.lasif.select_windows(window_set_name=window_set_name, event=event)
+        self.comm.lasif.select_windows(window_set_name=window_set_name,
+                                       event=event)
 
     def __need_misfit_quantification(self, iteration, event, window_set):
         """

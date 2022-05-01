@@ -57,12 +57,12 @@ class MultiMeshComponent(Component):
         if "validation_" in iteration:
             iteration = iteration.replace("validation_", "")
             if (
-                self.comm.project.when_to_validate > 1
+                self.comm.project.val_it_interval > 1
                 and iteration != "it0000_model"
                 and iteration != "model_00000"
             ):
                 it_number = optimizer.iteration_number
-                old_it = it_number - self.comm.project.when_to_validate + 1
+                old_it = it_number - self.comm.project.val_it_interval + 1
                 model = (
                     self.comm.salvus_mesher.average_meshes
                     / f"it_{old_it}_to_{it_number}"
@@ -496,7 +496,18 @@ class MultiMeshComponent(Component):
         """
 
         # TODO Add average model option here
-        mesh_to_interpolate_from = self.comm.lasif.get_remote_model_path()
+
+
+        # This might be a validation model
+        if self.comm.project.is_validation_event(event) \
+            and self.comm.project.use_model_averaging \
+            and "00000" not in self.comm.project.current_iteration:
+            average_model = True
+        else:
+            average_model = False
+        optimizer = self.comm.project.get_optimizer()
+        mesh_to_interpolate_from = optimizer.get_remote_model_path(
+            model_average=average_model)
         interpolation_script = self.find_interpolation_script()
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         interpolation_toml = self.prepare_interpolation_toml(
