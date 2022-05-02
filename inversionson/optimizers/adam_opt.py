@@ -11,6 +11,7 @@ from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.autoinverter_helpers import AdjointHelper
+from inversionson.utils import write_xdmf
 
 
 class AdamOpt(Optimize):
@@ -187,6 +188,7 @@ class AdamOpt(Optimize):
                 os.mkdir(folder)
 
         shutil.copy(self.initial_model, self.model_path)
+        write_xdmf(self.model_path)
 
     def _issue_first_task(self):
         """
@@ -302,6 +304,7 @@ class AdamOpt(Optimize):
 
         if iteration_number == 1:  # Initialize moments if needed
             shutil.copy(self.raw_gradient_path, self.first_moment_path)
+            write_xdmf(self.first_moment_path)
 
             with h5py.File(self.first_moment_path, "r+") as h5:
                 data = h5["MODEL/data"]
@@ -312,6 +315,7 @@ class AdamOpt(Optimize):
 
             # Also initialize second moments with zeros
             shutil.copy(self.first_moment_path, self.second_moment_path)
+            write_xdmf(self.second_moment_path)
 
         m_t = (
             self.beta_1 * self.get_h5_data(self.first_moment_path)
@@ -503,6 +507,8 @@ class AdamOpt(Optimize):
 
     def perform_smoothing(self):
         tasks = {}
+
+        # This is actually
         if max(self.update_smoothing_length) > 0.0:
             tasks["smooth_raw_update"] = {
                 "reference_model": str(self.comm.lasif.get_master_model()),
@@ -511,6 +517,8 @@ class AdamOpt(Optimize):
                 "smoothing_parameters": self.parameters,
                 "output_location": str(self.smooth_update_path),
             }
+        else:
+            shutil.copy(self.raw_update_path, self.smooth_update_path)
 
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
@@ -554,6 +562,11 @@ class AdamOpt(Optimize):
             raise InversionsonError(
                 "We require some sort of smoothing in Adam Optimization"
             )
+        
+        # Write XDFMs
+        write_xdmf(self.smooth_update_path)
+        if max(self.roughness_decay_smoothing_length) > 0.0:
+            write_xdmf(self.smoothed_model_path)
 
     def compute_gradient(self, verbose=False):
         """
@@ -617,6 +630,7 @@ class AdamOpt(Optimize):
                 sum_vpv_vph=True,
                 store_norms=True,
             )
+            write_xdmf(self.raw_gradient_path)
             self.task_dict["summing_completed"] = True
             self._update_task_file()
         else:

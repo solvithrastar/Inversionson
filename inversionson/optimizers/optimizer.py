@@ -18,6 +18,7 @@ from typing import List, Union
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
+from inversionson.utils import write_xdmf
 from inversionson.helpers import autoinverter_helpers as helpers
 
 
@@ -481,7 +482,7 @@ class Optimize(object):
             data = h5["MODEL/data"][:, :, :].copy()
             return data[:, indices, :]
 
-    def set_h5_data(self, filename, data):
+    def set_h5_data(self, filename, data, create_xdmf=True):
         """Writes the data with shape [:, indices :]. Requires existing file."""
         if not os.path.exists(filename):
             raise Exception("only works on existing files.")
@@ -499,6 +500,9 @@ class Optimize(object):
             # the above executed to preserve the ordering that data came in
             indices.sort()
             dat[:, indices, :] = data_copy[:, indices, :]
+
+        if create_xdmf:
+            write_xdmf(filename)
 
     def get_tensor_order(self, filename):
         """
