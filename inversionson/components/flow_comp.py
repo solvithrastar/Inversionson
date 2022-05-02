@@ -623,21 +623,20 @@ class SalvusFlowComponent(Component):
             hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
 
         sim_dict = toml.load(destination)
-
-        if self.comm.project.meshes == "multi_mesh":
+        if self.comm.project.meshes == "multi-mesh":
             already_interpolated = True
         else:
             already_interpolated = False
-
         # Currently this is always a non-average mesh
         # We can still change this
-        remote_mesh = self.comm.lasif.find_remote_mesh(
-            event=event,
-            gradient=False,
-            interpolate_to=False,
-            hpc_cluster=hpc_cluster,
-            already_interpolated=already_interpolated,
-        )
+        # remote_mesh = self.comm.lasif.find_remote_mesh(
+        #     event=event,
+        #     gradient=False,
+        #     interpolate_to=False,
+        #     hpc_cluster=hpc_cluster,
+        #     already_interpolated=already_interpolated,
+        # )
+        # remote_mesh = interp_job.stdout_path.parent / "output" / "mesh.h5"
 
         local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
             "domain_settings"
