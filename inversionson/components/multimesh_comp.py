@@ -243,9 +243,7 @@ class MultiMeshComponent(Component):
         if self.comm.project.meshes == "multi-mesh":
             wall_time += self.comm.project.model_interp_wall_time
 
-        # Add wall time when the data needs to be processed, this way
-        # we can get through the queue faster for jobs that were finished already.
-        if self.comm.project.remote_data_processing:
+        if self.comm.project.remote_data_processing and not gradient:
             hpc_cluster = get_site(self.comm.project.site_name)
             remote_processed_dir = os.path.join(
                 self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
@@ -506,8 +504,16 @@ class MultiMeshComponent(Component):
         else:
             average_model = False
         optimizer = self.comm.project.get_optimizer()
-        mesh_to_interpolate_from = optimizer.get_remote_model_path(
-            model_average=average_model)
+        if not gradient:
+            mesh_to_interpolate_from = optimizer.get_remote_model_path(
+                model_average=average_model)
+        else:
+            mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
+                event=event,
+                gradient=True,
+                interpolate_to=False,
+                validation=False,
+            )
         interpolation_script = self.find_interpolation_script()
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         interpolation_toml = self.prepare_interpolation_toml(
