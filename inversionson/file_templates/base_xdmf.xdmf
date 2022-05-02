@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE Xdmf SYSTEM "Xdmf.dtd" []>
+<Xdmf Version="2.0">
+  <Domain>
+    <Grid Name="Salvus GLL Model" GridType="Uniform">
+      <Topology TopologyType="Hexahedron" NodesPerElement="8" NumberOfElements="{number_of_sub_elements}">
+        <DataItem Format="HDF" Dimensions="{number_of_sub_elements} 8" NumberType="Int">{filename}:/MODEL/sub_connectivity</DataItem>
+      </Topology>
+      <Geometry GeometryType="XYZ">
+        <DataItem Format="HDF" Dimensions="{num_points} 3">{filename}:/MODEL/coordinates</DataItem>
+      </Geometry>
+{attributes}     
+    </Grid>
+  </Domain>
+</Xdmf>
