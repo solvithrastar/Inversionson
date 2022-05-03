@@ -44,6 +44,17 @@ class RemoteJobListener(object):
         line_below=False,
         emoji_alias=None,
     ):
+        if self.job_type == "prepare_forward":
+            color = "red"
+        if self.job_type == "forward":
+            color = "orange"
+        if self.job_type == "hpc_processing":
+            color = "yellow"
+        if self.job_type == "adjoint":
+            color = "green"
+        if self.job_type == "gradient_interp":
+            color = "blue"
+
         self.comm.storyteller.printer.print(
             message=message,
             color=color,
