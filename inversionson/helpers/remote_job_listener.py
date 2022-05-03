@@ -45,15 +45,15 @@ class RemoteJobListener(object):
         emoji_alias=None,
     ):
         if self.job_type == "prepare_forward":
-            color = "red"
-        if self.job_type == "forward":
             color = "lightred"
-        if self.job_type == "hpc_processing":
+        if self.job_type == "forward":
             color = "yellow"
-        if self.job_type == "adjoint":
+        if self.job_type == "hpc_processing":
             color = "green"
-        if self.job_type == "gradient_interp":
+        if self.job_type == "adjoint":
             color = "blue"
+        if self.job_type == "gradient_interp":
+            color = "magenta"
 
         self.comm.storyteller.printer.print(
             message=message,
