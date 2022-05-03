@@ -919,7 +919,7 @@ class IterationListener(object):
             # otherwise we are done here.
 
             if self.comm.project.meshes == "multi-mesh":
-                if all_adj_retrieved_events > 0 and len(all_gi_retrieved_events) != len_non_validation_events:
+                if len(all_adj_retrieved_events) > 0 and len(all_gi_retrieved_events) != len_non_validation_events:
                     anything_gi_retrieved, all_gi_retrieved_events = self.__listen_to_gradient_interp(all_adj_retrieved_events)
                     if len(all_gi_retrieved_events) == len_non_validation_events:
                         break
