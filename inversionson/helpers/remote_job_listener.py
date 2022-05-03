@@ -47,7 +47,7 @@ class RemoteJobListener(object):
         if self.job_type == "prepare_forward":
             color = "red"
         if self.job_type == "forward":
-            color = "orange"
+            color = "lightred"
         if self.job_type == "hpc_processing":
             color = "yellow"
         if self.job_type == "adjoint":
