@@ -867,7 +867,6 @@ class IterationListener(object):
                 for event in self.events:
                     self.__prepare_forward(event)
                 if len(all_pf_retrieved_events) != len_all_events:
-                    print(all_pf_retrieved_events, self.events)
                     anything_retrieved_pf, all_pf_retrieved_events = \
                         self.__listen_to_prepare_forward(events=self.events, verbose=verbose)
                     if anything_retrieved_pf:
