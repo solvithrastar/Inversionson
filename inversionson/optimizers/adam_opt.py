@@ -508,19 +508,9 @@ class AdamOpt(Optimize):
         super().prepare_iteration(it_name=self.iteration_name, events=events)
         self.finish_task()
 
-    def perform_smoothing(self):
-        tasks = {}
-
-        # This is actually
-        if max(self.update_smoothing_length) > 0.0:
-            tasks["smooth_raw_update"] = {
-                "reference_model": str(self.comm.lasif.get_master_model()),
-                "model_to_smooth": str(self.raw_update_path),
-                "smoothing_lengths": self.update_smoothing_length,
-                "smoothing_parameters": self.parameters,
-                "output_location": str(self.smooth_update_path),
-            }
-
+    def _get_model_smoothing_task(self, tasks=None):
+        if tasks is None:
+            tasks = {}
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
             # to the internal parameterization
@@ -534,6 +524,7 @@ class AdamOpt(Optimize):
                     f"relative_perturbation_{self.iteration_name}.h5",
                 )
                 shutil.copy(self.model_path, model_to_smooth)
+                write_xdmf(model_to_smooth)
 
                 # relative perturbation = (latest - start) / start
                 theta_prev = self.get_h5_data(self.model_path)
@@ -542,7 +533,7 @@ class AdamOpt(Optimize):
                 )
 
                 theta_prev[theta_0 != 0] = (
-                    theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                        theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
                 )
                 self.set_h5_data(model_to_smooth, theta_prev)
 
@@ -552,6 +543,32 @@ class AdamOpt(Optimize):
                 "smoothing_lengths": self.roughness_decay_smoothing_length,
                 "smoothing_parameters": self.parameters,
                 "output_location": str(self.smoothed_model_path),
+            }
+        return tasks
+
+    def dispatch_model_smoothing(self):
+        """
+        Dispatch the model smoothing, so this can already be done
+        at the start of the iteration to avoid waiting for this in the end.
+        """
+        tasks = self._get_model_smoothing_task()
+
+        if len(tasks.keys()) > 0:
+            reg_helper = RegularizationHelper(
+                comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
+            )
+            reg_helper.dispatch_smoothing_tasks()
+
+    def perform_smoothing(self):
+        tasks = self._get_model_smoothing_task()
+
+        if max(self.update_smoothing_length) > 0.0:
+            tasks["smooth_raw_update"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(self.raw_update_path),
+                "smoothing_lengths": self.update_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smooth_update_path),
             }
 
         if len(tasks.keys()) > 0:
@@ -577,6 +594,11 @@ class AdamOpt(Optimize):
         """
 
         from inversionson.helpers.autoinverter_helpers import IterationListener
+
+        # Attempt to dispatch model smoothing right at the beginning.
+        # So there is no smoothing bottleneck when updates are not smoothed.
+        self.dispatch_model_smoothing()
+
         it_listen = IterationListener(self.comm, events=self.comm.project.events_in_iteration)
         it_listen.listen()
 
