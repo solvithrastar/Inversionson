@@ -176,7 +176,7 @@ class LasifComponent(Component):
                 mesh = job.stdout_path.parent / "output" / "mesh.h5"
             else:
                 if interpolate_to:
-                    mesh = remote_mesh_dir / event / "mesh.h5"
+                    mesh = remote_mesh_dir / "meshes" / event / "mesh.h5"
                 else:
                     if validation:
                         mesh = (

@@ -122,14 +122,14 @@ def move_mesh(mesh_folder, event_name):
 
 
 def interpolate_fields(from_mesh, to_mesh, layers, parameters, stored_array=None):
-    multi_mesh.api.gll_2_gll_layered_multi(
-        from_mesh,
-        to_mesh,
-        nelem_to_search=20,
-        layers=layers,
+    multi_mesh.api.gll_2_gll_layered_multi_two(
+        from_gll=from_mesh,
+        to_gll=to_mesh,
+        nelem_to_search=30,
         parameters=parameters,
+        layers="nocore",
         stored_array=stored_array,
-        make_spherical=True,
+        make_spherical=True
     )
 
 
