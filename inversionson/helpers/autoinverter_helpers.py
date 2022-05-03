@@ -887,16 +887,16 @@ class AdjointHelper(object):
                     and self.comm.project.interpolation_mode == "remote"
                 ):
                     self.__cut_and_clip_gradient(event=event, verbose=verbose)
-                self.comm.project.change_attribute(
-                    attribute=f'adjoint_job["{event}"]["retrieved"]',
-                    new_value=True,
-                )
-                self.comm.project.update_iteration_toml()
                 if interpolate:
                     if self.comm.project.interpolation_mode == "remote":
                         self.__dispatch_raw_gradient_interpolation(
                             event, verbose=verbose
                         )
+                self.comm.project.change_attribute(
+                    attribute=f'adjoint_job["{event}"]["retrieved"]',
+                    new_value=True,
+                )
+                self.comm.project.update_iteration_toml()
 
             for event in adj_job_listener.to_repost:
                 self.comm.project.change_attribute(

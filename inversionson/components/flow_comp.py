@@ -770,7 +770,6 @@ class SalvusFlowComponent(Component):
         """
         # Adjoint simulation takes longer and seems to be less predictable
         # we thus give it a longer wall time.
-        start = time.time()
         if sim_type == "adjoint":
             wall_time = self.comm.project.wall_time * 1.5
         else:
@@ -784,7 +783,7 @@ class SalvusFlowComponent(Component):
         )
         end_submit = time.time()
         self.print(
-            f"Only submitting took {end_submit - start_submit:.3f} seconds",
+            f"Submitting took {end_submit - start_submit:.3f} seconds",
             emoji_alias=":hourglass:",
             color="magenta",
         )
@@ -806,12 +805,6 @@ class SalvusFlowComponent(Component):
                 f'adjoint_job["{event}"]["submitted"]', True
             )
         self.comm.project.update_iteration_toml()
-        end = time.time()
-        self.print(
-            f"Submitting took {end - start:.3f} seconds",
-            emoji_alias=":hourglass:",
-            color="magenta",
-        )
         if hpc_cluster.config["site_type"] == "local":
             job.wait(poll_interval_in_seconds=self.comm.project.sleep_time_in_s)
 
