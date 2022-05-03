@@ -586,6 +586,7 @@ class IterationListener(object):
             )
             self.comm.project.update_iteration_toml()
             vint_job_listener.events_already_retrieved.append(event)
+
         for event in vint_job_listener.to_repost:
             self.comm.project.change_attribute(
                 attribute=f'prepare_forward_job["{event}"]["submitted"]',
@@ -609,12 +610,6 @@ class IterationListener(object):
         for event in vint_job_listener.events_already_retrieved:
             self.__run_forward_simulation(event, verbose=verbose)
             self.__compute_station_weights(event, verbose)
-
-        if len(vint_job_listener.events_retrieved_now) > 0:
-            self.print(
-                f"We dispatched {len(vint_job_listener.events_retrieved_now)} "
-                "simulations"
-            )
 
         if vint_job_listener.events_retrieved_now:
             anything_retrieved = True
