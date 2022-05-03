@@ -519,13 +519,7 @@ class SalvusFlowComponent(Component):
         """
         import salvus.flow.simple_config as sc
 
-        if self.comm.project.meshes == "multi-mesh":
-            mesh = self.comm.lasif.get_simulation_mesh(event)
-            if self.comm.project.interpolation_mode == "remote":
-                use_mesh = f"REMOTE:{mesh}"
-            mesh = self.comm.lasif.find_event_mesh(event=event)
-        else:
-            mesh = self.comm.lasif.get_simulation_mesh(event)
+        mesh = self.comm.lasif.get_master_model()
         w = sc.simulation.Waveform(mesh=mesh, sources=sources, receivers=receivers)
 
         w.physics.wave_equation.end_time_in_seconds = self.comm.project.end_time

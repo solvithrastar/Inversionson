@@ -468,7 +468,7 @@ class AdamOpt(Optimize):
         )
         self.set_h5_data(
             self.tmp_model_path,
-            theta_physical,
+            theta_physical, create_xdmf=False
         )
 
     def _finalize_iteration(self):
@@ -757,12 +757,13 @@ class AdamOpt(Optimize):
         self.task_dict["finished"] = True
         if self.task_dict["task"] == "update_model":
             self._update_task_file()
+            target_location = self._get_path_for_iteration(
+                    self.iteration_number + 1, self.model_path)
             # Moving the new model into its place, moves the iteration property to the next one.
             shutil.move(
                 self.tmp_model_path,
-                self._get_path_for_iteration(
-                    self.iteration_number + 1, self.model_path
-                ),
+                target_location,
             )
+            write_xdmf(target_location)
         else:
             self._update_task_file()
