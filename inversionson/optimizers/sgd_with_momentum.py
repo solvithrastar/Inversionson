@@ -517,10 +517,7 @@ class SGDM(Optimize):
         to update the model.
         """
         if self.comm.project.meshes == "multi-mesh":
-            interpolate = True
             self.comm.lasif.move_gradient_to_cluster()
-        else:
-            interpolate = False
 
         if not self.task_dict["summing_completed"]:
             adjoint_helper = AdjointHelper(
@@ -528,7 +525,6 @@ class SGDM(Optimize):
             )
             adjoint_helper.dispatch_adjoint_simulations()
             adjoint_helper.process_gradients(
-                interpolate=interpolate,
                 smooth_individual=False,
                 verbose=verbose,
             )

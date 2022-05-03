@@ -388,48 +388,51 @@ class AdamOpt(Optimize):
         """
         self.print("Adam: Applying smooth update...", line_above=True)
 
-        raw_update = self.get_h5_data(self.raw_update_path)
-        max_raw_update = np.max(np.abs(raw_update))
-        update = self.get_h5_data(self.smooth_update_path)
+        # if no update smoothing, then just take the raw update
+        if max(self.update_smoothing_length) <= 0.0:
+            update = self.get_h5_data(self.raw_update_path)
+        else:
+            raw_update = self.get_h5_data(self.raw_update_path)
+            max_raw_update = np.max(np.abs(raw_update))
+            update = self.get_h5_data(self.smooth_update_path)
 
-        raw_update_norm = np.sqrt(np.sum(raw_update**2))
-        update_norm = np.sqrt(np.sum(update**2))
+            raw_update_norm = np.sqrt(np.sum(raw_update**2))
+            update_norm = np.sqrt(np.sum(update**2))
 
-        if np.sum(np.isnan(update)) > 1:
-            raise Exception(
-                "NaNs were found in the smoothed update."
-                "Check the raw update and smoothing process."
+            if np.sum(np.isnan(update)) > 1:
+                raise Exception(
+                    "NaNs were found in the smoothed update."
+                    "Check the raw update and smoothing process."
+                )
+
+            max_upd = np.max(np.abs(update))
+            print(f"Max smooth model update: {max_upd}")
+            if max_upd > 4.0 * self.alpha:
+                raise Exception(
+                    "Check smooth gradient, the update is larger than expected."
+                )
+
+            update_scaling_fac_norm = raw_update_norm / update_norm
+            update_scaling_fac_alpha = self.alpha / max_upd
+            update_scaling_fac_peak = max_raw_update / max_upd
+
+            update_scaling_fac = min(
+                update_scaling_fac_norm, update_scaling_fac_alpha, update_scaling_fac_peak
+            )
+            print(
+                "Update scaling factor norm:",
+                update_scaling_fac_norm,
+                "Update scaling factor alpha:",
+                update_scaling_fac_alpha,
+                "Update scaling factor peak:",
+                update_scaling_fac_peak,
             )
 
-        max_upd = np.max(np.abs(update))
-        print(f"Max smooth model update: {max_upd}")
-        if max_upd > 4.0 * self.alpha:
-            raise Exception(
-                "Check smooth gradient, the update is larger than expected."
+            self.print(
+                f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
+                f"New maximum update is: {max_upd * update_scaling_fac}"
             )
-
-        update_scaling_fac_norm = raw_update_norm / update_norm
-        update_scaling_fac_alpha = self.alpha / max_upd
-        update_scaling_fac_peak = max_raw_update / max_upd
-
-        update_scaling_fac = min(
-            update_scaling_fac_norm, update_scaling_fac_alpha, update_scaling_fac_peak
-        )
-        print(
-            "Update scaling factor norm:",
-            update_scaling_fac_norm,
-            "Update scaling factor alpha:",
-            update_scaling_fac_alpha,
-            "Update scaling factor peak:",
-            update_scaling_fac_peak,
-        )
-
-        self.print(
-            f"Recaling based on lowest rescaling factor: {update_scaling_fac},"
-            f"New maximum update is: {max_upd * update_scaling_fac}"
-        )
-
-        update *= update_scaling_fac
+            update *= update_scaling_fac
 
         # normalise theta and apply update
         theta_0 = self.get_h5_data(self._get_path_for_iteration(0, self.model_path))
@@ -517,8 +520,6 @@ class AdamOpt(Optimize):
                 "smoothing_parameters": self.parameters,
                 "output_location": str(self.smooth_update_path),
             }
-        else:
-            shutil.copy(self.raw_update_path, self.smooth_update_path)
 
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
@@ -564,7 +565,8 @@ class AdamOpt(Optimize):
             )
         
         # Write XDFMs
-        write_xdmf(self.smooth_update_path)
+        if max(self.update_smoothing_length) > 0.0:
+            write_xdmf(self.smooth_update_path)
         if max(self.roughness_decay_smoothing_length) > 0.0:
             write_xdmf(self.smoothed_model_path)
 
@@ -573,26 +575,16 @@ class AdamOpt(Optimize):
         This task does forward simulations and then gradient computations straight
         afterwards
         """
-        if not self.task_dict["forward_submitted"]:
-            self.run_forward(verbose=verbose)
-            self.task_dict["forward_submitted"] = True
-            self._update_task_file()
-        else:
-            self.print("Forwards already submitted")
 
-        if not self.task_dict["misfit_completed"]:
-            self.compute_misfit(adjoint=True, window_selection=True, verbose=verbose)
-            self.task_dict["misfit_completed"] = True
-            self._update_task_file()
-        else:
-            self.print("Misfit already computed")
+        from inversionson.helpers.autoinverter_helpers import IterationListener
+        it_listen = IterationListener(self.comm, events=self.comm.project.events_in_iteration)
+        it_listen.listen()
 
-        if not self.task_dict["gradient_completed"]:
-            super().compute_gradient(verbose=verbose)
-            self.task_dict["gradient_completed"] = True
-            self._update_task_file()
-        else:
-            self.print("Gradients already computed")
+        self.task_dict["forward_submitted"] = True
+        self.task_dict["misfit_completed"] = True
+        self.task_dict["misfit_completed"] = True
+        self.task_dict["gradient_completed"] = True
+        self._update_task_file()
         self.finish_task()
 
     def update_model(self, verbose=False):
