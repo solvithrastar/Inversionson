@@ -259,6 +259,7 @@ class AdamOpt(Optimize):
                 "raw_update_path": str(self.raw_update_path),
                 "raw_gradient_path": str(self.raw_gradient_path),
                 "smooth_update_path": str(self.smooth_update_path),
+                "smoothed_model_path": str(self.smoothed_model_path),
                 "summing_completed": False,
                 "raw_update_completed": False,
                 "smoothing_completed": False,
@@ -722,7 +723,13 @@ class AdamOpt(Optimize):
             raise InversionsonError(f"Task: {self.task_dict['task']} is not finished.")
 
     def finish_task(self):
-        paths = ["raw_update_path", "model", "smooth_update_path", "raw_gradient_path"]
+        paths = ["raw_update_path", "model", "raw_gradient_path"]
+
+        if max(self.update_smoothing_length) > 0.0:
+            paths.append("smooth_update_path")
+        if max(self.roughness_decay_smoothing_length) > 0.0:
+            paths.append("smoothed_model_path")
+
         complete_checks = [
             "smoothing_completed",
             "gradient_completed",
