@@ -267,7 +267,6 @@ class AdamOpt(Optimize):
             }
             task_file_path = self._increase_task_number()
         elif self.task_dict["task"] == "update_model":
-            1/0
             task_dict = {
                 "task": "prepare_iteration",
                 "model": str(self._model_for_iteration(self.iteration_number)),

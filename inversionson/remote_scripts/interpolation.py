@@ -127,6 +127,7 @@ def interpolate_fields(from_mesh, to_mesh, layers, parameters, stored_array=None
         to_gll=to_mesh,
         nelem_to_search=30,
         parameters=parameters,
+        layers="nocore",
         stored_array=stored_array,
         make_spherical=True
     )

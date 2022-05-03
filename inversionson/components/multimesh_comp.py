@@ -476,12 +476,12 @@ class MultiMeshComponent(Component):
         if hpc_cluster is None:
             hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         remote_path = (
-            pathlib.Path(self.comm.project.remote_mesh_dir) / event / toml_filename.name
+            pathlib.Path(self.comm.project.fast_mesh_dir) / event / toml_filename.name
         )
         if not hpc_cluster.remote_exists(remote_path.parent):
             hpc_cluster.remote_mkdir(remote_path.parent)
         hpc_cluster.remote_put(toml_filename, remote_path)
-        return remote_path
+        return str(remote_path)
 
     def get_interp_commands(
         self,
