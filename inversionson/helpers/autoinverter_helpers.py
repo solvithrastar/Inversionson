@@ -382,9 +382,8 @@ class IterationListener(object):
         quantify_misfit = True
         if iteration in validation_dict.keys():
             if event in validation_dict[iteration]["events"].keys():
-                if window_set in validation_dict[iteration]["events"][event].keys():
-                    if validation_dict[iteration]["events"][event][window_set] != 0.0:
-                        quantify_misfit = False
+                if validation_dict[iteration]["events"][event] != 0.0:
+                    quantify_misfit = False
 
         if not quantify_misfit:
             message = (
@@ -848,7 +847,8 @@ class IterationListener(object):
         all_gi_retrieved_events = []
 
         len_all_events = len(self.events)
-        len_non_validation_events = len(list(set(self.events) - set(self.comm.project.validation_dataset)))
+        non_validation_events = list(set(self.events) - set(self.comm.project.validation_dataset))
+        len_non_validation_events = len(non_validation_events)
 
         while True:
             anything_retrieved_f = False
@@ -927,6 +927,10 @@ class IterationListener(object):
 
             if not anything_retrieved:
                 sleep_or_process(self.comm)
+
+        # Finally update the estimated timestep
+        for event in non_validation_events[:1]:
+            self.comm.project.get_simulation_time_step(event)
 
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose=False):
         """

@@ -200,7 +200,8 @@ def create_simulation_object(
     w.add_receivers(receivers, max_iterations=100000)
 
     w.physics.wave_equation.end_time_in_seconds = simulation_info["end_time"]
-    w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
+    # We don't set the time step anymore
+    # w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
     w.physics.wave_equation.start_time_in_seconds = simulation_info["start_time"]
     w.physics.wave_equation.attenuation = simulation_info["attenuation"]
 
@@ -224,16 +225,25 @@ def create_simulation_object(
     if bound:
         w.physics.wave_equation.boundaries = boundaries
 
-    # Compute wavefield subsampling factor.
-    samples_per_min_period = (
-        simulation_info["minimum_period"] / simulation_info["time_step"]
-    )
-    min_samples_per_min_period = 30.0
-    reduction_factor = int(samples_per_min_period / min_samples_per_min_period)
-    if reduction_factor >= 2:
-        checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+    # Compute wavefield and synthetics subsampling factor.
+    if simulation_info["simulation_time_step"] is not None:
+        # Compute wavefield subsampling factor.
+        samples_per_min_period = (
+                simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
+        )
+        min_samples_per_min_period = 30.0
+        reduction_factor = int(
+            samples_per_min_period / min_samples_per_min_period)
+        reduction_factor_syn = int(
+            samples_per_min_period / 40.0)
+        if reduction_factor_syn >= 2:
+            w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
+        if reduction_factor >= 2:
+            checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        else:
+            checkpointing_flag = "auto-for-checkpointing"
     else:
-        checkpointing_flag = "auto-for-checkpointing"
+        checkpointing_flag = "auto-for-checkpointing_10"
 
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"

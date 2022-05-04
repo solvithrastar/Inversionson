@@ -285,14 +285,14 @@ class Optimize(object):
 
         # WIP no average models being uploaded yet.
         remote_mesh_file = (
-            self.comm.project.remote_mesh_dir / "models" / it_name / "mesh.h5"
+            self.comm.project.remote_inversionson_dir / "MODELS" / it_name / "mesh.h5"
         )
         hpc_cluster = get_site(self.comm.project.site_name)
         if not hpc_cluster.remote_exists(remote_mesh_file.parent):
             if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir):
                 hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir)
-            if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir / "models"):
-                hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir / "models")
+            if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir / "MODELS"):
+                hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir / "MODELS")
             hpc_cluster.remote_mkdir(remote_mesh_file.parent)
         self.print(
             f"Moving mesh to {self.comm.project.interpolation_site}",
@@ -303,7 +303,7 @@ class Optimize(object):
         if self.time_for_validation() and self.comm.project.use_model_averaging\
                 and self.iteration_number > 0:
             remote_avg_mesh_file = (
-                    self.comm.project.remote_mesh_dir / "average_models" / it_name / "mesh.h5"
+                    self.comm.project.remote_mesh_dir / "AVERAGE_MODELS" / it_name / "mesh.h5"
             )
             # this enters when the iteration number is 4
             print("writing average validation model")

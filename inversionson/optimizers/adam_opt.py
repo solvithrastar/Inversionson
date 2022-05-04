@@ -6,11 +6,9 @@ import glob
 import shutil
 import h5py
 from inversionson import InversionsonError
-from inversionson.helpers.interpolation_helper import InterpolationListener
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
-from inversionson.helpers.autoinverter_helpers import AdjointHelper
 from inversionson.utils import write_xdmf
 
 
@@ -120,7 +118,7 @@ class AdamOpt(Optimize):
             "epsilon": 1e-1,
             "initial_model": "",
             "max_iterations": 1000,
-            "smoothing_timestep": 1.0e-5,
+            "smoothing_timestep": "auto",
         }
         with open(self.config_file, "w") as fh:
             toml.dump(config, fh)
@@ -615,28 +613,8 @@ class AdamOpt(Optimize):
         This task takes the raw gradient and does all the regularisation and everything
         to update the model.
         """
-        if self.comm.project.meshes == "multi-mesh":
-            interpolate = True
-            self.comm.lasif.move_gradient_to_cluster()
-        else:
-            interpolate = False
 
         if not self.task_dict["summing_completed"]:
-            adjoint_helper = AdjointHelper(
-                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-            )
-            # Dispatch anything that may have failed
-            adjoint_helper.dispatch_adjoint_simulations()
-            adjoint_helper.process_gradients(
-                interpolate=interpolate,
-                verbose=verbose,
-            )
-            assert adjoint_helper.assert_all_simulations_retrieved()
-            interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-            )
-            interp_listener.monitor_interpolations()
-
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(
                 events=self.comm.project.non_val_events_in_iteration,

@@ -22,6 +22,7 @@ from .flow_comp import SalvusFlowComponent
 from .mesh_comp import SalvusMeshComponent
 from .storyteller import StoryTellerComponent
 from .smooth_comp import SalvusSmoothComponent
+import salvus.flow.api as sapi
 
 
 class ProjectComponent(Component):
@@ -41,6 +42,9 @@ class ProjectComponent(Component):
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
         self.remote_gradient_processing = True
+        self.simulation_time_step = None
+        # Attempt to get the simulation timestep immediately if it exists.
+        self.get_simulation_time_step()
 
     def print(
         self,
@@ -763,3 +767,58 @@ class ProjectComponent(Component):
             iteration = self.current_iteration
         events = self.comm.lasif.list_events(iteration=iteration)
         return str(events.index(event))
+
+    def get_simulation_time_step(self, event=None):
+        """
+        Get the timestep from a forward job if it does not exist yet.
+
+        Returns the timestep if it is there and managed to do so.
+        If an event is passed and it does not exist it, it will get it
+        from an stdout file.
+        """
+
+        misc_folder = os.path.join(
+            self.comm.project.paths["documentation"], "MISC")
+        if not os.path.exists(misc_folder):
+            os.mkdir(misc_folder)
+
+        timestep_file = os.path.join(misc_folder, "simulation_timestep.toml")
+
+        if not os.path.exists(timestep_file) and event is not None:
+            local_stdout = os.path.join(
+                self.comm.project.paths["documentation"], "stdout_for_timestep_test")
+            hpc_cluster = sapi.get_site(self.comm.project.site_name)
+            forward_job = self.comm.salvus_flow.get_job(event=event, sim_type="forward")
+            stdout = forward_job.path / "stdout"
+
+            hpc_cluster.remote_get(stdout, local_stdout)
+
+            with open(local_stdout, "r") as fh:
+                stdout_str = fh.read()
+            stdout_str_split = stdout_str.split()
+            if os.path.exists(local_stdout):
+                os.remove(local_stdout)
+            if "(CFL)" in stdout_str_split:
+                time_step_idx = stdout_str_split.index("(CFL)") + 1
+                try:
+                    time_step = float(stdout_str_split[time_step_idx])
+                    # basic check to see if timestep makes some sense
+                    if time_step > 0.00001 and time_step < 1000:
+                        time_step_dict = dict(time_step=time_step)
+                        with open(timestep_file, "w") as fh:
+                            toml.dump(time_step_dict, fh)
+                    self.simulation_time_step = time_step
+                    simulation_dict_folder = (
+                            self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                            / f"SIMULATION_DICTS")
+                    # Clear cache of simulation dicts with the old checkpointing settings.
+                    shutil.rmtree(simulation_dict_folder)
+                except Exception as e:
+                    print(e)
+                self.simulation_time_step = None
+        else:
+            if os.path.exists(timestep_file):
+                time_dict = toml.load(timestep_file)
+                self.simulation_time_step = time_dict["time_step"]
+            else:
+                self.simulation_time_step = None

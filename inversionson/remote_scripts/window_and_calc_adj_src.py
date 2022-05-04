@@ -280,11 +280,17 @@ def run(info):
             return {station: None}
 
         all_windows = {}
+        for tr in st_syn:
+            tr.stats.starttime = (
+                    org.time.timestamp + start_time_in_s)
         for component in ["E", "N", "Z"]:
             try:
                 data_tr = select_component_from_stream(st_obs, component)
                 synth_tr = select_component_from_stream(st_syn, component)
 
+                # make sure traces match in length and sampling rate.
+                synth_tr.resample(sampling_rate=data_tr.stats.sampling_rate)
+                data_tr.trim(endtime=synth_tr.stats.endtime)
                 if scale_data_to_synthetics:
                     scaling_factor = (
                             synth_tr.data.ptp() / data_tr.data.ptp()
@@ -419,6 +425,13 @@ def run(info):
             try:
                 data_tr = select_component_from_stream(st_obs, component)
                 synth_tr = select_component_from_stream(st_syn, component)
+                # make sure sampled at the same rate
+                # Make sure synthetics is sampled at the same
+                # rate and data matches the synthetics in terms of endtime
+                # start time should happen automatically.
+                synth_tr.resample(sampling_rate=data_tr.stats.sampling_rate)
+                data_tr.trim(endtime=synth_tr.stats.endtime)
+
             except Exception as e:
                 continue
 

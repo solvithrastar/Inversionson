@@ -149,6 +149,7 @@ class LasifComponent(Component):
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+        fast_dir = pathlib.Path(self.comm.project.remote_inversionson_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
 
@@ -180,10 +181,10 @@ class LasifComponent(Component):
                 else:
                     if validation:
                         mesh = (
-                            remote_mesh_dir / "average_models" / iteration / "mesh.h5"
+                            fast_dir / "AVERAGE_MODELS" / iteration / "mesh.h5"
                         )
                     else:
-                        mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
+                        mesh = fast_dir / "MODELS" / iteration / "mesh.h5"
 
         if check_if_exists:
             if not hpc_cluster.remote_exists(mesh):
