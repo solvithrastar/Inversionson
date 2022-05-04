@@ -1111,7 +1111,7 @@ class ForwardHelper(object):
         )
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
-
+        
         self.comm.multi_mesh.prepare_forward(event=event)
 
         self.comm.project.update_iteration_toml()
@@ -1368,6 +1368,13 @@ class ForwardHelper(object):
                 )
             ]
             commands = conda_command + commands
+            source_command = [
+                remote_io_site.site_utils.RemoteCommand(
+                    command="source ~/miniconda3/etc/profile.d/conda.sh",
+                    execute_with_mpi=False
+                )
+            ]
+            commands = source_command + commands
 
         job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
@@ -1595,8 +1602,12 @@ class ForwardHelper(object):
         if self.comm.project.prepare_forward:
             self.print("Will dispatch all prepare_forward jobs")
             for _i, event in enumerate(events):
+                submitted, _ = self.__submitted_retrieved(event=event, sim_type="prepare_forward")
+                info = "already submitted" if submitted else ""
                 if verbose:
-                    self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
+                    self.print(f"Event {_i+1}/{len(self.events)}:  {event} " + info)
+                if submitted:
+                    continue
                 self.__prepare_forward(event=event)
             self.print("All prepare_forward jobs have been dispatched")
 

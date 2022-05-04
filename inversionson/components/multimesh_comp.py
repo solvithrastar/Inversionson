@@ -267,7 +267,7 @@ class MultiMeshComponent(Component):
             if not hpc_cluster.remote_exists(remote_proc_path) \
                     or not os.path.exists(forward_simulation_dict):
                 wall_time += self.comm.project.remote_data_proc_wall_time
-            else:
+            elif self.comm.project.meshes != "multi-mesh":
                 self.comm.project.change_attribute(
                     attribute=f'prepare_forward_job["{event}"]["submitted"]',
                     new_value=True,
