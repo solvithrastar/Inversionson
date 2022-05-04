@@ -291,6 +291,7 @@ def run(info):
                 # make sure traces match in length and sampling rate.
                 synth_tr.resample(sampling_rate=data_tr.stats.sampling_rate)
                 data_tr.trim(endtime=synth_tr.stats.endtime)
+                synth_tr.trim(endtime=data_tr.stats.endtime)
                 if scale_data_to_synthetics:
                     scaling_factor = (
                             synth_tr.data.ptp() / data_tr.data.ptp()
@@ -431,6 +432,7 @@ def run(info):
                 # start time should happen automatically.
                 synth_tr.resample(sampling_rate=data_tr.stats.sampling_rate)
                 data_tr.trim(endtime=synth_tr.stats.endtime)
+                synth_tr.trim(endtime=data_tr.stats.endtime)
 
             except Exception as e:
                 continue
