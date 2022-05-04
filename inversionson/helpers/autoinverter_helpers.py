@@ -1368,13 +1368,15 @@ class ForwardHelper(object):
                 )
             ]
             commands = conda_command + commands
-            source_command = [
-                remote_io_site.site_utils.RemoteCommand(
-                    command="source ~/miniconda3/etc/profile.d/conda.sh",
-                    execute_with_mpi=False
-                )
-            ]
-            commands = source_command + commands
+
+            if self.comm.project.remote_conda_source_location:
+                source_command = [
+                    remote_io_site.site_utils.RemoteCommand(
+                        command=f"source {self.comm.project.remote_conda_source_location}",
+                        execute_with_mpi=False
+                    )
+                ]
+                commands = source_command + commands
 
         job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),

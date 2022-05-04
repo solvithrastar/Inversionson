@@ -47,7 +47,10 @@ inversionson_fast_dir = "scratch/snx3000/username/INVERSIONSON"
 # It's possible to upload meshes to this directory and then they will always be used rather than creating one.
 remote_mesh_directory = "path_to_directory_containing_meshes_and_models"
 # This conda environment will be activated before running the interpolation and hpc processing jobs.
+# Leave the environment empty if you don't want to set it.
 remote_conda_environment = "salvus"
+# If a command is given here, inversionson will first source conda from this location.
+remote_conda_source_location= "~/miniconda3/etc/profile.d/conda.sh"
 # Waiting time to check again if jobs are finished. Most HPC clusters don't like it if you check too often.
 sleep_time_in_seconds = 20
 # Maximum number of reposts if a job fails.

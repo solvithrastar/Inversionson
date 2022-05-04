@@ -577,6 +577,14 @@ class MultiMeshComponent(Component):
                 )
             ]
             commands = conda_command + commands
+            if self.comm.project.remote_conda_source_location:
+                source_command = [
+                    remote_io_site.site_utils.RemoteCommand(
+                        command=f"source {self.comm.project.remote_conda_source_location}",
+                        execute_with_mpi=False
+                    )
+                ]
+                commands = source_command + commands
 
         return commands
 

@@ -496,6 +496,7 @@ class ProjectComponent(Component):
         self.hpc_processing = self.info["HPC"]["processing"]["use"]
         self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
+        self.remote_conda_source_location = self.info["HPC"]["remote_conda_source_location"]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
         self.fast_mesh_dir = self.remote_inversionson_dir / "MESHES"
         self.batch_size = self.info["batch_size"]
