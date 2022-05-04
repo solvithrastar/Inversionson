@@ -851,6 +851,7 @@ class IterationListener(object):
         len_non_validation_events = len(non_validation_events)
 
         while True:
+            anything_retrieved_pf = False
             anything_retrieved_f = False
             anything_retrieved_hpc_proc = False
             anything_adj_retrieved = False
@@ -864,8 +865,8 @@ class IterationListener(object):
                 if len(all_pf_retrieved_events) != len_all_events:
                     anything_retrieved_pf, all_pf_retrieved_events = \
                         self.__listen_to_prepare_forward(events=self.events, verbose=verbose)
-                    if anything_retrieved_pf:
-                        anything_retrieved = True
+            if anything_retrieved_pf:
+                anything_retrieved = True
             # Then we listen to forward for the already retrieved events in
             # prepare_forward.
             # Here it actually
