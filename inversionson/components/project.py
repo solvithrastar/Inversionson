@@ -42,7 +42,7 @@ class ProjectComponent(Component):
         self.get_inversion_attributes(first=False)
         self._validate_inversion_project()
         self.remote_gradient_processing = True
-        self.simulation_time_step = None
+        self.simulation_time_step = False
         # Attempt to get the simulation timestep immediately if it exists.
         self.get_simulation_time_step()
 
@@ -816,10 +816,10 @@ class ProjectComponent(Component):
                     shutil.rmtree(simulation_dict_folder)
                 except Exception as e:
                     print(e)
-                self.simulation_time_step = None
+                self.simulation_time_step = False
         else:
             if os.path.exists(timestep_file):
                 time_dict = toml.load(timestep_file)
                 self.simulation_time_step = time_dict["time_step"]
             else:
-                self.simulation_time_step = None
+                self.simulation_time_step = False

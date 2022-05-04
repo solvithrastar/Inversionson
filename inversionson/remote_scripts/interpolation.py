@@ -226,7 +226,7 @@ def create_simulation_object(
         w.physics.wave_equation.boundaries = boundaries
 
     # Compute wavefield and synthetics subsampling factor.
-    if simulation_info["simulation_time_step"] is not None:
+    if simulation_info["simulation_time_step"]:
         # Compute wavefield subsampling factor.
         samples_per_min_period = (
                 simulation_info["minimum_period"] / simulation_info["simulation_time_step"]

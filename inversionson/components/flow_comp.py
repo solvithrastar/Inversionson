@@ -565,7 +565,7 @@ class SalvusFlowComponent(Component):
             w.physics.wave_equation.boundaries = boundaries
 
         # Compute wavefield subsampling factor.
-        if self.comm.project.simulation_time_step is not None:
+        if self.comm.project.simulation_time_step:
             # Compute wavefield subsampling factor.
             samples_per_min_period = (
                     self.comm.project.min_period / self.comm.project.simulation_time_step
