@@ -448,7 +448,7 @@ class MultiMeshComponent(Component):
                     "minimum_period": self.comm.lasif.lasif_comm.project.simulation_settings[
                         "minimum_period_in_s"
                     ],
-                    "simulation_timestep": self.comm.project.simulation_time_step,
+                    "simulation_time_step": self.comm.project.simulation_time_step,
                     "attenuation": self.comm.project.attenuation,
                     "absorbing_boundaries": self.comm.project.absorbing_boundaries,
                     "side_sets": side_sets,
