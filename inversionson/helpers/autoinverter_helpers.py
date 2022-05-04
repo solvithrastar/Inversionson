@@ -890,14 +890,14 @@ class IterationListener(object):
             ####################################################################
             # The rest is only for the non validation events.
             ####################################################################
-            all_f_retrieved_events = list(set(all_f_retrieved_events) - set(
+            all_non_val_f_retrieved_events = list(set(all_f_retrieved_events) - set(
                 self.comm.project.validation_dataset))
             # Now we start listening to the hpc_proc jobs. Only for the ones that
             # finished and only if applicable.
 
             if self.comm.project.hpc_processing:
-                if len(all_f_retrieved_events) > 0 and len(all_hpc_proc_retrieved_events) != len_non_validation_events:
-                    anything_retrieved_hpc_proc, all_hpc_proc_retrieved_events = self.__listen_to_hpc_processing(all_f_retrieved_events)
+                if len(all_non_val_f_retrieved_events) > 0 and len(all_hpc_proc_retrieved_events) != len_non_validation_events:
+                    anything_retrieved_hpc_proc, all_hpc_proc_retrieved_events = self.__listen_to_hpc_processing(all_non_val_f_retrieved_events)
                 if anything_retrieved_hpc_proc:
                     anything_retrieved = True
             # Now we start listening to the adjoint jobs. If hpc proc,
@@ -907,8 +907,8 @@ class IterationListener(object):
                 if len(all_hpc_proc_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
                     anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
             else:
-                if len(all_f_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
-                    anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_f_retrieved_events)
+                if len(all_non_val_f_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
+                    anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_non_val_f_retrieved_events)
             if anything_adj_retrieved:
                 anything_retrieved = True
             # Now we listen to the gradient interp jobs in the multi_mesh case
