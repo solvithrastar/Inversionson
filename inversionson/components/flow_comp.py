@@ -603,9 +603,6 @@ class SalvusFlowComponent(Component):
         :type event: str
         """
 
-        hpc_cluster = sapi.get_site(self.comm.project.site_name)
-        interp_job = self.get_job(event, sim_type="prepare_forward")
-
         # Always write events to the same folder
         destination = (
             self.comm.lasif.lasif_comm.project.paths["salvus_files"]
@@ -617,6 +614,8 @@ class SalvusFlowComponent(Component):
             os.makedirs(destination.parent)
 
         if not os.path.exists(destination):
+            hpc_cluster = sapi.get_site(self.comm.project.site_name)
+            interp_job = self.get_job(event, sim_type="prepare_forward")
             remote_dict = (
                 interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
             )
