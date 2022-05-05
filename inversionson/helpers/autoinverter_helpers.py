@@ -662,13 +662,13 @@ class IterationListener(object):
                     window_set,
                     verbose,
                 )
+            if adjoint and not self.comm.project.hpc_processing:
+                self.__dispatch_adjoint_simulation(event, verbose)
             self.comm.project.change_attribute(
                 attribute=f'forward_job["{event}"]["retrieved"]',
                 new_value=True,
             )
             self.comm.project.update_iteration_toml()
-            if adjoint and not self.comm.project.hpc_processing:
-                self.__dispatch_adjoint_simulation(event, verbose)
             for_job_listener.events_already_retrieved.append(event)
         for event in for_job_listener.to_repost:
             self.comm.project.change_attribute(

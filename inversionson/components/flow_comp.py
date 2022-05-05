@@ -678,7 +678,8 @@ class SalvusFlowComponent(Component):
 
     def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
         """
-        Create the adjoint simulation object that salvus flow needs
+        Create the adjoint simulation object that salvus flow needs.
+        This only gets used in the non HPC processing case.
 
         :param event: Name of event
         :type event: str
@@ -709,7 +710,19 @@ class SalvusFlowComponent(Component):
         if remote_interp:
             remote_mesh = interp_job.path / "output" / "mesh.h5"
         else:
-            remote_mesh = forward_job.input_path / "mesh.h5"
+            local_meta = os.path.join(
+                self.comm.project.lasif_root,
+                "SYNTHETICS",
+                "EARTHQUAKES",
+                f"ITERATION_{self.comm.project.current_iteration}",
+                event,
+                "meta.json",
+            )
+            with open(local_meta, "r") as fh:
+                meta_info = json.load(fh)
+            remote_mesh = meta_info["forward_run_input"]["domain"]["mesh"][
+                "filename"]
+
         gradient = "gradient.h5"
 
 
