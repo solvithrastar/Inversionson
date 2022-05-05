@@ -231,7 +231,7 @@ def create_simulation_object(
         samples_per_min_period = (
                 simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
         )
-        min_samples_per_min_period = 30.0
+        min_samples_per_min_period = 35.0
         reduction_factor = int(
             samples_per_min_period / min_samples_per_min_period)
         reduction_factor_syn = int(
@@ -243,7 +243,7 @@ def create_simulation_object(
         else:
             checkpointing_flag = "auto-for-checkpointing"
     else:
-        checkpointing_flag = "auto-for-checkpointing_10"
+        checkpointing_flag = "auto-for-checkpointing_5"
 
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"
