@@ -94,7 +94,7 @@ class AutoInverter(object):
                     self.comm.project.remote_inversionson_dir / directory
                 )
 
-        if self.comm.project.ocean_loading["use"]:
+        if self.comm.project.ocean_loading["use"] and self.comm.project.meshes == "multi-mesh":
             if hpc_cluster.remote_exists(
                 self.comm.project.ocean_loading["remote_path"]
             ):
