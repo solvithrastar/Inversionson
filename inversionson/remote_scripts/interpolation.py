@@ -218,7 +218,7 @@ def create_simulation_object(
         boundaries.append(absorbing)
 
     if "ocean_loading" in mesh_info.keys():
-        print("I think there is ocean loading")
+        print("Applying ocean loading.")
         bound = True
         ocean_loading = sc.boundary.OceanLoading(side_sets=[source_info["side_set"]])
         boundaries.append(ocean_loading)

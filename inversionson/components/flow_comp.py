@@ -806,6 +806,7 @@ class SalvusFlowComponent(Component):
             )
         self.comm.project.update_iteration_toml()
         if hpc_cluster.config["site_type"] == "local":
+            self.print(f"Running {sim_type} simulation...")
             job.wait(poll_interval_in_seconds=self.comm.project.sleep_time_in_s)
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:

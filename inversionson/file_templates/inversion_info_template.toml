@@ -1,7 +1,7 @@
 inversion_path = "{INVERSION_PATH}"
 lasif_root = "{INVERSION_PATH}/LASIF_PROJECT"
 # Pick between 'multi-mesh' or 'mono-mesh'
-meshes = "multi-mesh"
+meshes = "mono-mesh"
 # Currently only 'Adam' and 'SGDM' available
 optimizer = "Adam"
 inversion_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO",]

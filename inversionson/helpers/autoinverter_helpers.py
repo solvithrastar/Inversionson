@@ -979,6 +979,10 @@ class IterationListener(object):
 
         :param event: name of the event
         """
+        if self.comm.project.cut_source_radius == 0.0 and \
+                self.comm.project.clip_gradient == 1.0:
+            return
+
         job = self.comm.salvus_flow.get_job(event, "adjoint")
         output_files = job.get_output_files()
         gradient_path = output_files[0][("adjoint", "gradient", "output_filename")]
@@ -1015,7 +1019,13 @@ class IterationListener(object):
         os.remove(toml_filename)
 
         # Call script
-        print(hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}"))
+        exit_code, stdout, stderr = hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}")
+        if "Remote source cut completed successfully" in stdout:
+            self.print(f"Source cut and clip completed for {event}.",
+                       emoji_alias=":scissors:")
+        else:
+            print("Something went wrong..")
+            raise Exception(stdout)
 
 
 class ForwardHelper(object):
