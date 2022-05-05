@@ -20,7 +20,7 @@ elements_per_wavelength = 1.7
 ellipticity = true
 
 [Meshing.ocean_loading]
-use = false
+use = true
 file = ""
 remote_path = ""
 variable = ""
