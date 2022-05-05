@@ -246,10 +246,11 @@ class Optimize(object):
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
 
-        if self.comm.project.meshes == "multi-mesh":
+        if self.comm.project.prepare_forward:
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "prepare_forward"
             )
+        if self.comm.project.meshes == "multi-mesh":
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "gradient_interp"
             )
