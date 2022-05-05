@@ -448,6 +448,7 @@ class MultiMeshComponent(Component):
                     "minimum_period": self.comm.lasif.lasif_comm.project.simulation_settings[
                         "minimum_period_in_s"
                     ],
+                    "simulation_time_step": self.comm.project.simulation_time_step,
                     "attenuation": self.comm.project.attenuation,
                     "absorbing_boundaries": self.comm.project.absorbing_boundaries,
                     "side_sets": side_sets,
@@ -576,6 +577,14 @@ class MultiMeshComponent(Component):
                 )
             ]
             commands = conda_command + commands
+            if self.comm.project.remote_conda_source_location:
+                source_command = [
+                    remote_io_site.site_utils.RemoteCommand(
+                        command=f"source {self.comm.project.remote_conda_source_location}",
+                        execute_with_mpi=False
+                    )
+                ]
+                commands = source_command + commands
 
         return commands
 

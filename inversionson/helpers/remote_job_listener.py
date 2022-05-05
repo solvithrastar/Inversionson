@@ -44,6 +44,17 @@ class RemoteJobListener(object):
         line_below=False,
         emoji_alias=None,
     ):
+        if self.job_type == "prepare_forward":
+            color = "lightred"
+        if self.job_type == "forward":
+            color = "yellow"
+        if self.job_type == "hpc_processing":
+            color = "green"
+        if self.job_type == "adjoint":
+            color = "blue"
+        if self.job_type == "gradient_interp":
+            color = "magenta"
+
         self.comm.storyteller.printer.print(
             message=message,
             color=color,
@@ -222,7 +233,7 @@ class RemoteJobListener(object):
             f"Checking Jobs for {self.job_type}:", line_above=True, emoji_alias=":ear:"
         )
         for event in tqdm(
-            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True)
+            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True), postfix="\r"
         ):
             if job_dict[event]["retrieved"]:
                 self.events_already_retrieved.append(event)

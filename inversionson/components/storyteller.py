@@ -605,6 +605,7 @@ class PrettyPrinter(object):
             "cyan": Fore.CYAN,
             "magenta": Fore.MAGENTA,
             "yellow": Fore.YELLOW,
+            "lightred": Fore.LIGHTRED_EX,
         }
 
     def set_color(self, color: str):

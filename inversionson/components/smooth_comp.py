@@ -111,9 +111,11 @@ class SalvusSmoothComponent(Component):
             tensor_order = self.comm.project.smoothing_tensor_order
 
             sim.domain.polynomial_order = tensor_order
-            sim.physics.diffusion_equation.time_step_in_seconds = (
-                self.comm.project.smoothing_timestep
-            )
+
+            if not self.comm.project.smoothing_timestep == "auto":
+                sim.physics.diffusion_equation.time_step_in_seconds = (
+                    self.comm.project.smoothing_timestep
+                )
             sim.physics.diffusion_equation.courant_number = 0.06
 
             sim.physics.diffusion_equation.initial_values.filename = (

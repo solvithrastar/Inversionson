@@ -149,6 +149,7 @@ class LasifComponent(Component):
         if hpc_cluster is None:
             hpc_cluster = get_site(self.comm.project.interpolation_site)
         remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+        fast_dir = pathlib.Path(self.comm.project.remote_inversionson_dir)
         if iteration is None:
             iteration = self.comm.project.current_iteration
 
@@ -180,10 +181,10 @@ class LasifComponent(Component):
                 else:
                     if validation:
                         mesh = (
-                            remote_mesh_dir / "average_models" / iteration / "mesh.h5"
+                            fast_dir / "AVERAGE_MODELS" / iteration / "mesh.h5"
                         )
                     else:
-                        mesh = remote_mesh_dir / "models" / iteration / "mesh.h5"
+                        mesh = fast_dir / "MODELS" / iteration / "mesh.h5"
 
         if check_if_exists:
             if not hpc_cluster.remote_exists(mesh):
@@ -575,25 +576,18 @@ class LasifComponent(Component):
                 iteration,
             )
         else:
-            if "validation" in iteration and "it0000" and "00000" not in iteration:
-                optimizer = self.comm.project.get_optimizer()
-                new_it_num = optimizer.iteration_number
-                old_it_num = new_it_num - self.comm.project.val_it_interval + 1
-                return os.path.join(
-                    self.comm.salvus_mesher.average_meshes,
-                    f"it_{old_it_num}_to_{new_it_num}",
-                    "mesh.h5",
-                )
-            elif "validation" in iteration and (
-                "it0000" in iteration or "00000" in iteration
+            optimizer = self.comm.project.get_optimizer()
+            if (
+                    self.comm.project.is_validation_event(event_name)
+                    and self.comm.project.use_model_averaging
+                    and "00000" not in self.comm.project.current_iteration
             ):
-                iteration = iteration[11:]
-            return os.path.join(
-                self.comm.project.lasif_root,
-                "MODELS",
-                f"ITERATION_{iteration}",
-                "mesh.h5",
-            )
+                model = optimizer.get_average_model_name()
+            else:
+                model = optimizer.model_path
+
+            return model
+
 
     def calculate_station_weights(self, event: str):
         """

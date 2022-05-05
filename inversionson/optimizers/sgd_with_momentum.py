@@ -12,6 +12,7 @@ from inversionson.helpers.regularization_helper import RegularizationHelper
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.autoinverter_helpers import AdjointHelper
+from inversionson.utils import write_xdmf
 
 
 class SGDM(Optimize):
@@ -169,6 +170,7 @@ class SGDM(Optimize):
                 os.mkdir(folder)
 
         shutil.copy(self.initial_model, self.model_path)
+        write_xdmf(self.model_path)
 
     def _issue_first_task(self):
         """
@@ -515,10 +517,7 @@ class SGDM(Optimize):
         to update the model.
         """
         if self.comm.project.meshes == "multi-mesh":
-            interpolate = True
             self.comm.lasif.move_gradient_to_cluster()
-        else:
-            interpolate = False
 
         if not self.task_dict["summing_completed"]:
             adjoint_helper = AdjointHelper(
@@ -526,7 +525,6 @@ class SGDM(Optimize):
             )
             adjoint_helper.dispatch_adjoint_simulations()
             adjoint_helper.process_gradients(
-                interpolate=interpolate,
                 smooth_individual=False,
                 verbose=verbose,
             )
@@ -544,6 +542,7 @@ class SGDM(Optimize):
                 sum_vpv_vph=True,
                 store_norms=True,
             )
+            self.write_xdmf(self.raw_gradient_path)
             self.task_dict["summing_completed"] = True
             self._update_task_file()
         else:

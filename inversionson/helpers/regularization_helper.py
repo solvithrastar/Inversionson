@@ -40,7 +40,7 @@ class RegularizationHelper(object):
     def print(
         self,
         message: str,
-        color: str = "green",
+        color: str = "magenta",
         line_above: bool = False,
         line_below: bool = False,
         emoji_alias: Union[str, List[str]] = ":cop:",
@@ -148,6 +148,6 @@ class RegularizationHelper(object):
         self.print("Monitoring smoothing jobs...")
         self.update_task_status_and_retrieve()  # Start with retrieval to skip loop
         while not self.all_retrieved():
-            sleep_or_process(self.comm, color="green", emoji_alias=":cop:")
+            sleep_or_process(self.comm, color="magenta", emoji_alias=":cop:")
             self.dispatch_smoothing_tasks()
             self.update_task_status_and_retrieve()

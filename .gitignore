@@ -110,3 +110,6 @@ venv.bak/
 
 # tests
 .inversionson/tests/
+
+# Mac stuff
+.DS_Store

@@ -519,17 +519,11 @@ class SalvusFlowComponent(Component):
         """
         import salvus.flow.simple_config as sc
 
-        if self.comm.project.meshes == "multi-mesh":
-            mesh = self.comm.lasif.get_simulation_mesh(event)
-            if self.comm.project.interpolation_mode == "remote":
-                use_mesh = f"REMOTE:{mesh}"
-            mesh = self.comm.lasif.find_event_mesh(event=event)
-        else:
-            mesh = self.comm.lasif.get_simulation_mesh(event)
+        mesh = self.comm.lasif.get_master_model()
         w = sc.simulation.Waveform(mesh=mesh, sources=sources, receivers=receivers)
 
         w.physics.wave_equation.end_time_in_seconds = self.comm.project.end_time
-        w.physics.wave_equation.time_step_in_seconds = self.comm.project.time_step
+        # w.physics.wave_equation.time_step_in_seconds = self.comm.project.time_step
         w.physics.wave_equation.start_time_in_seconds = self.comm.project.start_time
         w.physics.wave_equation.attenuation = self.comm.project.attenuation
         bound = False
@@ -571,23 +565,29 @@ class SalvusFlowComponent(Component):
             w.physics.wave_equation.boundaries = boundaries
 
         # Compute wavefield subsampling factor.
-        samples_per_min_period = (
-            self.comm.project.min_period / self.comm.project.time_step
-        )
-        min_samples_per_min_period = 30.0
-        reduction_factor = int(samples_per_min_period / min_samples_per_min_period)
-        if reduction_factor >= 2:
-            checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        if self.comm.project.simulation_time_step:
+            # Compute wavefield subsampling factor.
+            samples_per_min_period = (
+                    self.comm.project.min_period / self.comm.project.simulation_time_step
+            )
+            min_samples_per_min_period = 30.0
+            reduction_factor = int(
+                samples_per_min_period / min_samples_per_min_period)
+            reduction_factor_syn = int(
+                samples_per_min_period / 40.0)
+            if reduction_factor_syn >= 2:
+                w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
+            if reduction_factor >= 2:
+                checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+            else:
+                checkpointing_flag = "auto-for-checkpointing"
         else:
-            checkpointing_flag = "auto-for-checkpointing"
-
+            checkpointing_flag = "auto-for-checkpointing_10"
         # For gradient computation
         w.output.volume_data.format = "hdf5"
         w.output.volume_data.filename = "output.h5"
         w.output.volume_data.fields = ["adjoint-checkpoint"]
         w.output.volume_data.sampling_interval_in_time_steps = checkpointing_flag
-        if self.comm.project.meshes == "multi-mesh":
-            w.set_mesh(use_mesh)
 
         w.validate()
 
@@ -623,20 +623,6 @@ class SalvusFlowComponent(Component):
             hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
 
         sim_dict = toml.load(destination)
-        if self.comm.project.meshes == "multi-mesh":
-            already_interpolated = True
-        else:
-            already_interpolated = False
-        # Currently this is always a non-average mesh
-        # We can still change this
-        # remote_mesh = self.comm.lasif.find_remote_mesh(
-        #     event=event,
-        #     gradient=False,
-        #     interpolate_to=False,
-        #     hpc_cluster=hpc_cluster,
-        #     already_interpolated=already_interpolated,
-        # )
-        # remote_mesh = interp_job.stdout_path.parent / "output" / "mesh.h5"
 
         local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
             "domain_settings"
@@ -692,7 +678,8 @@ class SalvusFlowComponent(Component):
 
     def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
         """
-        Create the adjoint simulation object that salvus flow needs
+        Create the adjoint simulation object that salvus flow needs.
+        This only gets used in the non HPC processing case.
 
         :param event: Name of event
         :type event: str
@@ -723,8 +710,22 @@ class SalvusFlowComponent(Component):
         if remote_interp:
             remote_mesh = interp_job.path / "output" / "mesh.h5"
         else:
-            remote_mesh = forward_job.input_path / "mesh.h5"
+            local_meta = os.path.join(
+                self.comm.project.lasif_root,
+                "SYNTHETICS",
+                "EARTHQUAKES",
+                f"ITERATION_{self.comm.project.current_iteration}",
+                event,
+                "meta.json",
+            )
+            with open(local_meta, "r") as fh:
+                meta_info = json.load(fh)
+            remote_mesh = meta_info["forward_run_input"]["domain"]["mesh"][
+                "filename"]
+
         gradient = "gradient.h5"
+
+
 
         w = simulation.Waveform(mesh=mesh)
         w.adjoint.forward_meta_json_filename = f"REMOTE:{meta}"

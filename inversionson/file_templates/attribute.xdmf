@@ -1,0 +1,6 @@
+      <Attribute Name="{parameter}" Center="Node" AttributeType="Scalar">
+        <DataItem ItemType="HyperSlab" Type="HyperSlab" Dimensions="{num_points} 1">
+          <DataItem Dimensions="3 3">0 {parameter_idx} 0 1 1 1 {num_elements} 1 {nodes_per_element}</DataItem>
+          <DataItem Format="HDF" Dimensions="{num_elements} {num_parameters} {nodes_per_element}">{filename}:/MODEL/data</DataItem>
+        </DataItem>
+      </Attribute>

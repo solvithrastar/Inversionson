@@ -7,7 +7,6 @@ from typing import List, Union
 
 from pathlib import Path
 from colorama import init
-from colorama import Fore, Style
 from salvus.flow.api import get_site
 from inversionson.tasks import TaskManager
 
@@ -19,6 +18,15 @@ INTERPOLATION_SCRIPT_PATH = os.path.join(
     "inversionson",
     "remote_scripts",
     "interpolation.py",
+)
+
+INVERSION_INFO_template = os.path.join(
+    os.path.dirname(
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    ),
+    "inversionson",
+    "file_templates",
+    "inversion_info_template.toml",
 )
 
 
@@ -86,7 +94,7 @@ class AutoInverter(object):
                     self.comm.project.remote_inversionson_dir / directory
                 )
 
-        if self.comm.project.ocean_loading["use"]:
+        if self.comm.project.ocean_loading["use"] and self.comm.project.meshes == "multi-mesh":
             if hpc_cluster.remote_exists(
                 self.comm.project.ocean_loading["remote_path"]
             ):
@@ -157,9 +165,7 @@ def read_info_toml(root):
         )
     info_toml_path = root / info_toml
     if not info_toml_path.is_file():
-        script_dir = Path(__file__).parent
-        template_toml = script_dir / "inversion_info_template.toml"
-        with open(template_toml, "r") as fh:
+        with open(INVERSION_INFO_template, "r") as fh:
             toml_string = fh.read()
         toml_string = toml_string.format(INVERSION_PATH=str(root))
         with open(info_toml_path, "w") as fh:

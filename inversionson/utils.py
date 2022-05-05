@@ -7,9 +7,79 @@ or something like that.
 """
 
 import numpy as np
+import pathlib
+import inspect
 import os, sys
 import h5py
 import time
+
+
+FILE_TEMPLATES_DIR = os.path.join(
+    os.path.dirname(
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    ),
+    "inversionson",
+    "file_templates",
+)
+BASE_XDMF_PATH = os.path.join(FILE_TEMPLATES_DIR, "base_xdmf.xdmf")
+XDMF_ATTRIBUTE_PATH = os.path.join(FILE_TEMPLATES_DIR, "attribute.xdmf")
+
+
+def write_xdmf(filename):
+    """
+    Takes a path to an h5 file and writes the accompanying xdmf file.
+
+    :param filename: Filename of the h5 file that needs an xdmf file.
+    Should be a pathlib.Path or str.
+    """
+    if type(filename) == str:
+        filename = pathlib.Path(filename)
+
+    # Get relevant info from h5 file
+    with h5py.File(filename, "r") as h5:
+        num_big_elements = h5["MODEL"]["coordinates"].shape[0]
+        nodes_per_element = h5["MODEL"]["coordinates"].shape[1]
+        dimension = h5["MODEL"]["coordinates"].shape[2]
+        total_points = num_big_elements * nodes_per_element
+        tensor_order = round(nodes_per_element ** (1 / dimension) - 1)
+        num_sub_elements = h5["TOPOLOGY"]["cells"].shape[0] * tensor_order ** 3
+
+        dim_labels = h5["MODEL/data"].attrs.get("DIMENSION_LABELS")[1][1:-1]
+        if not type(dim_labels) == str:
+            dim_labels = dim_labels.decode()
+        dim_labels = dim_labels.replace(" ", "").split("|")
+
+    # Write all atrributes
+    with open(XDMF_ATTRIBUTE_PATH, "r") as fh:
+        attribute_string = fh.read()
+    all_attributes = ""
+
+    i = 0
+    final_filename = filename.name
+    for attribute in dim_labels:
+        if not i == 0:
+            all_attributes += "\n"
+        all_attributes += attribute_string.format(num_points=total_points,
+                                                  parameter=attribute,
+                                                  parameter_idx=i,
+                                                  num_elements=num_big_elements,
+                                                  nodes_per_element=nodes_per_element,
+                                                  num_parameters=len(dim_labels),
+                                                  filename=final_filename,
+                                                  )
+        i += 1
+
+    with open(BASE_XDMF_PATH, "r") as fh:
+        base_string = fh.read().format(number_of_sub_elements=num_sub_elements,
+                                       filename=final_filename,
+                                       num_points=total_points,
+                                       attributes=all_attributes)
+
+    xdmf_filename = ".".join(final_filename.split(".")[:-1]) + ".xdmf"
+    complete_xdmf_filename = filename.parent / xdmf_filename
+
+    with open(complete_xdmf_filename, "w") as fh:
+        fh.write(base_string)
 
 
 def _print(

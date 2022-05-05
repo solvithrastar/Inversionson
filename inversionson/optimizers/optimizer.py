@@ -18,6 +18,7 @@ from typing import List, Union
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
+from inversionson.utils import write_xdmf
 from inversionson.helpers import autoinverter_helpers as helpers
 
 
@@ -245,10 +246,11 @@ class Optimize(object):
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
 
-        if self.comm.project.meshes == "multi-mesh":
+        if self.comm.project.prepare_forward:
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "prepare_forward"
             )
+        if self.comm.project.meshes == "multi-mesh":
             self.comm.salvus_flow.delete_stored_wavefields(
                 self.iteration_name, "gradient_interp"
             )
@@ -284,14 +286,14 @@ class Optimize(object):
 
         # WIP no average models being uploaded yet.
         remote_mesh_file = (
-            self.comm.project.remote_mesh_dir / "models" / it_name / "mesh.h5"
+            self.comm.project.remote_inversionson_dir / "MODELS" / it_name / "mesh.h5"
         )
         hpc_cluster = get_site(self.comm.project.site_name)
         if not hpc_cluster.remote_exists(remote_mesh_file.parent):
             if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir):
                 hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir)
-            if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir / "models"):
-                hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir / "models")
+            if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir / "MODELS"):
+                hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir / "MODELS")
             hpc_cluster.remote_mkdir(remote_mesh_file.parent)
         self.print(
             f"Moving mesh to {self.comm.project.interpolation_site}",
@@ -302,7 +304,7 @@ class Optimize(object):
         if self.time_for_validation() and self.comm.project.use_model_averaging\
                 and self.iteration_number > 0:
             remote_avg_mesh_file = (
-                    self.comm.project.remote_mesh_dir / "average_models" / it_name / "mesh.h5"
+                    self.comm.project.remote_mesh_dir / "AVERAGE_MODELS" / it_name / "mesh.h5"
             )
             # this enters when the iteration number is 4
             print("writing average validation model")
@@ -349,12 +351,12 @@ class Optimize(object):
         model path. """
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
+        remote_mesh_dir = pathlib.Path(self.comm.project.remote_inversionson_dir)
 
         if model_average:
-            return remote_mesh_dir / "average_models" / iteration / "mesh.h5"
+            return remote_mesh_dir / "AVERAGE_MODELS" / iteration / "mesh.h5"
         else:
-            return remote_mesh_dir / "models" / iteration / "mesh.h5"
+            return remote_mesh_dir / "MODELS" / iteration / "mesh.h5"
 
     def time_for_validation(self) -> bool:
         validation = False
@@ -485,7 +487,7 @@ class Optimize(object):
             data = h5["MODEL/data"][:, :, :].copy()
             return data[:, indices, :]
 
-    def set_h5_data(self, filename, data):
+    def set_h5_data(self, filename, data, create_xdmf=True):
         """Writes the data with shape [:, indices :]. Requires existing file."""
         if not os.path.exists(filename):
             raise Exception("only works on existing files.")
@@ -503,6 +505,9 @@ class Optimize(object):
             # the above executed to preserve the ordering that data came in
             indices.sort()
             dat[:, indices, :] = data_copy[:, indices, :]
+
+        if create_xdmf:
+            write_xdmf(filename)
 
     def get_tensor_order(self, filename):
         """
