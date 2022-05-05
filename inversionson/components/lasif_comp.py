@@ -744,6 +744,35 @@ class LasifComponent(Component):
         if self._already_processed(event):
             return
 
+        if self.comm.project.remote_data_processing:
+            # Get local proc filename
+            lasif_root = self.comm.project.lasif_root
+            proc_filename = (
+                f"preprocessed_{int(self.comm.project.min_period)}s_"
+                f"to_{int(self.comm.project.max_period)}s.h5"
+            )
+            local_proc_folder = os.path.join(
+                lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event)
+            local_proc_file = os.path.join(local_proc_folder, proc_filename)
+
+            if not os.path.exists(local_proc_folder):
+                os.mkdir(local_proc_folder)
+
+            remote_proc_file_name = f"{event}_{proc_filename}"
+            hpc_cluster = get_site(self.comm.project.site_name)
+
+            remote_processed_dir = os.path.join(
+                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
+            )
+
+            remote_proc_path = os.path.join(remote_processed_dir,
+                                            remote_proc_file_name)
+            tmp_local_path = local_proc_file + "_tmp"
+            if hpc_cluster.remote_exists(remote_proc_path):
+                hpc_cluster.get(remote_proc_path, tmp_local_path)
+                os.rename(tmp_local_path, local_proc_file)
+                return  # Return if it got it and got it there.
+
         lapi.process_data(self.lasif_comm, events=[event])
 
     def process_random_unprocessed_event(self) -> bool:
