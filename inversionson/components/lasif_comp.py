@@ -769,7 +769,7 @@ class LasifComponent(Component):
                                             remote_proc_file_name)
             tmp_local_path = local_proc_file + "_tmp"
             if hpc_cluster.remote_exists(remote_proc_path):
-                hpc_cluster.get(remote_proc_path, tmp_local_path)
+                hpc_cluster.remote_get(remote_proc_path, tmp_local_path)
                 os.rename(tmp_local_path, local_proc_file)
                 return  # Return if it got it and got it there.
 
