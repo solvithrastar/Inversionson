@@ -38,9 +38,19 @@ The main, non-standard software packaged that Inversionson requires are
 [LASIF](https://dirkphilip.github.io/LASIF_2.0/),
 [MultiMesh](https://github.com/solvithrastar/MultiMesh) and
 [Salvus](https://mondaic.com/).
-The recommended way of installing Inversionson is to follow the installation instructions of LASIF,
-cloning the MultiMesh repository and installing that one, do the same thing with Inversionson,
-and finally install Salvus into the same environment.
+
+## Installation
+
+Installing Inversionson is in theory simple, but experience teaches us that things break.
+Please blame yourself for such mishaps and not us.
+The installation goes like this:
+1. Install the Salvus environment and software at [Mondaic.com](https://mondaic.com/docs/0.12.0/installation)
+1. With Salvus installed, you need to gather the other central libraries
+1. Git clone the [LASIF](https://github.com/dirkphilip/LASIF_2.0), [MultiMesh](https://github.com/solvithrastar/MultiMesh) and [Inversionson](https://github.com/solvithrastar/Inversionson)
+1. Inside each of the new folders, do a `pip install -e .` But do it in the same order as I asked you to download them with.
+
+Now Inversionson should be installed.
+If not, that's on you.
 
 ## Usage
 
