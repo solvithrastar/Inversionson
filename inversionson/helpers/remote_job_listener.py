@@ -233,7 +233,8 @@ class RemoteJobListener(object):
             f"Checking Jobs for {self.job_type}:", line_above=True, emoji_alias=":ear:"
         )
         for event in tqdm(
-            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True), postfix="\r"
+            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True),
+                leave=False
         ):
             if job_dict[event]["retrieved"]:
                 self.events_already_retrieved.append(event)
