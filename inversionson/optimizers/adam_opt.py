@@ -5,11 +5,20 @@ import numpy as np
 import glob
 import shutil
 import h5py
+import inspect
 from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.utils import write_xdmf
+
+CONFIG_TEMPLATE = os.path.join(
+    os.path.dirname(
+        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+    ),
+    "file_templates",
+    "adam_opt_config.toml"
+)
 
 
 class AdamOpt(Optimize):
@@ -106,22 +115,7 @@ class AdamOpt(Optimize):
         """
         Writes the initial config file.
         """
-        config = {
-            "alpha": 0.001,
-            "beta_1": 0.9,
-            "beta_2": 0.999,
-            "perturbation_decay": 0.001,
-            "roughness_decay_type": "relative_perturbation",  # or absolute
-            "update_smoothing_length": [0.5, 1.0, 1.0],
-            "roughness_decay_smoothing_length": [0.0, 0.0, 0.0],
-            "gradient_scaling_factor": 1e17,
-            "epsilon": 1e-1,
-            "initial_model": "",
-            "max_iterations": 1000,
-            "smoothing_timestep": "auto",
-        }
-        with open(self.config_file, "w") as fh:
-            toml.dump(config, fh)
+        shutil.copy(CONFIG_TEMPLATE, self.config_file)
 
         print(
             "Wrote a config file for the Adam optimizer. Please provide "
@@ -596,13 +590,13 @@ class AdamOpt(Optimize):
 
         # Attempt to dispatch model smoothing right at the beginning.
         # So there is no smoothing bottleneck when updates are not smoothed.
-        self.dispatch_model_smoothing()
+        if max(self.update_smoothing_length) == 0.0:
+            self.dispatch_model_smoothing()
 
         it_listen = IterationListener(self.comm, events=self.comm.project.events_in_iteration)
         it_listen.listen()
 
         self.task_dict["forward_submitted"] = True
-        self.task_dict["misfit_completed"] = True
         self.task_dict["misfit_completed"] = True
         self.task_dict["gradient_completed"] = True
         self._update_task_file()
