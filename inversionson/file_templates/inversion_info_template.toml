@@ -2,13 +2,13 @@ inversion_path = "{INVERSION_PATH}"
 lasif_root = "{INVERSION_PATH}/LASIF_PROJECT"
 # Pick between 'multi-mesh' or 'mono-mesh'
 meshes = "mono-mesh"
-# Currently only 'Adam' and 'SGDM' available
+# Choose between 'Adam' or 'SGDM'.
 optimizer = "Adam"
 inversion_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO",]
 modelling_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "QMU", "ETA",]
 batch_size = 3
 cut_source_region_from_gradient_in_km = 100.0
-# Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be cut
+# Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be clipped.
 clip_gradient = 1.0
 # You specify the length of the absorbing boundaries in the lasif config
 absorbing_boundaries = true
@@ -59,7 +59,7 @@ max_reposts = 3
 [HPC.wave_propagation]
 site_name = "daint"
 wall_time = 3600
-ranks = 48
+ranks = 12
 
 # It is possible to process the data on the HPC. In this case, you have to provide the path to the data folder
 # and ensure that the events that are available locally are also on the remote. Inversionson
@@ -74,7 +74,7 @@ wall_time = 600
 
 [HPC.diffusion_equation]
 wall_time = 1000
-ranks = 24
+ranks = 12
 
 [HPC.interpolation]
 model_wall_time = 300

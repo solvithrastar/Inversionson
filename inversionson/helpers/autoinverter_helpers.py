@@ -1024,8 +1024,8 @@ class IterationListener(object):
             self.print(f"Source cut and clip completed for {event}.",
                        emoji_alias=":scissors:")
         else:
-            print("Something went wrong..")
-            raise Exception(stdout)
+            print("Something went wrong in cutting and clipping on the remote.")
+            raise Exception(stdout, stderr)
 
 
 class ForwardHelper(object):
