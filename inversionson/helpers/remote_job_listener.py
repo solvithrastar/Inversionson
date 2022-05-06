@@ -39,7 +39,7 @@ class RemoteJobListener(object):
     def print(
         self,
         message: str,
-        color="white",
+        color="cyan",
         line_above=False,
         line_below=False,
         emoji_alias=None,

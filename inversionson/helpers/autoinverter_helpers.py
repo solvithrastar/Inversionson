@@ -520,7 +520,7 @@ class IterationListener(object):
             if verbose:
                 self.print(
                     "Select windows",
-                    color="white",
+                    color="cyan",
                     line_above=True,
                     emoji_alias=":foggy:",
                 )
