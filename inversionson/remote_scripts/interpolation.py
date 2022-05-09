@@ -235,7 +235,7 @@ def create_simulation_object(
         reduction_factor = int(
             samples_per_min_period / min_samples_per_min_period)
         reduction_factor_syn = int(
-            samples_per_min_period / 40.0)
+            samples_per_min_period / 50.0)
         if reduction_factor_syn >= 2:
             w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
         if reduction_factor >= 2:
