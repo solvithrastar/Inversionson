@@ -6,10 +6,8 @@ import glob
 import shutil
 import h5py
 from inversionson import InversionsonError
-from inversionson.helpers.interpolation_helper import InterpolationListener
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
-from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.autoinverter_helpers import AdjointHelper
 from inversionson.utils import write_xdmf
@@ -486,29 +484,22 @@ class SGDM(Optimize):
 
     def compute_gradient(self, verbose):
         """
-        This task does forward simulations and then gradient computations straight
-        afterwards
+        This task does forward simulations and then gradient computations
+        straight afterward..
         """
-        if not self.task_dict["forward_submitted"]:
-            self.run_forward(verbose=verbose)
-            self.task_dict["forward_submitted"] = True
-            self._update_task_file()
-        else:
-            self.print("Forwards already submitted")
+        from inversionson.helpers.autoinverter_helpers import IterationListener
 
-        if not self.task_dict["misfit_completed"]:
-            self.compute_misfit(adjoint=True, window_selection=True, verbose=verbose)
-            self.task_dict["misfit_completed"] = True
-            self._update_task_file()
-        else:
-            self.print("Misfit already computed")
+        # Attempt to dispatch model smoothing right at the beginning.
+        # So there is no smoothing bottleneck when updates are not smoothed.
+        it_listen = IterationListener(
+            self.comm,
+            events=self.comm.project.events_in_iteration)
+        it_listen.listen()
 
-        if not self.task_dict["gradient_completed"]:
-            super().compute_gradient(verbose=verbose)
-            self.task_dict["gradient_completed"] = True
-            self._update_task_file()
-        else:
-            self.print("Gradients already computed")
+        self.task_dict["forward_submitted"] = True
+        self.task_dict["misfit_completed"] = True
+        self.task_dict["gradient_completed"] = True
+        self._update_task_file()
         self.finish_task()
 
     def update_model(self, verbose):
@@ -520,20 +511,6 @@ class SGDM(Optimize):
             self.comm.lasif.move_gradient_to_cluster()
 
         if not self.task_dict["summing_completed"]:
-            adjoint_helper = AdjointHelper(
-                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-            )
-            adjoint_helper.dispatch_adjoint_simulations()
-            adjoint_helper.process_gradients(
-                smooth_individual=False,
-                verbose=verbose,
-            )
-            assert adjoint_helper.assert_all_simulations_retrieved()
-            interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-            )
-            interp_listener.monitor_interpolations()
-
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(
                 events=self.comm.project.non_val_events_in_iteration,

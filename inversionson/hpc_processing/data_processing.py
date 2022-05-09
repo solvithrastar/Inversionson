@@ -193,6 +193,6 @@ def preprocessing_function_asdf(processing_info):
     if os.path.exists(tmp_output):
         os.remove(tmp_output)
     ds.process(process_function, tmp_output, tag_map=tag_map)
-
+    
     del ds
     shutil.move(tmp_output, output_filename)

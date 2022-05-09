@@ -332,11 +332,7 @@ class Optimize(object):
         :param verbose: You want to know the details?, defaults to False
         :type verbose: bool, optional
         """
-        self.forward_helper = helpers.ForwardHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
-        )
-        self.forward_helper.dispatch_forward_simulations(verbose=verbose)
-        assert self.forward_helper.assert_all_simulations_dispatched()
+        pass
 
     def select_new_windows(self):
         """
@@ -387,15 +383,7 @@ class Optimize(object):
         :param verbose: You want to know the details?, defaults to False
         :type verbose: bool, optional
         """
-        if window_selection is None:
-            window_selection = self.select_new_windows()
-        self.forward_helper = helpers.ForwardHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
-        )
-        self.forward_helper.retrieve_forward_simulations(
-            adjoint=adjoint, windows=window_selection, verbose=verbose
-        )
-        assert self.forward_helper.assert_all_simulations_retrieved()
+        pass
 
     def compute_gradient(self, verbose=False):
         """
@@ -404,18 +392,7 @@ class Optimize(object):
         :param verbose: Do we want the details?, defaults to False
         :type verbose: bool, optional
         """
-        self.adjoint_helper = helpers.AdjointHelper(
-            comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-        )
-        self.adjoint_helper.dispatch_adjoint_simulations(verbose=verbose)
-        assert self.adjoint_helper.assert_all_simulations_dispatched()
-
-        # At this stage the validation misfit is definitely completed
-        # so report it
-        if self.time_for_validation():
-            self.comm.storyteller.report_validation_misfit(
-                iteration=self.iteration_name, event=None, total_sum=True
-            )
+        pass
 
     def regularization(self):
         """
