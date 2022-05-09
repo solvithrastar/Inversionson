@@ -9,7 +9,6 @@ from inversionson import InversionsonError
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
-from inversionson.helpers.autoinverter_helpers import AdjointHelper
 from inversionson.utils import write_xdmf
 
 

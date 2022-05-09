@@ -19,7 +19,6 @@ from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from inversionson.utils import write_xdmf
-from inversionson.helpers import autoinverter_helpers as helpers
 
 
 class Optimize(object):

@@ -6,7 +6,6 @@ import os
 import inspect
 import shutil
 import multi_mesh.api as mapi
-import lasif.api as lapi
 from salvus.flow.api import get_site
 import pathlib
 import toml

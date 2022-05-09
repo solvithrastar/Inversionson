@@ -2,8 +2,6 @@ import os
 import toml
 from typing import Union, List
 
-
-from pathlib import Path
 from salvus.flow import api as sapi
 from salvus.opt.smoothing import get_smooth_model
 from inversionson.utils import sleep_or_process
