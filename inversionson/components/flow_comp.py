@@ -8,10 +8,14 @@ import toml
 from typing import Union, List
 
 from lasif.components.component import Component
+from salvus.flow import schema_validator
+import typing
+from salvus.flow.simple_config.simulation import Waveform
 from salvus.flow.sites import job as s_job
 from salvus.flow.simple_config import simulation, source, stf, receiver
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
+from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
 
 class SalvusFlowComponent(Component):
@@ -623,15 +627,63 @@ class SalvusFlowComponent(Component):
 
         sim_dict = toml.load(destination)
 
-        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
-            "domain_settings"
-        ]["domain_file"]
+        local_dummy_mesh_path = self.comm.lasif.get_master_model()
+        local_dummy_mesh = self.comm.lasif.get_master_mesh()
         for key in ["mesh", "model", "geometry"]:
-            sim_dict["domain"][key]["filename"] = local_dummy_mesh
+            sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
 
-        w = simulation.Waveform().from_dict(sim_dict)
+        w = self.simulation_from_dict(sim_dict, local_dummy_mesh)
 
         return w
+
+    @classmethod
+    def simulation_from_dict(cls, dictionary: typing.Dict,
+                             mesh_object: UnstructuredMesh) -> "Waveform":
+        """
+        Custom version of the from Waveform.from_dict method
+        to allow passing of mesh objects and prevent reading mesh files
+        again and again.
+
+        Must be initialized with a locally existing mesh. but can
+        be modified to use a remote mesh after creation
+
+        Args:
+            dictionary: Dictionary
+            mesh_object: salvus mesh object
+        """
+
+        w = Waveform()
+
+        # make sure the dictionary is compatible
+        schema_validator.validate(
+            value=dictionary, schema=w._schema, pretty_error=True
+        )
+
+        # ensure the same mesh file is given for mesh, model and geometry
+        filenames = [
+            dictionary["domain"]["mesh"]["filename"],
+            dictionary["domain"]["model"]["filename"],
+            dictionary["domain"]["geometry"]["filename"],
+        ]
+
+        if len(set(filenames)) != 1:
+            msg = (
+                "This method currently only supports unique file names "
+                "for mesh, model and geometry."
+            )
+            raise ValueError(msg)
+
+        mesh = dictionary["domain"]["mesh"]["filename"]
+        if mesh == "__SALVUS_FLOW_SPECIAL_TEMP__":
+            msg = "The dictionary does not contain a path to a mesh file."
+            raise ValueError(msg)
+
+        w.set_mesh(mesh_object)
+        w.apply(dictionary)
+        w.validate()
+
+        return w
+
 
     def construct_adjoint_simulation_from_dict(self, event: str):
         """
@@ -665,13 +717,12 @@ class SalvusFlowComponent(Component):
 
         adjoint_sim_dict = toml.load(destination)
         remote_mesh = adjoint_sim_dict["domain"]["mesh"]["filename"]
-        local_dummy_mesh = self.comm.lasif.lasif_comm.project.lasif_config[
-            "domain_settings"
-        ]["domain_file"]
+        local_dummy_mesh_path = self.comm.lasif.get_master_model()
+        local_dummy_mesh = self.comm.lasif.get_master_mesh()
         for key in ["mesh", "model", "geometry"]:
-            adjoint_sim_dict["domain"][key]["filename"] = local_dummy_mesh
+            adjoint_sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
 
-        w = simulation.Waveform().from_dict(adjoint_sim_dict)
+        w = self.simulation_from_dict(adjoint_sim_dict, local_dummy_mesh)
         w.set_mesh("REMOTE:" + str(remote_mesh))
         return w
 
