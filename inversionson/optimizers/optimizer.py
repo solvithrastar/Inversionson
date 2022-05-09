@@ -219,7 +219,8 @@ class Optimize(object):
             norm_dict = toml.load(all_norms_path)
             unused_events = list(set(all_events).difference(set(norm_dict.keys())))
             list_of_vals = np.array(list(norm_dict.values()))
-            max_norm = np.max(list_of_vals)
+            # Set unused to 65%, so slightly above average
+            max_norm = np.percentile(list_of_vals, 65.0)
 
             # Assign high norm values to unused events to make them
             # more likely to be chosen
