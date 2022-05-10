@@ -13,13 +13,6 @@ from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.utils import write_xdmf
 
-CONFIG_TEMPLATE = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "file_templates",
-    "sgdm_config.toml"
-)
 
 class SGDM(Optimize):
     """
@@ -30,6 +23,14 @@ class SGDM(Optimize):
     """
 
     optimizer_name = "SGDM"
+    config_template_path = os.path.join(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.abspath(inspect.getfile(inspect.currentframe())))
+        ),
+        "file_templates",
+        "sgdm_config.toml"
+    )
 
     def __init__(self, comm):
 
@@ -95,17 +96,6 @@ class SGDM(Optimize):
     def gradient_norm_path(self):
         return (
             self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
-        )
-
-    def _write_initial_config(self):
-        """
-        Writes the initial config file.
-        """
-        shutil.copy(CONFIG_TEMPLATE, self.config_file)
-
-        print(
-            "Wrote a config file for the SGD with Momentum optimizer. "
-            "Please provide an initial model."
         )
 
     def _read_config(self):

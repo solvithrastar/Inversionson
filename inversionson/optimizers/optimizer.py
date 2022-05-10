@@ -19,6 +19,7 @@ from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from inversionson.utils import write_xdmf
+import shutil
 
 
 class Optimize(object):
@@ -37,6 +38,7 @@ class Optimize(object):
 
     # Derived classes should override this
     optimizer_name = "BaseClass for optimizers. Don't instantiate. If you see this..."
+    config_template_path = None
 
     def __init__(self, comm):
 
@@ -145,18 +147,11 @@ class Optimize(object):
         """
         Writes the initial config file.
         """
-        config = {
-            "step_length": 0.001,
-            "parameters": ["VSV", "VSH", "VPV", "VPH"],
-            "initial_model": "",
-            "max_iterations": 1000,
-        }
-        with open(self.config_file, "w") as fh:
-            toml.dump(config, fh)
+        shutil.copy(self.config_template_path, self.config_file)
 
         print(
-            "Wrote a config file for the Base optimizer. Please provide "
-            "an initial model."
+            f"Wrote a config file for the {self.optimizer_name} optimizer. "
+            f"Please provide an initial model."
         )
 
     def _read_config(self):
