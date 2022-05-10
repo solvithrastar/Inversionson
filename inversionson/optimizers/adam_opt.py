@@ -489,9 +489,6 @@ class AdamOpt(Optimize):
         if smooth:
             self._apply_smooth_update()
 
-    def ready_for_validation(self) -> bool:
-        return "validated" in self.task_dict.keys() and not self.task_dict["validated"]
-
     def prepare_iteration(self):
         """Prepare the iteration"""
         self.comm.project.change_attribute("current_iteration", self.iteration_name)

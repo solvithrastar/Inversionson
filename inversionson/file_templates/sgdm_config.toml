@@ -1,13 +1,11 @@
-# ADAM CONFIG
+# SGDM CONFIG
 
 # Please provide an initial model and change parameters if desired.
 # This the step size, sometimes also referred to as the learning rate.
-# e.g., alpha = 0.001 means that the model will not change by more than 0.1% for any parameter per iteration.
 alpha = 0.001
 
-# These are the parameters that control the decay rate of the first and second moments.
-beta_1 = 0.9
-beta_2 = 0.999
+# These are the parameters that control the decay rate of the moment.
+beta = 0.9
 
 # When perturbation decay is non zero, relative model perturbations are multiplied with the below number in each iteration.
 perturbation_decay = 0.001
@@ -23,10 +21,6 @@ update_smoothing_length = [ 0.4, 0.8, 0.8,]
 
 # Scaling factor prevent overflow issues with single precision numbers. Don't change this number during the optimization.
 gradient_scaling_factor = 1e+17
-
-# Epsilon term in the adam update equation. In inversionson, this is chosen relative to the mean of the quare root of the second moment.
-# High values of epsilon suppress updates in regions with weak sensitivity.
-epsilon = 0.1
 
 # The starting model. This must be a .h5 file as provided by the Salvus Mesher.
 initial_model = ""
