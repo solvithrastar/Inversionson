@@ -85,7 +85,7 @@ def write_xdmf(filename):
 def _print(
     comm,
     message,
-    color="white",
+    color="cyan",
     line_above=False,
     line_below=False,
     emoji_alias=":ear:",

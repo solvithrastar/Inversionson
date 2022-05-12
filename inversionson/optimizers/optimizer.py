@@ -19,7 +19,7 @@ from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from inversionson.utils import write_xdmf
-from inversionson.helpers import autoinverter_helpers as helpers
+import shutil
 
 
 class Optimize(object):
@@ -38,6 +38,7 @@ class Optimize(object):
 
     # Derived classes should override this
     optimizer_name = "BaseClass for optimizers. Don't instantiate. If you see this..."
+    config_template_path = None
 
     def __init__(self, comm):
 
@@ -146,18 +147,11 @@ class Optimize(object):
         """
         Writes the initial config file.
         """
-        config = {
-            "step_length": 0.001,
-            "parameters": ["VSV", "VSH", "VPV", "VPH"],
-            "initial_model": "",
-            "max_iterations": 1000,
-        }
-        with open(self.config_file, "w") as fh:
-            toml.dump(config, fh)
+        shutil.copy(self.config_template_path, self.config_file)
 
         print(
-            "Wrote a config file for the Base optimizer. Please provide "
-            "an initial model."
+            f"Wrote a config file for the {self.optimizer_name} optimizer. "
+            f"Please provide an initial model."
         )
 
     def _read_config(self):
@@ -220,7 +214,8 @@ class Optimize(object):
             norm_dict = toml.load(all_norms_path)
             unused_events = list(set(all_events).difference(set(norm_dict.keys())))
             list_of_vals = np.array(list(norm_dict.values()))
-            max_norm = np.max(list_of_vals)
+            # Set unused to 65%, so slightly above average
+            max_norm = np.percentile(list_of_vals, 65.0)
 
             # Assign high norm values to unused events to make them
             # more likely to be chosen
@@ -332,11 +327,7 @@ class Optimize(object):
         :param verbose: You want to know the details?, defaults to False
         :type verbose: bool, optional
         """
-        self.forward_helper = helpers.ForwardHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
-        )
-        self.forward_helper.dispatch_forward_simulations(verbose=verbose)
-        assert self.forward_helper.assert_all_simulations_dispatched()
+        pass
 
     def select_new_windows(self):
         """
@@ -387,15 +378,7 @@ class Optimize(object):
         :param verbose: You want to know the details?, defaults to False
         :type verbose: bool, optional
         """
-        if window_selection is None:
-            window_selection = self.select_new_windows()
-        self.forward_helper = helpers.ForwardHelper(
-            comm=self.comm, events=self.comm.project.events_in_iteration
-        )
-        self.forward_helper.retrieve_forward_simulations(
-            adjoint=adjoint, windows=window_selection, verbose=verbose
-        )
-        assert self.forward_helper.assert_all_simulations_retrieved()
+        pass
 
     def compute_gradient(self, verbose=False):
         """
@@ -404,18 +387,7 @@ class Optimize(object):
         :param verbose: Do we want the details?, defaults to False
         :type verbose: bool, optional
         """
-        self.adjoint_helper = helpers.AdjointHelper(
-            comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-        )
-        self.adjoint_helper.dispatch_adjoint_simulations(verbose=verbose)
-        assert self.adjoint_helper.assert_all_simulations_dispatched()
-
-        # At this stage the validation misfit is definitely completed
-        # so report it
-        if self.time_for_validation():
-            self.comm.storyteller.report_validation_misfit(
-                iteration=self.iteration_name, event=None, total_sum=True
-            )
+        pass
 
     def regularization(self):
         """

@@ -5,13 +5,12 @@ import numpy as np
 import glob
 import shutil
 import h5py
+import inspect
+
 from inversionson import InversionsonError
-from inversionson.helpers.interpolation_helper import InterpolationListener
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.helpers.regularization_helper import RegularizationHelper
-from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from inversionson.helpers.gradient_summer import GradientSummer
-from inversionson.helpers.autoinverter_helpers import AdjointHelper
 from inversionson.utils import write_xdmf
 
 
@@ -24,6 +23,14 @@ class SGDM(Optimize):
     """
 
     optimizer_name = "SGDM"
+    config_template_path = os.path.join(
+        os.path.dirname(
+            os.path.dirname(
+                os.path.abspath(inspect.getfile(inspect.currentframe())))
+        ),
+        "file_templates",
+        "sgdm_config.toml"
+    )
 
     def __init__(self, comm):
 
@@ -89,30 +96,6 @@ class SGDM(Optimize):
     def gradient_norm_path(self):
         return (
             self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
-        )
-
-    def _write_initial_config(self):
-        """
-        Writes the initial config file.
-        """
-        config = {
-            "alpha": 0.001,
-            "beta": 0.9,
-            "perturbation_decay": 0.001,
-            "roughness_decay_type": "relative_perturbation",  # or absolute
-            "update_smoothing_length": [0.5, 1.0, 1.0],
-            "roughness_decay_smoothing_length": [0.15, 0.15, 0.15],
-            "gradient_scaling_factor": 1e17,
-            "initial_model": "",
-            "max_iterations": 1000,
-            "smoothing_timestep": 1.0e-5,
-        }
-        with open(self.config_file, "w") as fh:
-            toml.dump(config, fh)
-
-        print(
-            "Wrote a config file for the SGD with Momentum optimizer. "
-            "Please provide an initial model."
         )
 
     def _read_config(self):
@@ -285,6 +268,7 @@ class SGDM(Optimize):
 
         if iteration_number == 1:  # Initialize moments if needed
             shutil.copy(self.raw_gradient_path, self.moment_path)
+            write_xdmf(self.moment_path)
 
             with h5py.File(self.moment_path, "r+") as h5:
                 data = h5["MODEL/data"]
@@ -410,29 +394,13 @@ class SGDM(Optimize):
         if smooth:
             self._apply_smooth_update()
 
-    def ready_for_validation(self) -> bool:
-        return "validated" in self.task_dict.keys() and not self.task_dict["validated"]
-
-    def prepare_iteration(self, validation=False):
-        if validation:
-            it_name = f"validation_{self.iteration_name}"
-        else:
-            it_name = self.iteration_name
-
-        move_meshes = "00000" in it_name if validation else True
-        self.comm.project.change_attribute("current_iteration", it_name)
-
-        if self.comm.lasif.has_iteration(it_name):
-            raise InversionsonError(f"Iteration {it_name} already exists")
-
+    def prepare_iteration(self):
+        self.comm.project.change_attribute("current_iteration", self.iteration_name)
         self.print("Picking data for iteration")
-        events = self._pick_data_for_iteration(validation=validation)
+        events = self._pick_data_for_iteration()
 
-        super().prepare_iteration(
-            it_name=it_name, move_meshes=move_meshes, events=events
-        )
-        if not validation:
-            self.finish_task()
+        super().prepare_iteration(it_name=self.iteration_name, events=events)
+        self.finish_task()
 
     def perform_smoothing(self):
         tasks = {}
@@ -486,29 +454,22 @@ class SGDM(Optimize):
 
     def compute_gradient(self, verbose):
         """
-        This task does forward simulations and then gradient computations straight
-        afterwards
+        This task does forward simulations and then gradient computations
+        straight afterward..
         """
-        if not self.task_dict["forward_submitted"]:
-            self.run_forward(verbose=verbose)
-            self.task_dict["forward_submitted"] = True
-            self._update_task_file()
-        else:
-            self.print("Forwards already submitted")
+        from inversionson.helpers.autoinverter_helpers import IterationListener
 
-        if not self.task_dict["misfit_completed"]:
-            self.compute_misfit(adjoint=True, window_selection=True, verbose=verbose)
-            self.task_dict["misfit_completed"] = True
-            self._update_task_file()
-        else:
-            self.print("Misfit already computed")
+        # Attempt to dispatch model smoothing right at the beginning.
+        # So there is no smoothing bottleneck when updates are not smoothed.
+        it_listen = IterationListener(
+            self.comm,
+            events=self.comm.project.events_in_iteration)
+        it_listen.listen()
 
-        if not self.task_dict["gradient_completed"]:
-            super().compute_gradient(verbose=verbose)
-            self.task_dict["gradient_completed"] = True
-            self._update_task_file()
-        else:
-            self.print("Gradients already computed")
+        self.task_dict["forward_submitted"] = True
+        self.task_dict["misfit_completed"] = True
+        self.task_dict["gradient_completed"] = True
+        self._update_task_file()
         self.finish_task()
 
     def update_model(self, verbose):
@@ -520,20 +481,6 @@ class SGDM(Optimize):
             self.comm.lasif.move_gradient_to_cluster()
 
         if not self.task_dict["summing_completed"]:
-            adjoint_helper = AdjointHelper(
-                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-            )
-            adjoint_helper.dispatch_adjoint_simulations()
-            adjoint_helper.process_gradients(
-                smooth_individual=False,
-                verbose=verbose,
-            )
-            assert adjoint_helper.assert_all_simulations_retrieved()
-            interp_listener = InterpolationListener(
-                comm=self.comm, events=self.comm.project.non_val_events_in_iteration
-            )
-            interp_listener.monitor_interpolations()
-
             grad_summer = GradientSummer(comm=self.comm)
             grad_summer.sum_gradients(
                 events=self.comm.project.non_val_events_in_iteration,
@@ -542,7 +489,7 @@ class SGDM(Optimize):
                 sum_vpv_vph=True,
                 store_norms=True,
             )
-            self.write_xdmf(self.raw_gradient_path)
+            write_xdmf(self.raw_gradient_path)
             self.task_dict["summing_completed"] = True
             self._update_task_file()
         else:
@@ -591,21 +538,21 @@ class SGDM(Optimize):
                     self.print(
                         f"Iteration {self.iteration_name} exists. Will load its attributes"
                     )
-                    self.comm.project.get_iteration_attributes(validation=False)
+                    self.comm.project.get_iteration_attributes()
                     self.finish_task()
                 else:
-                    self.prepare_iteration(validation=False)
+                    self.prepare_iteration()
             else:
                 self.print("Iteration already prepared")
         elif task_name == "compute_gradient":
             if not self.task_dict["finished"]:
-                self.comm.project.get_iteration_attributes(validation=False)
+                self.comm.project.get_iteration_attributes()
                 self.compute_gradient(verbose=verbose)
             else:
                 self.print("Gradient already computed")
         elif task_name == "update_model":
             if not self.task_dict["finished"]:
-                self.comm.project.get_iteration_attributes(validation=False)
+                self.comm.project.get_iteration_attributes()
                 self.update_model(verbose=verbose)
             else:
                 self.print("Model already updated")

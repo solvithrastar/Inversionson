@@ -9,9 +9,10 @@ from inversionson import InversionsonError, InversionsonWarning
 import warnings
 import toml
 import pathlib
+
 from salvus.flow.api import get_site
 from typing import List, Dict, Union
-
+from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
 class LasifComponent(Component):
     """
@@ -25,6 +26,7 @@ class LasifComponent(Component):
         # Store if some event might not processing
         self.everything_processed = False
         self.validation_data_processed = False
+        self.master_mesh = None
 
     def print(
         self,
@@ -521,6 +523,24 @@ class LasifComponent(Component):
         path = self.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
 
         return path
+
+    def get_master_mesh(self) -> str:
+        """
+        Get the salvus mesh object.
+
+        This is function is there to keep the mesh object in memory.
+        This is useful, because reading it from the file
+        is slow and happens often.
+
+        :return: Mesh of inversion grid
+        :rtype: UnstructuredMesh
+        """
+        # We assume the lasif domain is the inversion grid
+        if self.master_mesh is None:
+            path = self.lasif_comm.project.lasif_config["domain_settings"][
+                "domain_file"]
+            self.master_mesh = UnstructuredMesh.from_h5(path)
+        return self.master_mesh
 
     def get_source(self, event_name: str) -> dict:
         """

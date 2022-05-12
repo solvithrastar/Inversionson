@@ -218,7 +218,7 @@ def create_simulation_object(
         boundaries.append(absorbing)
 
     if "ocean_loading" in mesh_info.keys():
-        print("I think there is ocean loading")
+        print("Applying ocean loading.")
         bound = True
         ocean_loading = sc.boundary.OceanLoading(side_sets=[source_info["side_set"]])
         boundaries.append(ocean_loading)
@@ -231,11 +231,11 @@ def create_simulation_object(
         samples_per_min_period = (
                 simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
         )
-        min_samples_per_min_period = 30.0
+        min_samples_per_min_period = 35.0
         reduction_factor = int(
             samples_per_min_period / min_samples_per_min_period)
         reduction_factor_syn = int(
-            samples_per_min_period / 40.0)
+            samples_per_min_period / 50.0)
         if reduction_factor_syn >= 2:
             w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
         if reduction_factor >= 2:
@@ -243,7 +243,7 @@ def create_simulation_object(
         else:
             checkpointing_flag = "auto-for-checkpointing"
     else:
-        checkpointing_flag = "auto-for-checkpointing_10"
+        checkpointing_flag = "auto-for-checkpointing_5"
 
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"

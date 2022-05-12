@@ -1,6 +1,4 @@
 import h5py
-import sys
-import toml
 import numpy as np
 
 

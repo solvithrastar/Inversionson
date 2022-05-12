@@ -48,7 +48,7 @@ class AutoInverter(object):
             line_above=True,
             line_below=True,
             emoji_alias=":gun:",
-            color="white",
+            color="cyan",
         )
         if not manual_mode:
             self.run_inversion(verbose=verbose)
@@ -56,7 +56,7 @@ class AutoInverter(object):
     def print(
         self,
         message: str,
-        color: str = "white",
+        color: str = "cyan",
         line_above: bool = False,
         line_below: bool = False,
         emoji_alias: Union[str, List[str]] = None,
