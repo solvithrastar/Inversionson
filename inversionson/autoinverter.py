@@ -30,9 +30,10 @@ INVERSION_INFO_template = os.path.join(
 )
 
 
+
 def _find_project_comm(info):
     """
-    Get Inversionson communicator.
+    Get the Inversionson communicator.
     """
     from inversionson.components.project import ProjectComponent
 
