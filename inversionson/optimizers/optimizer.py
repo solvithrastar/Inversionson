@@ -13,13 +13,14 @@ import h5py
 import pathlib
 import toml
 import numpy as np
+import shutil
 from typing import List, Union
 
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from inversionson.utils import write_xdmf
-import shutil
+from inversionson.git import Git
 
 
 class Optimize(object):
@@ -254,6 +255,36 @@ class Optimize(object):
                 self.iteration_name, "hpc_processing"
             )
 
+    def _git_get_branch(self):
+        max_branches = 100
+        branch = None
+        for i in range(max_branches):
+            b = f"inversionson-auto-{i:05d}"
+            if not self.git.is_branch(b):
+                branch = b
+                break
+        if not branch:
+            raise InversionsonError("Exceeded max number of branches")
+        return branch
+
+    def _git_lfs_commit(self):
+        iter = self.iteration_number - 1 # we actually commit previous iteration
+        if not getattr(self, "git", None):
+            self.git = Git(Path(self.comm.project.paths["inversion_root"]), "inversionson <inversionson@dummy-email.ch>")
+            self.git.init()
+            branch = self._git_get_branch()
+            self.git.branch(branch)
+            self.branch = branch
+        if iter < 0:
+            print(f"Commiting initial state in git repo {self.git.dir} branch {self.branch}")
+            self.git.ignore("*.bkp", "*.pyc", "**/.ipynb_checkpoints/", "salvus_data/")
+            self.git.lfs_track("*.h5", "*.sqlite")
+            self.git.add_commit("-A", message=f"inversionson auto commit: initial")
+        else:
+            print(f"Commiting iteration {iter} in git repo {self.git.dir} branch {self.branch}")
+            self.git.add_commit("-A", message=f"inversionson auto commit: iteration {iter}")
+
+
     def prepare_iteration(
         self,
         it_name: str,
@@ -267,6 +298,14 @@ class Optimize(object):
         :param events: Pass a list of events if you want them to be predefined, defaults to None
         :type events: List[str], optional
         """
+        self._git_lfs_commit()
+        if self.iteration_number >= self.max_iterations:
+            message = (
+                f"Already performed {self.iteration_number} "
+                "iterations. You can change this number in the opt_config.toml file."
+            )
+            sys.exit(message)
+
         self.comm.project.change_attribute("current_iteration", it_name)
         print("Preparing iteration for", it_name)
         if self.comm.lasif.has_iteration(it_name):
