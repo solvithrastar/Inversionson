@@ -453,6 +453,7 @@ class ProjectComponent(Component):
         self.domain_file = self.simulation_dict["domain_file"]
 
         # Inversion attributes
+        self.use_git_lfs = self.info["use_git_lfs"]
         self.inversion_root = pathlib.Path(self.info["inversion_path"])
         self.lasif_root = pathlib.Path(self.info["lasif_root"])
         self.inversion_mode = "mini-batch"

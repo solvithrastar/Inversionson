@@ -298,7 +298,8 @@ class Optimize(object):
         :param events: Pass a list of events if you want them to be predefined, defaults to None
         :type events: List[str], optional
         """
-        self._git_lfs_commit()
+        if self.comm.project.use_git_lfs:
+            self._git_lfs_commit()
         if self.iteration_number >= self.max_iterations:
             message = (
                 f"Already performed {self.iteration_number} "
