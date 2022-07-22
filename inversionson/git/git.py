@@ -56,7 +56,7 @@ class Git:
         return self.add_commit(str(path), message = ".gitignore: " + spacify(what))
 
     def init(self):
-        return self.run("init") + self.run("lfs", "install")
+        return self.run("init", "--initial-branch", "main") + self.run("lfs", "install", "--force", "--local")
 
     def is_branch(self, name):
         cp = self.run("show-ref", "-q", "--heads", name, check=False, return_output=False)
