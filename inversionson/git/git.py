@@ -48,6 +48,8 @@ class Git:
         cp = self.run("commit", "-m", msg, check=False, return_output=False, env=env)
         # we don't throw an error if there is just nothing to commit
         if cp.returncode and "nothing to commit" not in cp.stdout:
+            print(cp.stderr, file=sys.stderr)
+            print(cp.stdout)
             raise sp.CalledProcessError(cp.returncode, cp.args, output=cp.stdout, stderr=cp.stderr)
         return cp.stdout
 
