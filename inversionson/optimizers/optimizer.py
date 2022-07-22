@@ -270,7 +270,7 @@ class Optimize(object):
     def _git_lfs_commit(self):
         iter = self.iteration_number - 1 # we actually commit previous iteration
         if not getattr(self, "git", None):
-            self.git = Git(Path(self.comm.project.paths["inversion_root"]), "inversionson <inversionson@dummy-email.ch>")
+            self.git = Git(Path(self.comm.project.paths["inversion_root"]), author_name="inversionson", author_email="<inversionson@dummy-email.ch>")
             self.git.init()
             branch = self._git_get_branch()
             self.git.branch(branch)

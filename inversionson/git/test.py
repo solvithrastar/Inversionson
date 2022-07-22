@@ -22,7 +22,7 @@ def _test():
     rmIfExists(repo, True)
     shutil.copytree(script_dir / "test_data", repo)
 
-    git = Git(repo)
+    git = Git(repo, author_name="test", author_email="<test@dummy-email.ch>")
     git.init()
 
     with open(repo / "a", "w") as f:

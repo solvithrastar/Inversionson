@@ -6,13 +6,14 @@ def spacify(what):
     return " ".join(what)
 
 class Git:
-    def __init__(self, directory: str, author: str = None):
+    def __init__(self, directory: str, author_name: str = "", author_email: str = ""):
         self.dir = Path(directory)
-        self.author = author
+        self.author_name = author_name
+        self.author_email = author_email
 
-    def run(self, *args, check=True, capture_output=True, return_output=True):
+    def run(self, *args, check=True, capture_output=True, return_output=True, env=None):
         try:
-            fp = sp.run(["git", "-C", self.dir] + list(args), check=check, capture_output=capture_output, text=True)
+            fp = sp.run(["git", "-C", self.dir] + list(args), check=check, capture_output=capture_output, text=True, env=env)
         except sp.CalledProcessError as e:
             print(e.stderr, file=sys.stderr)
             print(e.stdout)
@@ -39,10 +40,12 @@ class Git:
             self.run("switch", "-c", branch)
 
     def commit(self, msg):
-        if self.author:
-            cp = self.run("commit", "-m", msg, "--author", self.author, check=False, return_output=False)
-        else:
-            cp = self.run("commit", "-m", msg, check=False, return_output=False)
+        env = os.environ.copy()
+        if self.author_name:
+            env["GIT_AUTHOR_NAME"]  = self.author_name
+        if self.author_email:
+            env["GIT_AUTHOR_EMAIL"] = self.author_email
+        cp = self.run("commit", "-m", msg, check=False, return_output=False, env=env)
         # we don't throw an error if there is just nothing to commit
         if cp.returncode and "nothing to commit" not in cp.stdout:
             raise sp.CalledProcessError(cp.returncode, cp.args, output=cp.stdout, stderr=cp.stderr)
