@@ -342,11 +342,12 @@ class Optimize(object):
         model path. """
         if iteration is None:
             iteration = self.comm.project.current_iteration
-        remote_mesh_dir = pathlib.Path(self.comm.project.remote_inversionson_dir)
 
         if model_average:
+            remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
             return remote_mesh_dir / "AVERAGE_MODELS" / iteration / "mesh.h5"
         else:
+            remote_mesh_dir = pathlib.Path(self.comm.project.remote_inversionson_dir)
             return remote_mesh_dir / "MODELS" / iteration / "mesh.h5"
 
     def time_for_validation(self) -> bool:

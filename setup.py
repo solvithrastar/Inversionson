@@ -45,7 +45,7 @@ setup_config = dict(
         "toml",
         "numpy",
         "numexpr",
-        "emoji>=1.7"]
+        "emoji==1.7"]
 )
 
 
