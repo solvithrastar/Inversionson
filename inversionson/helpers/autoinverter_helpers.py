@@ -319,7 +319,7 @@ class IterationListener(object):
                 command=f"python {remote_script} {remote_toml}", execute_with_mpi=False
             ),
         ]
-        # Allow to set conda environment first
+
         if self.comm.project.remote_conda_env:
             conda_command = [
                 remote_io_site.site_utils.RemoteCommand(
@@ -328,6 +328,14 @@ class IterationListener(object):
                 )
             ]
             commands = conda_command + commands
+            if self.comm.project.remote_conda_source_location:
+                source_command = [
+                    remote_io_site.site_utils.RemoteCommand(
+                        command=f"source {self.comm.project.remote_conda_source_location}",
+                        execute_with_mpi=False
+                    )
+                ]
+                commands = source_command + commands
 
         job = job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
