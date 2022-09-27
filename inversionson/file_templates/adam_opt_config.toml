@@ -2,17 +2,21 @@
 
 # Please provide an initial model and change parameters if desired.
 # This the step size, sometimes also referred to as the learning rate.
-# e.g., alpha = 0.001 means that the model will not change by more than 0.1% for any parameter per iteration.
-alpha = 0.001
+# e.g., alpha = 0.002 means that the model will not change by more than 0.2% for any parameter per iteration.
+# Typically, it is good to start the inversion with fairly high values of alpha, e.g. .5% and reduce the number
+# gradually over time.
+alpha = 0.002
 
 # These are the parameters that control the decay rate of the first and second moments.
 beta_1 = 0.9
-beta_2 = 0.999
+beta_2 = 0.98
 
-# When perturbation decay is non zero, relative model perturbations are multiplied with the below number in each iteration.
+# When perturbation decay is non-zero, relative model perturbations are multiplied with the below number in each iteration.
+# Essentially, this means the model gets damped towards the initial model in each iteration.
 perturbation_decay = 0.001
 
 # Smooth the previous model. This can be done with the absolute models or the relative perturbations with respect to the initial model.
+# Absolute model perturbation is still being tested. Use at your own risk.
 roughness_decay_type = "relative_perturbation"  # Choose "absolute" or "relative_perturbation".
 
 # Smoothing length of the model in each iteration. Not used when set to 0.0.
@@ -25,10 +29,10 @@ update_smoothing_length = [ 0.4, 0.8, 0.8,]
 gradient_scaling_factor = 1e+17
 
 # Epsilon term in the adam update equation. In inversionson, this is chosen relative to the mean of the quare root of the second moment.
-# High values of epsilon suppress updates in regions with weak sensitivity.
+# Higher values of epsilon suppress updates in regions with weak sensitivity.
 epsilon = 0.1
 
-# The starting model. This must be a .h5 file as provided by the Salvus Mesher.
+# The starting model. This must be a .h5 file as provided by the Salvus mesher.
 initial_model = ""
 
 # Maximum number of iterations to perform.
