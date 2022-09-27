@@ -136,6 +136,12 @@ class AdamOpt(Optimize):
             "roughness_decay_smoothing_length"
         ]
 
+        if "reference_model_abs_smoothing" in config.keys():
+            self.reference_model_abs_smoothing = \
+                config["reference_model_abs_smoothing"]
+        else:
+            self.reference_model_abs_smoothing = None
+
         # Gradient scaling factor to avoid issues with floats, this should be constant throughout the inversion
         self.grad_scaling_fac = config["gradient_scaling_factor"]
         # Regularization parameter to avoid dividing by zero
@@ -489,6 +495,8 @@ class AdamOpt(Optimize):
     def _get_model_smoothing_task(self, tasks=None):
         if tasks is None:
             tasks = {}
+
+        reference_model = str(self.comm.lasif.get_master_model())
         if max(self.roughness_decay_smoothing_length) > 0.0:
             # We either smooth the physical model and then map the results back
             # to the internal parameterization
@@ -496,6 +504,9 @@ class AdamOpt(Optimize):
             # Or we smooth the relative perturbations with respect to
             if self.roughness_decay_type == "absolute":
                 model_to_smooth = self.model_path
+                if self.reference_model_abs_smoothing:
+                    reference_model = self.reference_model_abs_smoothing
+
             else:
                 model_to_smooth = os.path.join(
                     self.regularization_dir,
@@ -516,7 +527,7 @@ class AdamOpt(Optimize):
                 self.set_h5_data(model_to_smooth, theta_prev)
 
             tasks["roughness_decay"] = {
-                "reference_model": str(self.comm.lasif.get_master_model()),
+                "reference_model": reference_model,
                 "model_to_smooth": str(model_to_smooth),
                 "smoothing_lengths": self.roughness_decay_smoothing_length,
                 "smoothing_parameters": self.parameters,
