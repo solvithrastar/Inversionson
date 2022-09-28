@@ -309,6 +309,42 @@ class HandyMan(object):
             line_above=True,
             line_below=True,
         )
+        
+    def create_reference_model_for_abs_smoothing(self,
+            cut_off_radius_in_km: float,
+            path_to_model: str,
+            buffer_zone_above_cmb: float =  100.,
+        ):
+        import h5py
+        from inversionson.utils import write_xdmf
+        import shutil
+        theta_prev = self.optimizer.get_h5_data(self.comm.lasif.get_master_model())
+        indices = self.optimizer.get_parameter_indices(self.comm.lasif.get_master_model())
+        with h5py.File(self.comm.lasif.get_master_model(), "r") as h5:
+            h5_data = h5["MODEL/data"]
+            dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+            if not type(dim_labels) == str:
+                dim_labels = dim_labels.decode()
+            dim_labels = dim_labels.replace(" ", "").split("|")
+            radius = h5_data[:,dim_labels.index('z_node_1D'),:] * 6371.0
+
+        #radius = theta_prev[:,indices.index('z_node_1D'),:] * 6371.
+        decay_function = np.ones_like(radius)
+        # Radius of CMB at 3482. We set diffusion to zero 100 kms above this.
+        cmb_radius = 3482.0 + buffer_zone_above_cmb
+        decay_function[radius < cut_off_radius_in_km] = (
+            1. /(cut_off_radius_in_km - cmb_radius) * radius[radius < cut_off_radius_in_km] + 1. - (cut_off_radius_in_km /(cut_off_radius_in_km - cmb_radius))
+         )
+        decay_function[radius < cmb_radius] = 0.0
+
+        for i in range(theta_prev.shape[1]):
+            theta_prev[:,i,:] *= decay_function
+
+        shutil.copy(self.comm.lasif.get_master_model(), path_to_model)
+        write_xdmf(path_to_model)
+
+        self.optimizer.set_h5_data(path_to_model, theta_prev)
+
 
     def plot_validation_misfit_curve(self, normalized=True, save_path=None):
         import matplotlib.pyplot as plt
