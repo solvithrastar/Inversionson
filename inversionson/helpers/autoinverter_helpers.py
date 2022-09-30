@@ -772,12 +772,12 @@ class IterationListener(object):
                 attribute=f'adjoint_job["{event}"]["retrieved"]',
                 new_value=True,
             )
-            self.comm.project.update_iteration_toml()
             if interpolate:
                 if self.comm.project.interpolation_mode == "remote":
                     self.__dispatch_raw_gradient_interpolation(
                         event, verbose=verbose
                     )
+            self.comm.project.update_iteration_toml()
             adj_job_listener.events_already_retrieved.append(event)
 
         for event in adj_job_listener.to_repost:
