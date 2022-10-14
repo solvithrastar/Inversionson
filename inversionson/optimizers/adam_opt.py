@@ -142,6 +142,11 @@ class AdamOpt(Optimize):
         else:
             self.reference_model_abs_smoothing = None
 
+        if "damping_reference_model" in config.keys():
+            self.damping_reference_model = config["damping_reference_model"]
+        else:
+            self.damping_reference_model = None
+
         # Gradient scaling factor to avoid issues with floats, this should be constant throughout the inversion
         self.grad_scaling_fac = config["gradient_scaling_factor"]
         # Regularization parameter to avoid dividing by zero
@@ -440,11 +445,26 @@ class AdamOpt(Optimize):
 
         # Make sure that the model is only updated where theta is non_zero
         theta_new = np.zeros_like(theta_0)
-        theta_new[theta_0 != 0] = (
-            theta_prev[theta_0 != 0]
-            - update[theta_0 != 0]
-            - self.perturbation_decay * theta_prev[theta_0 != 0]
-        )
+
+        if self.damping_reference_model:
+            theta_damping_ref = self.get_h5_data(self.damping_reference_model)
+
+            # relative perturbation = latest / start - 1
+            theta_damping_ref[theta_0 != 0] = (
+                    theta_prev[theta_0 != 0] / theta_damping_ref[theta_0 != 0] - 1
+            )
+
+            theta_new[theta_0 != 0] = (
+                    theta_prev[theta_0 != 0]
+                    - update[theta_0 != 0]
+                    - self.perturbation_decay * theta_damping_ref[theta_0 != 0]
+            )
+        else:
+            theta_new[theta_0 != 0] = (
+                    theta_prev[theta_0 != 0]
+                    - update[theta_0 != 0]
+                    - self.perturbation_decay * theta_prev[theta_0 != 0]
+            )
 
         # Remove normalization from updated model and write physical model
         theta_physical = (theta_new + 1) * theta_0
