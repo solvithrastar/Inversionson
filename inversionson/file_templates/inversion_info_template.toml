@@ -12,6 +12,8 @@ cut_source_region_from_gradient_in_km = 100.0
 clip_gradient = 1.0
 # You specify the length of the absorbing boundaries in the lasif config
 absorbing_boundaries = true
+# Use the experimental Git LFS auto-committing ?
+use_git_lfs = false
 
 [Meshing]
 # Only used for multi-mesh. Needs to be higher for more complex models.

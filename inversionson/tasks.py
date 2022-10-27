@@ -11,12 +11,6 @@ class TaskManager(object):
         self.optimization = self.comm.project.get_optimizer()
 
     def perform_task(self, verbose=False):
-        if self.optimization.iteration_number >= self.optimization.max_iterations:
-            message = (
-                f"Already performed {self.optimization.iteration_number} "
-                "iterations. You can change this number in the opt_config file."
-            )
-            sys.exit(message)
         self.optimization.perform_task(verbose=verbose)
 
     def finish_task(self):
