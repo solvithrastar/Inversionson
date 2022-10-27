@@ -447,13 +447,18 @@ class AdamOpt(Optimize):
         theta_new = np.zeros_like(theta_0)
 
         if self.damping_reference_model:
+            # Here we get the model in absolute velocities
             theta_damping_ref = self.get_h5_data(self.damping_reference_model)
 
-            # relative perturbation = latest / start - 1
-            theta_damping_ref[theta_0 != 0] = (
-                    theta_prev[theta_0 != 0] / theta_damping_ref[theta_0 != 0] - 1
-            )
+            # Define reference model as perturbations with respect to initial model.
+            # Let's say this is 10% difference to initial
+            theta_damping_ref[theta_0 != 0] = theta_damping_ref[theta_0 != 0] / theta_0[theta_0 != 0] - 1
 
+            # This becomes -0.1 (-10%)
+            # Difference to damping reference in absolute terms, but in a relative sense
+            theta_damping_ref = theta_prev - theta_damping_ref
+
+            # And subtracting that becomes the decay factor times -0.1, to increase velocities
             theta_new[theta_0 != 0] = (
                     theta_prev[theta_0 != 0]
                     - update[theta_0 != 0]
