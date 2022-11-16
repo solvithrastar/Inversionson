@@ -322,7 +322,7 @@ class SalvusFlowComponent(Component):
                 mrp=src_info["mrp"],
                 mrt=src_info["mrt"],
                 source_time_function=stf.Custom(
-                    filename=stf_file, dataset_name="/source"
+                    filename=stf_file, dataset_name="stf"
                 ),
                 side_set_name=side_set,
             )
@@ -342,7 +342,7 @@ class SalvusFlowComponent(Component):
                 mrt=src_info["mrt"],
                 side_set_name=side_set,
                 source_time_function=stf.Custom(
-                    filename=stf_file, dataset_name="/source"
+                    filename=stf_file, dataset_name="stf"
                 ),
             )
 

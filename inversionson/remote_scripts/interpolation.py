@@ -187,7 +187,7 @@ def create_simulation_object(
         mrt=source_info["mrt"],
         side_set_name=source_info["side_set"],
         source_time_function=sc.stf.Custom(
-            filename=f"REMOTE:{source_info['stf']}", dataset_name="/source"
+            filename=f"REMOTE:{source_info['stf']}", dataset_name="stf"
         ),
     )
 
