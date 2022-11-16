@@ -32,7 +32,7 @@ class ProjectComponent(Component):
         a running inversion can be restarted although this is done.
         """
         self.info = information_dict
-        self.random_event_processing = False
+        self.random_event_processing = True
         self.ad_src_type = "tf_phase_misfit"
         self.__comm = Communicator()
         super(ProjectComponent, self).__init__(self.__comm, "project")

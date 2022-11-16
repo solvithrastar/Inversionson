@@ -105,6 +105,7 @@ def sleep_or_process(comm, color=None, emoji_alias=None):
     or sleeps if all are processed.
     """
     if (
+        not comm.project.remote_data_processing and
         comm.project.random_event_processing
         and not comm.lasif.process_random_unprocessed_event()
     ):
