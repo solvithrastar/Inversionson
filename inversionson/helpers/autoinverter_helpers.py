@@ -1028,7 +1028,7 @@ class IterationListener(object):
 
         # Call script
         exit_code, stdout, stderr = hpc_cluster.run_ssh_command(f"python {remote_script} {remote_toml}")
-        if "Remote source cut completed successfully" in stdout:
+        if "Remote source cut completed successfully" in stdout[0]:
             self.print(f"Source cut and clip completed for {event}.",
                        emoji_alias=":scissors:")
         else:
