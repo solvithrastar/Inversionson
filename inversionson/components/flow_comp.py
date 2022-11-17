@@ -528,7 +528,7 @@ class SalvusFlowComponent(Component):
 
         w.physics.wave_equation.end_time_in_seconds = self.comm.project.end_time
         w.physics.wave_equation.time_step_in_seconds = self.comm.project.time_step
-        # w.physics.wave_equation.start_time_in_seconds = self.comm.project.start_time
+        w.physics.wave_equation.start_time_in_seconds = self.comm.project.start_time
         w.physics.wave_equation.attenuation = self.comm.project.attenuation
         bound = False
         boundaries = []
