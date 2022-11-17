@@ -146,13 +146,13 @@ def preprocessing_function_asdf(processing_info):
         st.filter(
             "highpass",
             freq=1.0 / max_period,
-            corners=3,
+            corners=8,
             zerophase=False,
         )
         st.filter(
             "lowpass",
             freq=1.0 / min_period,
-            corners=3,
+            corners=8,
             zerophase=False,
         )
 
