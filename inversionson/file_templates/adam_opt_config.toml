@@ -22,15 +22,19 @@ roughness_decay_type = "relative_perturbation"  # Choose "absolute" or "relative
 # Smoothing length of the model in each iteration. Not used when set to 0.0.
 roughness_decay_smoothing_length = [ 0.0, 0.0, 0.0,]
 
-# Smoothing length of the model update, in radial and lateral directions.
-update_smoothing_length = [ 0.4, 0.8, 0.8,]
+# Smoothing length of the computed model update, in radial and lateral directions.
+update_smoothing_length = [ 0.2, 0.5, 0.5,]
+
+# Smoothing length of the gradients, in radial and lateral directions.
+# Only supported in combination with the other smoothing options.
+gradient_smoothing_length = [ 0.0, 0.0, 0.0,]
 
 # Scaling factor prevent overflow issues with single precision numbers. Don't change this number during the optimization.
 gradient_scaling_factor = 1e+17
 
-# Epsilon term in the adam update equation. In inversionson, this is chosen relative to the mean of the quare root of the second moment.
+# Epsilon term in the adam update equation. In inversionson, this is chosen relative to the mean of the square root of the second moment.
 # Higher values of epsilon suppress updates in regions with weak sensitivity.
-epsilon = 0.1
+epsilon = 1.0
 
 # The starting model. This must be a .h5 file as provided by the Salvus mesher.
 initial_model = ""

@@ -50,6 +50,7 @@ class AdamOpt(Optimize):
         self.first_moment_dir = self.opt_folder / "FIRST_MOMENTS"
         self.second_moment_dir = self.opt_folder / "SECOND_MOMENTS"
         self.smoothed_model_dir = self.opt_folder / "SMOOTHED_MODELS"
+        self.smoothed_grad_dir = self.opt_folder / "SMOOTHED_GRADIENTS"
 
     @property
     def task_path(self):
@@ -98,6 +99,10 @@ class AdamOpt(Optimize):
         return self.smooth_update_dir / f"smooth_update_{self.iteration_number:05d}.h5"
 
     @property
+    def smooth_gradient_path(self):
+        return self.smoothed_grad_dir / f"smooth_gradient_{self.iteration_number:05d}.h5"
+
+    @property
     def relative_perturbation_path(self):
         return (
             self.regularization_dir
@@ -132,6 +137,7 @@ class AdamOpt(Optimize):
                 "'relative_perturbation' or 'absolute'"
             )
         self.update_smoothing_length = config["update_smoothing_length"]
+        self.gradient_smoothing_length = config["gradient_smoothing_length"]
         self.roughness_decay_smoothing_length = config[
             "roughness_decay_smoothing_length"
         ]
@@ -172,6 +178,7 @@ class AdamOpt(Optimize):
             self.regularization_dir,
             self.smoothed_model_dir,
             self.gradient_norm_dir,
+            self.smoothed_grad_dir,
         ]
 
         for folder in folders:
@@ -280,14 +287,19 @@ class AdamOpt(Optimize):
     def _compute_raw_update(self):
         """Computes the raw update"""
 
-        self.print("Adam: Computing raw update...", line_above=True)
+        if max(self.gradient_smoothing_length) > 0:
+            gradient_path = self.smooth_gradient_path
+        else:
+            gradient_path = self.raw_gradient_path
+
+        self.print("Adam: Computing update...", line_above=True)
         # Read task toml
 
         iteration_number = self.task_dict["iteration_number"] + 1
 
-        indices = self.get_parameter_indices(self.raw_gradient_path)
+        indices = self.get_parameter_indices(gradient_path)
         # scale the gradients, because they can be tiny and this leads to issues
-        g_t = self.get_h5_data(self.raw_gradient_path) * self.grad_scaling_fac
+        g_t = self.get_h5_data(gradient_path) * self.grad_scaling_fac
 
         if np.sum(np.isnan(g_t)) > 1:
             raise Exception(
@@ -295,7 +307,7 @@ class AdamOpt(Optimize):
             )
 
         if iteration_number == 1:  # Initialize moments if needed
-            shutil.copy(self.raw_gradient_path, self.first_moment_path)
+            shutil.copy(gradient_path, self.first_moment_path)
             write_xdmf(self.first_moment_path)
 
             with h5py.File(self.first_moment_path, "r+") as h5:
@@ -368,7 +380,7 @@ class AdamOpt(Optimize):
             )
 
         # Write raw update to file for smoothing
-        shutil.copy(self.raw_gradient_path, self.raw_update_path)
+        shutil.copy(gradient_path, self.raw_update_path)
         self.set_h5_data(self.raw_update_path, update)
 
     def get_path_for_iteration(self, iteration_number, path):
@@ -496,13 +508,9 @@ class AdamOpt(Optimize):
         if (raw and smooth) or (not raw and not smooth):
             raise InversionsonError("Adam updates can be raw or smooth, not both")
         if raw:
-            gradient = (
-                self.comm.lasif.lasif_comm.project.paths["gradients"]
-                / f"ITERATION_{self.iteration_name}"
-                / "summed_gradient.h5"
-            )
             if not os.path.exists(self.raw_gradient_path):
-                shutil.copy(gradient, self.raw_gradient_path)
+                raise Exception("No gradient found, something went wrong.")
+
             if not os.path.exists(self.raw_update_path):
                 self._compute_raw_update()
         if smooth:
@@ -643,6 +651,21 @@ class AdamOpt(Optimize):
             self._update_task_file()
         else:
             self.print("Summing already done")
+
+        if max(self.gradient_smoothing_length) > 0.0:
+            tasks = {}
+            tasks["smooth_raw_gradient"] = {
+                "reference_model": str(self.comm.lasif.get_master_model()),
+                "model_to_smooth": str(self.raw_gradient_path),
+                "smoothing_lengths": self.gradient_smoothing_length,
+                "smoothing_parameters": self.parameters,
+                "output_location": str(self.smooth_gradient_path),
+            }
+            reg_helper = RegularizationHelper(
+                comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
+            )
+            reg_helper.monitor_tasks()
+            write_xdmf(self.smooth_gradient_path)
 
         if not self.task_dict["raw_update_completed"]:
             self._update_model(raw=True, smooth=False)
