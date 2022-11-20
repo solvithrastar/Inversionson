@@ -289,7 +289,8 @@ def run(info):
                 synth_tr = select_component_from_stream(st_syn, component)
 
                 # make sure traces match in length and sampling rate.
-                synth_tr.interpolate(sampling_rate=data_tr.stats.sampling_rate)
+                synth_tr.interpolate(sampling_rate=data_tr.stats.sampling_rate,
+                                     method="linear")
                 data_tr.trim(endtime=synth_tr.stats.endtime)
                 synth_tr.trim(endtime=data_tr.stats.endtime)
                 if scale_data_to_synthetics:
@@ -430,7 +431,8 @@ def run(info):
                 # Make sure synthetics is sampled at the same
                 # rate and data matches the synthetics in terms of endtime
                 # start time should happen automatically.
-                synth_tr.interpolate(sampling_rate=data_tr.stats.sampling_rate)
+                synth_tr.interpolate(sampling_rate=data_tr.stats.sampling_rate,
+                                     method="linear")
                 data_tr.trim(endtime=synth_tr.stats.endtime)
                 synth_tr.trim(endtime=data_tr.stats.endtime)
 

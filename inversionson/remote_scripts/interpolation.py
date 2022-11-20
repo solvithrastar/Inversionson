@@ -231,7 +231,7 @@ def create_simulation_object(
         samples_per_min_period = (
                 simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
         )
-        min_samples_per_min_period = 35.0
+        min_samples_per_min_period = 50.0
         reduction_factor = int(
             samples_per_min_period / min_samples_per_min_period)
         reduction_factor_syn = int(
