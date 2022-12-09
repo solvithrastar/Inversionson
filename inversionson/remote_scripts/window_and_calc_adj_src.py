@@ -2,6 +2,7 @@ import copy
 import json
 import sys
 import toml
+import shutil
 import numpy as np
 import h5py
 from obspy.geodetics import locations2degrees
@@ -212,11 +213,31 @@ def run(info):
     event_name = info["event_name"]
     delta = info["delta"]
     npts = info["npts"]
+
     minimum_period = info["minimum_period"]
     maximum_period = info["maximum_period"]
     freqmin = 1.0 / minimum_period
     freqmax = 1.0 / maximum_period
     start_time_in_s = info["start_time_in_s"]
+
+    output_folder = "output"
+    if not os.path.exists(output_folder):
+        os.mkdir(output_folder)
+
+    if "windowing_needed" in info.keys():
+        windowing_needed = info["windowing_needed"]
+    else:
+        windowing_needed = True
+
+    if "window_path" in info.keys():
+        window_path = os.path.join(output_folder, "windows.json")
+    else:
+        window_path = None
+
+    if "misfit_json_filename" in info.keys():
+        misfit_json_filename = os.path.join(output_folder, "misfits.json")
+    else:
+        misfit_json_filename = None
 
     if "scale_data_to_synthetics" in info.keys():
         scale_data_to_synthetics = info["scale_data_to_synthetics"]
@@ -339,24 +360,36 @@ def run(info):
     # Use at most num_processes workers
     number_processes = min(num_processes, len(task_list))
 
-    # Open Pool of workers
-    print("Starting window selection", flush=True)
-    with multiprocessing.Pool(number_processes) as pool:
-        results = {}
-        with tqdm(total=len(task_list)) as pbar:
-            for i, r in enumerate(
-                    pool.imap_unordered(_window_select, task_list)
-            ):
-                pbar.update()
-                k, v = r.popitem()
-                results[k] = v
+    if windowing_needed:
+        # Open Pool of workers
+        print("Starting window selection", flush=True)
+        with multiprocessing.Pool(number_processes) as pool:
+            all_windows = {}
+            with tqdm(total=len(task_list)) as pbar:
+                for i, r in enumerate(
+                        pool.imap_unordered(_window_select, task_list)
+                ):
+                    pbar.update()
+                    k, v = r.popitem()
+                    all_windows[k] = v
 
-        pool.close()
-        pool.join()
+            pool.close()
+            pool.join()
+        if window_path:
+            with open(window_path, "w") as outfile:
+                json.dump(all_windows, outfile)
+            shutil.copy(window_path, info["window_path"])
+    else:
+        if not info["window_path"]:
+            raise Exception("I need at least a path to windows "
+                            "if we don't select them.")
+        with open(info["window_path"]) as json_file:
+            all_windows = json.load(json_file)
+
 
     # Write files with a single worker
     print("Finished window selection", flush=True)
-    sta_with_windows = [k for k, v in results.items() if v is not None]
+    sta_with_windows = [k for k, v in all_windows.items() if v is not None]
     num_sta_with_windows = len(sta_with_windows)
     print(
         f"Selected windows for {num_sta_with_windows} out of "
@@ -366,12 +399,7 @@ def run(info):
     station_weights = get_station_weights(sta_with_windows, processed_filename,
                                           info["receiver_json_path"])
 
-    all_windows = results
-    # Toml dumping the windows doesn't quite work because they are objects.
-    # I should probably dump the timestamps instead, but do we really need to
-    # keep the windows?
-    # with open(window_set_name, "w") as fh:
-    #     toml.dump(results, fh)
+    #TODO: windows are now in timestamp format. For use with obspy we need to convert to UTCDatetime
 
     ###########################################################################
     # ADJOINT SOURCE CALCULATIONS
@@ -517,10 +545,6 @@ def run(info):
     print(f"Calculated adjoint sources for {num_sta_with_sources} out of "
           f"{len(task_list)} stations with windows.")
 
-    output_folder = "output"
-    if not os.path.exists(output_folder):
-        os.mkdir(output_folder)
-
     print("Writing adjoint sources")
     adjoint_source_file_name = os.path.join(output_folder, "stf.h5")
     f = h5py.File(adjoint_source_file_name, "w")
@@ -558,21 +582,28 @@ def run(info):
     # Write misfits (currently unused in the ADAM workflow other than for
     # figuring out which stations should have adjoint sources.
     misfit_dict = {}
+    total_misfit = 0
     for station in all_adj_srcs.keys():
         all_sta_channels = list(all_adj_srcs[station].keys())
         if not len(all_sta_channels) > 0:
             continue
         misfit_dict[station] = {}
         for trace in all_adj_srcs[station].keys():
-            misfit_dict[station][trace] = \
-                all_adj_srcs[station][trace]["misfit"] * \
+            station_tr_misfit = all_adj_srcs[station][trace]["misfit"] * \
                 station_weights[station]["station_weight"]
-    event_misfit_dict = {event_name: misfit_dict}
-    print("Writing misfit dict")
 
-    misfit_filename = os.path.join(output_folder, "misfit_dict.toml")
-    with open(misfit_filename, "w") as fh:
-        toml.dump(event_misfit_dict, fh)
+            misfit_dict[station][trace] = station_tr_misfit
+            total_misfit += station_tr_misfit
+
+    misfit_dict["total_misfit"] = total_misfit
+    event_misfit_dict = {event_name: misfit_dict}
+
+    if misfit_json_filename:
+        print("Writing misfit dict...")
+        with open(misfit_json_filename, "w") as outfile:
+            json.dump(event_misfit_dict, outfile)
+        shutil.copy(misfit_json_filename, info["misfit_json_filename"])
+
 
     # now create adjoint source simulation object
     adjoint_filename = "REMOTE:" + os.path.abspath(adjoint_source_file_name)

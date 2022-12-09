@@ -237,21 +237,24 @@ class Optimize(object):
 
         return events
 
-    def delete_remote_files(self):
-        self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "forward")
-        self.comm.salvus_flow.delete_stored_wavefields(self.iteration_name, "adjoint")
+    def delete_remote_files(self, it_name=None):
+        if not it_name:
+            iteration = self.iteration_name
+
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
+        self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
 
         if self.comm.project.prepare_forward:
             self.comm.salvus_flow.delete_stored_wavefields(
-                self.iteration_name, "prepare_forward"
+                iteration, "prepare_forward"
             )
         if self.comm.project.meshes == "multi-mesh":
             self.comm.salvus_flow.delete_stored_wavefields(
-                self.iteration_name, "gradient_interp"
+                iteration, "gradient_interp"
             )
         if self.comm.project.hpc_processing:
             self.comm.salvus_flow.delete_stored_wavefields(
-                self.iteration_name, "hpc_processing"
+                iteration, "hpc_processing"
             )
 
     def prepare_iteration(
@@ -274,7 +277,7 @@ class Optimize(object):
 
         self.comm.lasif.set_up_iteration(it_name, events)
         self.comm.project.create_iteration_toml(it_name)
-        self.comm.project.get_iteration_attributes()
+        self.comm.project.get_iteration_attributes(it_name)
 
         optimizer = self.comm.project.get_optimizer()
         model = optimizer.model_path

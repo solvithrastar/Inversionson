@@ -35,7 +35,8 @@ def cut_and_clip(
     """
 
     cut_source_region_from_gradient(
-        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km
+        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km,
+        parameters=parameters
     )
 
     print("Source cut completed successfully.")

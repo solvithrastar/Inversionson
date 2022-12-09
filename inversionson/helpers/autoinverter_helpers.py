@@ -1,11 +1,12 @@
 import os
 import inspect
 import toml
+import json
 import salvus.flow.api as sapi
 from salvus.flow.api import get_site
 
 from inversionson.helpers.remote_job_listener import RemoteJobListener
-from inversionson.utils import sleep_or_process
+from inversionson.utils import sleep_or_process, get_misfits_filename, get_window_filename
 
 CUT_SOURCE_SCRIPT_PATH = os.path.join(
     os.path.dirname(
@@ -29,9 +30,18 @@ class IterationListener(object):
     Class that can handle an entire iteration until it's done.
     """
 
-    def __init__(self, comm, events):
+    def __init__(self, comm, events, control_group_events=[],
+                 prev_control_group_events=[],
+                 misfit_only=False, prev_iteration=None):
+        """
+        Extension to include special cases for control group related stuff
+        """
         self.comm = comm
         self.events = events
+        self.control_group_events = control_group_events
+        self.prev_control_group_events = prev_control_group_events
+        self.misfit_only = misfit_only
+        self.prev_iteration = prev_iteration
 
     def print(
         self,
@@ -272,15 +282,30 @@ class IterationListener(object):
         elif "VP" in self.comm.project.inversion_params:
             parameterization = "rho-vp-vs"
 
+        if event in self.prev_control_group_events:
+            windowing_needed = False
+            window_path = os.path.join(self.comm.project.remote_windows_dir,
+                                       get_window_filename(event,
+                                                           self.prev_iteration))
+        else:
+            windowing_needed = True
+            window_path = os.path.join(self.comm.project.remote_windows_dir,
+                                       get_window_filename(event, iteration))
+
+        misfits_path = os.path.join(self.comm.project.remote_misfits_dir,
+                                    get_misfits_filename(event, iteration))
         info = dict(
             processed_filename=remote_proc_path,
             synthetic_filename=remote_syn_path,
             forward_meta_json_filename=forward_meta_json_filename,
             parameterization=parameterization,
+            windowing_needed=windowing_needed,
+            window_path=window_path,
             event_name=event,
             delta=self.comm.project.simulation_dict["time_step"],
             npts=self.comm.project.simulation_dict["number_of_time_steps"],
             iteration_name=iteration,
+            misfit_json_filename=misfits_path,
             minimum_period=self.comm.project.min_period,
             maximum_period=self.comm.project.max_period,
             start_time_in_s=self.comm.project.simulation_dict["start_time"],
@@ -710,22 +735,37 @@ class IterationListener(object):
         So no validation events for example.
         """
         anything_retrieved = False
-
+        iteration = self.comm.project.current_iteration
         hpc_proc_job_listener = RemoteJobListener(
             comm=self.comm,
             job_type="hpc_processing",
             events=events,
         )
         hpc_proc_job_listener.monitor_jobs()
+        hpc_cluster = get_site(self.comm.project.site_name)
 
         for event in hpc_proc_job_listener.events_retrieved_now:
             self.comm.project.change_attribute(
                 attribute=f'hpc_processing_job["{event}"]["retrieved"]',
                 new_value=True,
             )
+            # TODO, we need to retrieve the misfit here
+            remote_misfits = os.path.join(self.comm.project.remote_misfits_dir,
+                                          get_misfits_filename(event, iteration))
+            tmp_filename = "tmp_misfits.json"
+            hpc_cluster.remote_get(remote_misfits, "tmp_misfits.json")
+            with open(tmp_filename, "r") as fh:
+                misfit_dict = json.load(fh)
+
+            self.comm.project.change_attribute(
+                attribute=f'misfits["{event}"]',
+                new_value=misfit_dict[event]["total_misfit"]
+            )
+
             if adjoint and self.comm.project.hpc_processing:
                 self.__dispatch_adjoint_simulation(event, verbose)
             hpc_proc_job_listener.events_already_retrieved.append(event)
+
         for event in hpc_proc_job_listener.to_repost:
             self.comm.project.change_attribute(
                 attribute=f'hpc_processing_job["{event}"]["submitted"]',
@@ -854,6 +894,8 @@ class IterationListener(object):
         all_adj_retrieved_events = []
         all_gi_retrieved_events = []
 
+        do_adjoint = False if self.misfit_only else True
+
         len_all_events = len(self.events)
         non_validation_events = list(set(self.events) - set(self.comm.project.validation_dataset))
         len_non_validation_events = len(non_validation_events)
@@ -905,34 +947,37 @@ class IterationListener(object):
 
             if self.comm.project.hpc_processing:
                 if len(all_non_val_f_retrieved_events) > 0 and len(all_hpc_proc_retrieved_events) != len_non_validation_events:
-                    anything_retrieved_hpc_proc, all_hpc_proc_retrieved_events = self.__listen_to_hpc_processing(all_non_val_f_retrieved_events)
+                    anything_retrieved_hpc_proc, all_hpc_proc_retrieved_events = self.__listen_to_hpc_processing(
+                        all_non_val_f_retrieved_events, adjoint=do_adjoint)
                 if anything_retrieved_hpc_proc:
                     anything_retrieved = True
+
             # Now we start listening to the adjoint jobs. If hpc proc,
             # we only listen to the ones that finished there already.
             # Otherwise we listen to the ones that finished forward
-            if self.comm.project.hpc_processing:
-                if len(all_hpc_proc_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
-                    anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
-            else:
-                if len(all_non_val_f_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
-                    anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_non_val_f_retrieved_events)
-            if anything_adj_retrieved:
-                anything_retrieved = True
-            # Now we listen to the gradient interp jobs in the multi_mesh case
-            # otherwise we are done here.
-
-            if self.comm.project.meshes == "multi-mesh":
-                if len(all_adj_retrieved_events) > 0 and len(all_gi_retrieved_events) != len_non_validation_events:
-                    anything_gi_retrieved, all_gi_retrieved_events = self.__listen_to_gradient_interp(all_adj_retrieved_events)
-                    if len(all_gi_retrieved_events) == len_non_validation_events:
-                        break
-                if anything_gi_retrieved:
+            if do_adjoint:
+                if self.comm.project.hpc_processing:
+                    if len(all_hpc_proc_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
+                        anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
+                else:
+                    if len(all_non_val_f_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
+                        anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_non_val_f_retrieved_events)
+                if anything_adj_retrieved:
                     anything_retrieved = True
+                # Now we listen to the gradient interp jobs in the multi_mesh case
+                # otherwise we are done here.
 
-            else:
-                if len(all_adj_retrieved_events) == len_non_validation_events:
-                    break
+                if self.comm.project.meshes == "multi-mesh":
+                    if len(all_adj_retrieved_events) > 0 and len(all_gi_retrieved_events) != len_non_validation_events:
+                        anything_gi_retrieved, all_gi_retrieved_events = self.__listen_to_gradient_interp(all_adj_retrieved_events)
+                        if len(all_gi_retrieved_events) == len_non_validation_events:
+                            break
+                    if anything_gi_retrieved:
+                        anything_retrieved = True
+
+                else:
+                    if len(all_adj_retrieved_events) == len_non_validation_events:
+                        break
 
             if not anything_retrieved:
                 sleep_or_process(self.comm)

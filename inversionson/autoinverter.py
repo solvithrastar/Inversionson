@@ -83,6 +83,8 @@ class AutoInverter(object):
             "SOURCE_TIME_FUNCTIONS",
             "INTERPOLATION_WEIGHTS",
             "MESHES",
+            "WINDOWS",
+            "MISFITS",
             "ADJOINT_SOURCES",
             "PROCESSED_DATA",
             "SCRIPTS",

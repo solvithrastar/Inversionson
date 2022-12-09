@@ -24,8 +24,11 @@ from .storyteller import StoryTellerComponent
 from .smooth_comp import SalvusSmoothComponent
 import salvus.flow.api as sapi
 
+from ..optimizers.optson import OptsonLink
+
 
 class ProjectComponent(Component):
+    _optimizer = None  # Optimizer object
     def __init__(self, information_dict: dict):
         """
         Initiate everything to make it work correctly. Make sure that
@@ -45,6 +48,7 @@ class ProjectComponent(Component):
         self.simulation_time_step = False
         # Attempt to get the simulation timestep immediately if it exists.
         self.get_simulation_time_step()
+
 
     def print(
         self,
@@ -110,12 +114,17 @@ class ProjectComponent(Component):
         This creates an instance of the optimization class which is
         picked by the user.
         """
-        if self.optimizer == "adam":
-            return AdamOpt(comm=self.comm)
-        if self.optimizer == "sgdm":
-            return SGDM(comm=self.comm)
-        else:
-            raise InversionsonError(f"Optimization method {self.optimizer} not defined")
+        if not self._optimizer:
+            if self.optimizer == "adam":
+                self._optimizer = AdamOpt(comm=self.comm)
+            elif self.optimizer == "sgdm":
+                self._optimizer = SGDM(comm=self.comm)
+            elif self.optimizer == "optson":
+                self._optimizer = OptsonLink(comm=self.comm)
+
+            else:
+                raise InversionsonError(f"Optimization method {self.optimizer} not defined")
+        return self._optimizer
 
     def _validate_inversion_project(self):
         """
@@ -256,8 +265,8 @@ class ProjectComponent(Component):
                 "Key: optimizer"
             )
 
-        if self.info["optimizer"].lower() not in ["adam", "sgdm"]:
-            raise InversionsonError("We only accept 'adam' and 'sgdm'")
+        if self.info["optimizer"].lower() not in ["adam", "sgdm", "optson"]:
+            raise InversionsonError("We only accept 'adam', 'sgdm' and 'optson'")
 
         if "Meshing" not in self.info.keys() and self.info["meshes"] == "multi-mesh":
             raise InversionsonError(
@@ -498,6 +507,8 @@ class ProjectComponent(Component):
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
         self.remote_conda_source_location = self.info["HPC"]["remote_conda_source_location"]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
+        self.remote_windows_dir = self.remote_inversionson_dir / "WINDOWS"
+        self.remote_misfits_dir = self.remote_inversionson_dir / "MISFITS"
         self.fast_mesh_dir = self.remote_inversionson_dir / "MESHES"
         self.batch_size = self.info["batch_size"]
         self.val_it_interval = self.info["inversion_monitoring"][
@@ -671,7 +682,7 @@ class ProjectComponent(Component):
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
-    def get_iteration_attributes(self):
+    def get_iteration_attributes(self, iteration: str = None):
         """
         Save the attributes of the current iteration into memory
 
@@ -679,7 +690,8 @@ class ProjectComponent(Component):
         :type iteration: str
         """
         optimizer = self.get_optimizer()
-        iteration = optimizer.iteration_name
+        if not iteration:
+            iteration = optimizer.iteration_name
 
         iteration_toml = os.path.join(
             self.paths["iteration_tomls"], iteration + ".toml"

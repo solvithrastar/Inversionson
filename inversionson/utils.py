@@ -125,6 +125,14 @@ def sleep_or_process(comm, color=None, emoji_alias=None):
         time.sleep(comm.project.sleep_time_in_s)
 
 
+def get_window_filename(event, iteration):
+    return f"{event}_{iteration}_windows.json"
+
+
+def get_misfits_filename(event, iteration):
+    return f"{event}_{iteration}_misfits.json"
+
+
 def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates

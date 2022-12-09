@@ -51,6 +51,7 @@ class GradientSummer(object):
         batch_average=True,
         sum_vpv_vph=True,
         store_norms=True,
+        iteration=None,
     ):
         """
         Sum gradients on the HPC.
@@ -68,17 +69,18 @@ class GradientSummer(object):
         :type: store_norms: bool
         """
         gradient_paths = []
-        iteration = self.comm.project.current_iteration
+
+        iteration = iteration if iteration else self.comm.project.current_iteration
 
         for event in events:
             if self.comm.project.meshes == "multi-mesh":
-                job = self.comm.salvus_flow.get_job(event, "gradient_interp")
+                job = self.comm.salvus_flow.get_job(event, "gradient_interp", iteration)
                 gradient_path = os.path.join(
                     str(job.stderr_path.parent), "output/mesh.h5"
                 )
 
             else:
-                job = self.comm.salvus_flow.get_job(event, "adjoint")
+                job = self.comm.salvus_flow.get_job(event, "adjoint", iteration)
 
                 output_files = job.get_output_files()
                 gradient_path = output_files[0][

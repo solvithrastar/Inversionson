@@ -5,7 +5,7 @@ import warnings
 
 import obspy.signal.filter
 from inversionson.hpc_processing.adjoint_utils import window_trace
-
+from obspy.core.utcdatetime import UTCDateTime
 
 def calculate_adjoint_source(
     adj_src_type,
@@ -71,7 +71,10 @@ def calculate_adjoint_source(
         original_observed.data *= env_weighting
         original_synthetic.data *= env_weighting
 
-    for win in window:
+    for win_tuple in window:
+        # Convert to UTCDateTime
+        win = [UTCDateTime(win_tuple[0]),
+               UTCDateTime(win_tuple[1]), win_tuple[2]]
         taper_ratio = 0.5 * (min_period / (win[1] - win[0]))
         observed = original_observed.copy()
         synthetic = original_synthetic.copy()
@@ -118,7 +121,7 @@ def calculate_adjoint_source(
             taper_ratio=taper_ratio,
             taper_type=taper_type,
         )
-        if win == window[0]:
+        if win_tuple == window[0]:
             full_ad_src = adjoint["adjoint_source"]
             # print(max(full_ad_src.data))
         else:

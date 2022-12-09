@@ -1124,7 +1124,7 @@ def select_windows(
         start = data_starttime + start * data_delta
         stop = data_starttime + stop * data_delta
         weight = 1.0
-        windows.append((start, stop, weight))
+        windows.append((start.timestamp, stop.timestamp, weight))
 
     if plot:
         # Plot the final windows to the data axes.

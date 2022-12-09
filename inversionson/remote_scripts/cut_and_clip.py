@@ -3,6 +3,22 @@ import sys
 import toml
 import numpy as np
 
+
+
+def get_sorted_indices(gradient: h5py.File, parameters):
+    data = gradient["MODEL/data"]
+    dim_labels = (
+        data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+            .replace(" ", "")
+            .split("|")
+    )
+    indices = []
+    for param in parameters:
+        indices.append(dim_labels.index(param))
+    indices.sort()
+    return indices
+
+
 # Here I can add a scripts which adds the relevant fields to the mesh.
 def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
@@ -19,15 +35,8 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     :type parameters: list
     """
     gradient = h5py.File(mesh, "r+")
+    indices = get_sorted_indices(gradient, parameters)
     data = gradient["MODEL/data"]
-    dim_labels = (
-        data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-        .replace(" ", "")
-        .split("|")
-    )
-    indices = []
-    for param in parameters:
-        indices.append(dim_labels.index(param))
     clipped_data = data[:, :, :].copy()
 
     for i in indices:
@@ -67,7 +76,7 @@ def latlondepth_to_cartesian(
 
 
 def cut_source_region_from_gradient(
-    mesh: str, source_location: dict, radius_to_cut: float
+    mesh: str, source_location: dict, radius_to_cut: float, parameters
 ):
     """
     Sources often show unreasonable sensitivities. This function
@@ -82,6 +91,7 @@ def cut_source_region_from_gradient(
     :type radius_to_cut: float
     """
     gradient = h5py.File(mesh, "r+")
+    indices = get_sorted_indices(gradient, parameters)
     coordinates = gradient["MODEL/coordinates"]
     data = gradient["MODEL/data"]
     # TODO: Maybe I should implement this in a way that it uses predefined
@@ -94,23 +104,15 @@ def cut_source_region_from_gradient(
         depth_in_km=source_location["depth_in_m"] / 1000.0,
     )
 
+    # In GLL shape
     dist = np.sqrt(
         (coordinates[:, :, 0] - s_x) ** 2
         + (coordinates[:, :, 1] - s_y) ** 2
         + (coordinates[:, :, 2] - s_z) ** 2
-    ).ravel()
+    )
 
-    cut_indices = np.where(dist < radius_to_cut * 1000.0)
-
-    for i in range(data.shape[1]):
-        tmp_dat = data[:, i, :].ravel()
-        tmp_dat[cut_indices] = 0.0
-        tmp_dat = np.reshape(tmp_dat, (data.shape[0], 1, data.shape[2]))
-        if i == 0:
-            cut_data = tmp_dat.copy()
-        else:
-            cut_data = np.concatenate((cut_data, tmp_dat), axis=1)
-    data[:, :, :] = cut_data
+    for i in indices:
+        data[:, i, :] = np.where(dist < radius_to_cut * 1000, 0, data[:, i, :])
 
     gradient.close()
 
@@ -125,14 +127,16 @@ if __name__ == "__main__":
     gradient_filename = info["filename"]
     radius_to_cut_in_km = info["cutout_radius_in_km"]
     source_location = info["source_location"]
+    clipping_percentile = info["clipping_percentile"]
+    parameters = info["parameters"]
+
     cut_source_region_from_gradient(
-        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km
+        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km,
+        parameters=parameters
     )
 
     print("Remote source cut completed successfully")
 
-    clipping_percentile = info["clipping_percentile"]
-    parameters = info["parameters"]
 
     print("Clipping now.")
     if clipping_percentile < 1.0:

@@ -54,7 +54,7 @@ def sum_gradient(gradients: list, output_gradient: str,
             grad_dat = summed_gradient_data_copy[:, sorted_indices, :]
             gradient_norms.append(np.sqrt(np.sum(grad_dat ** 2)))
             continue
-
+        # This assumes the indices remain the same.
         # open file, read_data, add to summed gradient and close.
         gradient = h5py.File(grad_file, "r+")
         data = gradient["MODEL/data"]
@@ -68,7 +68,9 @@ def sum_gradient(gradients: list, output_gradient: str,
 
     # divide by the number of gradients to obtain a batch average
     if batch_average:
-        summed_gradient_data_copy /= len(gradients)
+        # only average the actual model parameters.
+        for i in indices:
+            summed_gradient_data_copy[:, i, :] /= len(gradients)
     # finally close the summed_gradient
     summed_gradient_data[:, :, :] = summed_gradient_data_copy[:, :, :]
     summed_gradient.close()
@@ -109,8 +111,9 @@ if __name__ == "__main__":
     for i in range(len(info["events_list"])):
         gradient_norm_dict[info["events_list"][i]] = gradient_norms[i]
 
-    with open(info["gradient_norms_path"], "w") as fh:
-        toml.dump(gradient_norm_dict, fh)
+    if info["gradient_norms_path"]:
+        with open(info["gradient_norms_path"], "w") as fh:
+            toml.dump(gradient_norm_dict, fh)
 
     # Set reference frame to spherical. This is needed for smoothing later
     with h5py.File(info["output_gradient"], "r+") as f:
