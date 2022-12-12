@@ -237,8 +237,8 @@ def create_simulation_object(
             samples_per_min_period / min_samples_per_min_period)
         reduction_factor_syn = int(
             samples_per_min_period / 50.0)
-        if reduction_factor_syn >= 2:
-            w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
+        # if reduction_factor_syn >= 2:
+        #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
         if reduction_factor >= 2:
             checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
         else:

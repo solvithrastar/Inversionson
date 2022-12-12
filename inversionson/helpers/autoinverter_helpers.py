@@ -287,6 +287,11 @@ class IterationListener(object):
             window_path = os.path.join(self.comm.project.remote_windows_dir,
                                        get_window_filename(event,
                                                            self.prev_iteration))
+            new_window_path = os.path.join(self.comm.project.remote_windows_dir,
+                                           get_window_filename(event, iteration))
+            # copy the windows over to ensure it works in the future.
+            print("Copying windows from ", window_path, "to", new_window_path)
+            hpc_cluster.run_ssh_command(f"cp {window_path} {new_window_path}")
         else:
             windowing_needed = True
             window_path = os.path.join(self.comm.project.remote_windows_dir,
@@ -833,6 +838,14 @@ class IterationListener(object):
             )
             self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
 
+        for event in adj_job_listener.not_submitted:
+            self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
+            self.comm.project.change_attribute(
+                attribute=f'adjoint_job["{event}"]["submitted"]',
+                new_value=True,
+            )
+            self.comm.project.update_iteration_toml()
+
         if adj_job_listener.events_retrieved_now:
             anything_retrieved = True
 
@@ -886,7 +899,7 @@ class IterationListener(object):
         for all jobs. And it will listen to hpc proc (if needed) and
         adjoint, and gradient interp (if needed) jobs.
         """
-
+        #TODO when nothing gets submitted it gets stuck here. needs a fix
         # Initialize variables
         all_pf_retrieved_events = []
         all_f_retrieved_events = []
@@ -900,6 +913,7 @@ class IterationListener(object):
         non_validation_events = list(set(self.events) - set(self.comm.project.validation_dataset))
         len_non_validation_events = len(non_validation_events)
 
+
         while True:
             anything_retrieved_pf = False
             anything_retrieved_f = False
@@ -907,6 +921,7 @@ class IterationListener(object):
             anything_adj_retrieved = False
             anything_gi_retrieved = False
             anything_retrieved = False
+            anything_checked = False
 
             if self.comm.project.remote_data_processing or \
                     self.comm.project.meshes == "multi-mesh":
@@ -915,6 +930,7 @@ class IterationListener(object):
                 if len(all_pf_retrieved_events) != len_all_events:
                     anything_retrieved_pf, all_pf_retrieved_events = \
                         self.__listen_to_prepare_forward(events=self.events, verbose=verbose)
+                    anything_checked = True
             if anything_retrieved_pf:
                 anything_retrieved = True
             # Then we listen to forward for the already retrieved events in
@@ -927,6 +943,7 @@ class IterationListener(object):
                 if len(all_pf_retrieved_events) > 0 and len(all_f_retrieved_events) != len_all_events:
                     anything_retrieved_f, all_f_retrieved_events = \
                         self.__listen_to_forward(all_pf_retrieved_events, verbose=verbose)
+                    anything_checked = True
             else:
                 for _i, event in enumerate(self.events):
                     self.__run_forward_simulation(event, verbose=verbose)
@@ -949,6 +966,7 @@ class IterationListener(object):
                 if len(all_non_val_f_retrieved_events) > 0 and len(all_hpc_proc_retrieved_events) != len_non_validation_events:
                     anything_retrieved_hpc_proc, all_hpc_proc_retrieved_events = self.__listen_to_hpc_processing(
                         all_non_val_f_retrieved_events, adjoint=do_adjoint)
+                    anything_checked = True
                 if anything_retrieved_hpc_proc:
                     anything_retrieved = True
 
@@ -959,9 +977,11 @@ class IterationListener(object):
                 if self.comm.project.hpc_processing:
                     if len(all_hpc_proc_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
                         anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
+                        anything_checked = True
                 else:
                     if len(all_non_val_f_retrieved_events) > 0 and len(all_adj_retrieved_events) != len_non_validation_events:
                         anything_adj_retrieved, all_adj_retrieved_events = self.__listen_to_adjoint(all_non_val_f_retrieved_events)
+                        anything_checked = True
                 if anything_adj_retrieved:
                     anything_retrieved = True
                 # Now we listen to the gradient interp jobs in the multi_mesh case
@@ -970,6 +990,7 @@ class IterationListener(object):
                 if self.comm.project.meshes == "multi-mesh":
                     if len(all_adj_retrieved_events) > 0 and len(all_gi_retrieved_events) != len_non_validation_events:
                         anything_gi_retrieved, all_gi_retrieved_events = self.__listen_to_gradient_interp(all_adj_retrieved_events)
+                        anything_checked = True
                         if len(all_gi_retrieved_events) == len_non_validation_events:
                             break
                     if anything_gi_retrieved:
@@ -979,8 +1000,11 @@ class IterationListener(object):
                     if len(all_adj_retrieved_events) == len_non_validation_events:
                         break
 
+
             if not anything_retrieved:
                 sleep_or_process(self.comm)
+            if not anything_checked:
+                break
 
         # Finally update the estimated timestep
         for event in non_validation_events[:1]:

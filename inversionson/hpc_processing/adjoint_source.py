@@ -40,11 +40,13 @@ def calculate_adjoint_source(
     # a list.
     if not isinstance(window, list):
         window = [window]
-
+    adj_src_type = "waveform_difference"
     if adj_src_type == "tf_phase_misfit":
         from inversionson.hpc_processing.tf_phase_misfit import calculate_adjoint_source as fct
     elif adj_src_type == "ccc":
         from inversionson.hpc_processing.ccc import calculate_adjoint_source as fct
+    elif adj_src_type == "waveform_difference":
+        from inversionson.hpc_processing.waveform_misfit import calculate_adjoint_source as fct
     else:
         raise Exception("Not implemented error")
 

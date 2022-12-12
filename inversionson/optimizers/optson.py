@@ -25,21 +25,20 @@ def mesh_to_vector(mesh_filename, gradient=False):
     """ This assumes ordering stays the same when files are written.
     which most likely is the case."""
     m = um.from_h5(mesh_filename)
-    _, i = np.unique(m.connectivity, return_index=True)
-
     vsv = m.element_nodal_fields["VSV"]
     if gradient:
         mm = m.element_nodal_fields["FemMassMatrix"]
         valence = m.element_nodal_fields["Valence"]
-        vsv = vsv * mm * valence
-    v = vsv.flatten()[i]
+        vsv = vsv * mm / valence
+    v = vsv.flatten()
     return v
 
 
 def vector_to_mesh(initial_model, to_mesh, v):
     # also write the file
     m = um.from_h5(initial_model)
-    m.element_nodal_fields["VSV"][:] = v[m.connectivity]
+    v = v.reshape(m.element_nodal_fields["VSV"].shape)
+    m.element_nodal_fields["VSV"][:] = v
     m.write_h5(to_mesh)
 
 
@@ -106,21 +105,18 @@ class OptsonLink(Optimize):
         from optson.optimize import Optimize
         from optson.methods.trust_region_LBFGS import StochasticTrustRegionLBFGS
         from optson.methods.steepest_descent import StochasticSteepestDescent
-        method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=5e3))
+        # method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=2e4, verbose=True), verbose=True)
         x_0 = mesh_to_vector(self.initial_model)
-        opt = Optimize(x_0=x_0, problem=problem, method=method)
+        opt = Optimize(x_0=x_0, problem=problem, method=StochasticSteepestDescent(initial_step_length=2e4, verbose=True))
         opt.iterate(10)
         # raise NotImplementedError
 
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
-        print(models)
         if len(models) == 0:
             return [0]
         iteration_numbers = []
         for model in models:
-            print(model)
-            print(model.split("/")[-1])
             iteration_numbers.append(int(model.split("/")[-1].split(".")[0].split("_")[2]))
         return iteration_numbers
 
@@ -336,7 +332,6 @@ class StochasticFWI(StochasticBaseProblem):
         if not os.path.exists(self.optlink.model_path):
             vector_to_mesh(self.optlink.initial_model,
                            self.optlink.model_path, v=m.x)
-            print(m.x)
 
         if not self.comm.lasif.has_iteration(m.name):
             if m.iteration_number > 0:
@@ -411,7 +406,12 @@ class StochasticFWI(StochasticBaseProblem):
         Things like model_00000_step_... or model_00000_TrRadius_....
         # TODO cache these results as well.
         """
-        return self._misfit(m=m, it_num=it_num, control_group=control_group)
+        if control_group:
+            return self._misfit(m=m, it_num=it_num, control_group=control_group,
+                                misfit_only=True)
+        else:
+            return self._misfit(m=m, it_num=it_num, control_group=control_group,
+                                misfit_only=False)
 
     def gradient(
         self, m: ModelStochastic, it_num: int, control_group: bool = False

@@ -309,8 +309,9 @@ def run(info):
                 data_tr = select_component_from_stream(st_obs, component)
                 synth_tr = select_component_from_stream(st_syn, component)
 
+                # I THINK I SHOULD SAMPLE at the period of the data
                 # make sure traces match in length and sampling rate.
-                synth_tr.interpolate(sampling_rate=data_tr.stats.sampling_rate,
+                data_tr.interpolate(sampling_rate=synth_tr.stats.sampling_rate,
                                      method="linear")
                 data_tr.trim(endtime=synth_tr.stats.endtime)
                 synth_tr.trim(endtime=data_tr.stats.endtime)
@@ -459,8 +460,8 @@ def run(info):
                 # Make sure synthetics is sampled at the same
                 # rate and data matches the synthetics in terms of endtime
                 # start time should happen automatically.
-                synth_tr.interpolate(sampling_rate=data_tr.stats.sampling_rate,
-                                     method="linear")
+                data_tr.interpolate(sampling_rate=synth_tr.stats.sampling_rate,
+                                    method="linear")
                 data_tr.trim(endtime=synth_tr.stats.endtime)
                 synth_tr.trim(endtime=data_tr.stats.endtime)
 

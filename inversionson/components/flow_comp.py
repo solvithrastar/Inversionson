@@ -569,23 +569,23 @@ class SalvusFlowComponent(Component):
             w.physics.wave_equation.boundaries = boundaries
 
         # Compute wavefield subsampling factor.
-        if self.comm.project.simulation_time_step:
-            # Compute wavefield subsampling factor.
-            samples_per_min_period = (
-                    self.comm.project.min_period / self.comm.project.simulation_time_step
-            )
-            min_samples_per_min_period = 30.0
-            reduction_factor = int(
-                samples_per_min_period / min_samples_per_min_period)
-            reduction_factor_syn = int(
-                samples_per_min_period / 40.0)
-            if reduction_factor_syn >= 2:
-                w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
-            if reduction_factor >= 2:
-                checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
-            else:
-                checkpointing_flag = "auto-for-checkpointing"
-        else:
+        # if self.comm.project.simulation_time_step:
+        #     # Compute wavefield subsampling factor.
+        #     samples_per_min_period = (
+        #             self.comm.project.min_period / self.comm.project.simulation_time_step
+        #     )
+        #     min_samples_per_min_period = 30.0
+        #     reduction_factor = int(
+        #         samples_per_min_period / min_samples_per_min_period)
+        #     reduction_factor_syn = int(
+        #         samples_per_min_period / 40.0)
+        #     # if reduction_factor_syn >= 2:
+        #     #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
+        #     if reduction_factor >= 2:
+        #         checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        #     else:
+        #         checkpointing_flag = "auto-for-checkpointing"
+        # else:
             checkpointing_flag = "auto-for-checkpointing_10"
         # For gradient computation
         w.output.volume_data.format = "hdf5"
