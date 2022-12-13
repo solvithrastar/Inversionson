@@ -21,26 +21,117 @@ from lasif.components.communicator import Communicator
 from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
 
-def mesh_to_vector(mesh_filename, gradient=False):
-    """ This assumes ordering stays the same when files are written.
-    which most likely is the case."""
+
+def mesh_to_vector(mesh_filename, initial_model, gradient=True):
+    """
+    We map the model and the gradient to a vector here.
+    # in the case of the gradient we scale with mass matrix.
+
+    # I don't
+    """
     m = um.from_h5(mesh_filename)
-    vsv = m.element_nodal_fields["VSV"]
+    grad_m = um.from_h5("tmp_gradient.h5")
+    m_init = um.from_h5(initial_model)
+    _, i = np.unique(m.connectivity, return_index=True)
+
+
+    # Divide by initial
+    # We do this for both the gradients and the model parameters
+    # Try
+    # vsv = m.element_nodal_fields["VSV"]
+
+    # with normalization:
     if gradient:
-        mm = m.element_nodal_fields["FemMassMatrix"]
-        valence = m.element_nodal_fields["Valence"]
+        vsv = m.element_nodal_fields["VSV"] * m_init.element_nodal_fields["VSV"]
+    else:
+        vsv = m.element_nodal_fields["VSV"] / m_init.element_nodal_fields["VSV"]
+
+    # It looks like I should multipy with init in the case of the gradient.
+    # it is change per unit of change and sine we now change much less the gradient gets steeper.
+    # if gradient, we scale with the mass matrix. In this way
+    mm = grad_m.element_nodal_fields["FemMassMatrix"]
+    valence = grad_m.element_nodal_fields["Valence"]
+
+    # I don't need to account for the valence as I take the unique coords only
+    # I need to account for the mass matrix to ensure that the gradient is integrated
+    # it somehow makes the model parameters go to strongly.
+
+    # Gradient
+    if gradient:
+        # we divide by the valence, because the vsv vallue might be shared by
+        # several nodes in this array. i.e. it is duplicated.
+        # we need to multiply with valence
         vsv = vsv * mm / valence
+    # v = vsv.flatten()[i]
     v = vsv.flatten()
     return v
 
 
-def vector_to_mesh(initial_model, to_mesh, v):
+def vector_to_mesh(initial_model, to_mesh, m, prev_model=None,prev_v=None):
+    """
+    We map the model vector a mesh here.
+    """
+    from numpy.linalg import norm
     # also write the file
-    m = um.from_h5(initial_model)
-    v = v.reshape(m.element_nodal_fields["VSV"].shape)
-    m.element_nodal_fields["VSV"][:] = v
-    m.write_h5(to_mesh)
 
+    v = m.x
+    v_prev = m.prev_x
+    m = um.from_h5(initial_model)
+    grad_m = um.from_h5("tmp_gradient.h5")
+    mm = grad_m.element_nodal_fields["FemMassMatrix"]
+    valence = grad_m.element_nodal_fields["Valence"]
+
+    # now the problem is that the update becomes too small where the mass matrix is small
+
+    # def map_update(p: np.array, m: ModelStochastic):
+    #     """
+    #     We take a p, divide by the mm, but then still keep the same length to the update, so it doesnn't get super small
+    #     Does that make sense?
+    #     """
+    #     norm_p = norm(p)
+    #     print("norm_p", norm_p)
+    #     print("max(abs(p))", max(abs(p)))
+    #     new_update = p / m.problem.get_mass_matrix()
+    #     norm_new_update = norm(new_update)
+    #     print("norm_new_update", norm_new_update)
+    #     upd = norm_p / norm_new_update * new_update
+    #     print("upd", norm(upd))
+    #     print("max(abs(upd))", max(abs(upd)))
+    #     return norm_p / norm_new_update * new_update
+    #
+    _, i = np.unique(m.connectivity, return_index=True)
+    mm_flat = mm.flatten()[i]
+    #
+    # print("before mapping norm and max", norm(v), np.max(np.abs(v)))
+    # vdiff = v - 1
+    # v_diff_norm = np.linalg.norm(vdiff)
+    # vdiff_mapped = vdiff / mm_flat
+    # vdiff_mapped_morm = np.linalg.norm(vdiff_mapped)
+    # v = v_diff_norm / vdiff_mapped_morm * vdiff_mapped + 1
+    # print("after mapping norm and max", norm(v), np.max(np.abs(v)))
+    # new_v = v/mm_flat
+    # v_update = v - v_prev
+
+    # v_update = v_update.reshape(grad_m.element_nodal_fields["Valence"].shape)
+    # we need to multiply the conributions from each cell (the valence)
+    update = v.reshape(grad_m.element_nodal_fields["Valence"].shape)
+
+    update = update-1
+    print(np.shape(update))
+    update *= (grad_m.element_nodal_fields["Valence"] * grad_m.element_nodal_fields["Valence"])
+    update += 1
+    # add back again
+    # v_update += v_prev.reshape(grad_m.element_nodal_fields["Valence"].shape)
+    #TODO the way this is, it is clearly wrong. We only want to add the valence to each update.
+    # In the best case this only works for the first iteration at the moment.
+    # v += 1
+    # with normalization
+    m.element_nodal_fields["VSV"][:] = m.element_nodal_fields["VSV"][:] * update#[m.connectivity]
+    # without normalization
+    # m.element_nodal_fields["VSV"][:] = v_update
+    # Now I map the values
+
+    m.write_h5(to_mesh)
 
 class OptsonLink(Optimize):
     """
@@ -61,6 +152,7 @@ class OptsonLink(Optimize):
 
         # Call the super init with all the common stuff
         super().__init__(comm)
+        self.opt = None
 
     def _initialize_derived_class_folders(self):
         """These folder are needed only for Optson."""
@@ -105,10 +197,11 @@ class OptsonLink(Optimize):
         from optson.optimize import Optimize
         from optson.methods.trust_region_LBFGS import StochasticTrustRegionLBFGS
         from optson.methods.steepest_descent import StochasticSteepestDescent
-        # method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=2e4, verbose=True), verbose=True)
-        x_0 = mesh_to_vector(self.initial_model)
-        opt = Optimize(x_0=x_0, problem=problem, method=StochasticSteepestDescent(initial_step_length=2e4, verbose=True))
-        opt.iterate(10)
+        method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=2e-2, verbose=True,
+                                                                                       step_length_as_percentage=True), verbose=True)
+        x_0 = mesh_to_vector(self.initial_model, self.initial_model, gradient=False)
+        self.opt = Optimize(x_0=x_0, problem=problem, method=method)
+        self.opt.iterate(20)
         # raise NotImplementedError
 
     def find_iteration_numbers(self):
@@ -319,6 +412,8 @@ class StochasticFWI(StochasticBaseProblem):
         self.batch_size = batch_size
         # list model names per iteration here to figure out the accepted and rejected models
         self.model_names = {}
+        self.mass_matrix = None
+        self.valence = None
 
     def create_iteration_if_needed(self, m: ModelStochastic):
         """
@@ -331,7 +426,7 @@ class StochasticFWI(StochasticBaseProblem):
 
         if not os.path.exists(self.optlink.model_path):
             vector_to_mesh(self.optlink.initial_model,
-                           self.optlink.model_path, v=m.x)
+                           self.optlink.model_path, m)
 
         if not self.comm.lasif.has_iteration(m.name):
             if m.iteration_number > 0:
@@ -355,6 +450,22 @@ class StochasticFWI(StochasticBaseProblem):
         #
         self.create_iteration_if_needed(m=m)
 
+    # def get_mass_matrix(self):
+    #     if self.mass_matrix is None:
+    #         grad = um.from_h5("tmp_gradient.h5")
+    #         _, i = np.unique(grad.connectivity, return_index=True)
+    #         mm = grad.element_nodal_fields["FemMassMatrix"]
+    #         self.mass_matrix = mm.flatten()[i]
+    #     return self.mass_matrix
+    #
+    def get_valence(self):
+        if self.valence is None:
+            grad = um.from_h5("tmp_gradient.h5")
+            # _, i = np.unique(grad.connectivity, return_index=True)
+            self.valence = grad.element_nodal_fields["Valence"]
+            # self.valence = mm.flatten()[i]
+        return self.valence
+
     def _misfit(
         self, m: ModelStochastic, it_num: int, control_group: bool = False,
             misfit_only=True,
@@ -371,7 +482,7 @@ class StochasticFWI(StochasticBaseProblem):
             # and only ensure the control group events are simulated.
             events = self.control_group_dict[it_num]
 
-        if m.iteration_number > 0:
+        if m.iteration_number > 0 and m.iteration_number > it_num:
             # if it not the first model,
             # we need to consider the previous control group
             prev_control_group = self.control_group_dict[it_num]
@@ -440,7 +551,7 @@ class StochasticFWI(StochasticBaseProblem):
         )
         write_xdmf(output_location)
 
-        return mesh_to_vector(output_location, gradient=True)
+        return mesh_to_vector(output_location, self.optlink.initial_model)
 
     def select_control_group(self, m: ModelStochastic):
         current_batch = self.mini_batch_dict[m.iteration_number]
@@ -457,6 +568,8 @@ class StochasticFWI(StochasticBaseProblem):
         current_control_group = self.control_group_dict[m.iteration_number]
         non_control_events = set(current_batch) - set(current_control_group)
 
+        if len(current_control_group) == len(current_batch):
+            return False
         additional_controls = self.optlink.pick_data_for_iteration(
             self.batch_size,
             current_batch=list(non_control_events),
@@ -464,4 +577,4 @@ class StochasticFWI(StochasticBaseProblem):
         )
         self.control_group_dict[m.iteration_number] = \
             current_control_group + additional_controls
-
+        return True

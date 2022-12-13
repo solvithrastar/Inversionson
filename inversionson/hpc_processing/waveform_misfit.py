@@ -112,7 +112,7 @@ def calculate_adjoint_source(
         else:
             weight = window[2] * scaling
 
-    diff = (observed.data - synthetic.data) * weight
+    diff = (synthetic.data - observed.data) * weight
     # 0.5 * (s-o) ** 2
     # (s-
     # Integrate with the composite Simpson's rule.
