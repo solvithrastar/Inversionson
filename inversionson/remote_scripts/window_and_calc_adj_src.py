@@ -246,7 +246,8 @@ def run(info):
         scale_data_to_synthetics = info["scale_data_to_synthetics"]
     else:
         scale_data_to_synthetics = True
-    # scale_data_to_synthetics=False Used for testing
+
+    scale_data_to_synthetics = False #Used for testing
 
     if not os.path.exists(processed_filename):
         raise Exception(f"File {processed_filename} does not exists.")

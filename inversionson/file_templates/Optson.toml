@@ -1,10 +1,7 @@
-# Optson CONFIG
+# Optson Config (https://github.com/dirkphilip/Optson)
 
 # Smoothing length of the gradients, in radial and lateral directions.
 gradient_smoothing_length = [ 0.4, 0.8, 0.8,]
-
-# Scaling factor prevent overflow issues with single precision numbers. Don't change this number during the optimization.
-gradient_scaling_factor = 1e10
 
 # The starting model. This must be a .h5 file as provided by the Salvus Mesher.
 initial_model = ""
@@ -15,3 +12,5 @@ max_iterations = 1000
 # Smoothing timestep, must be either "auto" for automatic timesteps or a float.
 smoothing_timestep = "auto"
 
+# Calls Optson gradient test instead of the inversion.
+do_gradient_test = false

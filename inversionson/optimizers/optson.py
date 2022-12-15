@@ -1,71 +1,25 @@
 import glob
 import os
+import sys
+
 import toml
 import numpy as np
 import shutil
 import inspect
 
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
-
-from inversionson import InversionsonError
-from inversionson.helpers.autoinverter_helpers import IterationListener
 from inversionson.optimizers.optimizer import Optimize
-from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.utils import write_xdmf
-
-
-from optson.base_classes.base_problem import StochasticBaseProblem
-from optson.base_classes.model import ModelStochastic
-from lasif.components.communicator import Communicator
-
 from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
 
-
-def mesh_to_vector(mesh_filename, initial_model, gradient=True):
-    """
-    Maps a salvus mesh to a vector suitable for use with Optson.
-    #TODO: add option for multiple parameters.
-    """
-    m = um.from_h5(mesh_filename)
-    m_init = um.from_h5(initial_model)
-    _, i = np.unique(m.connectivity, return_index=True)
-
-    normalization = True
-    # Normalization, still have to make the case with zero velocity work
-    # TODO: fix case with velocities of zero
-    if normalization:
-        if gradient:
-            vsv = m.element_nodal_fields["VSV"] * m_init.element_nodal_fields["VSV"]
-        else:
-            vsv = m.element_nodal_fields["VSV"] / m_init.element_nodal_fields["VSV"]
-    else:
-        vsv = m.element_nodal_fields["VSV"]
-
-    # Gradient, this also implies the mesh filename is a gradient
-    # and thus has the FemMassMatrix and Valence fields.
-    if gradient:
-        mm = m.element_nodal_fields["FemMassMatrix"]
-        valence = m.element_nodal_fields["Valence"]
-        vsv = vsv * mm * valence # multiply with valence to account for duplication.
-    v = vsv.flatten()[i]
-    return v
-
-
-def vector_to_mesh(initial_model, to_mesh, m):
-    """
-    Maps an Optson vector to a salvus mesh.
-    # TODO: add option for multiple parameters.
-    """
-    m_init = um.from_h5(initial_model)
-    m_init.element_nodal_fields["VSV"][:] = m_init.element_nodal_fields["VSV"][:] * m.x[m_init.connectivity]
-    m_init.write_h5(to_mesh)
-
 class OptsonLink(Optimize):
     """
-    A class that acts as a bridge to Optson
-    """
+    A class that acts as a bridge to Optson.
 
+    #TODO: Add smoothing
+    #TODO: Clean up old iterations
+    """
     optimizer_name = "Optson"
     config_template_path = os.path.join(
         os.path.dirname(
@@ -86,16 +40,17 @@ class OptsonLink(Optimize):
         """These folder are needed only for Optson."""
         self.smooth_gradient_dir = self.opt_folder / "SMOOTHED_GRADIENTS"
 
-    @property
-    def smooth_gradient_path(self, cg=False, cg_prev=False):
-        if cg and cg_prev:
-            raise Exception("Only one control group can be set to true")
-        if cg:
-            return self.smooth_gradient_dir / f"smooth_g_cg_{self.iteration_number:05d}.h5"
-        elif cg_prev:
-            return self.smooth_gradient_dir / f"smooth_g_cg_prev_{self.iteration_number:05d}.h5"
-        else:   
-            return self.smooth_gradient_dir / f"smooth_g_{self.iteration_number:05d}.h5"
+    def get_raw_gradient_path(self, model_name, set_flag: str = "mb"):
+        allowed_set_flags = ["mb", "cg", "cg_prev"]
+        if set_flag not in allowed_set_flags:
+            raise Exception(f"Only {allowed_set_flags} can be passed")
+        return self.smooth_gradient_dir / f"smooth_g_{set_flag}_{model_name}.h5"
+
+    def get_raw_gradient_path(self, model_name, set_flag: str = "mb"):
+        allowed_set_flags = ["mb", "cg", "cg_prev"]
+        if set_flag not in allowed_set_flags:
+            raise Exception(f"Only {allowed_set_flags} can be passed")
+        return self.raw_gradient_dir / f"raw_g_{set_flag}_{model_name}.h5"
 
     @property
     def gradient_norm_path(self):
@@ -114,27 +69,82 @@ class OptsonLink(Optimize):
         )
         return path.parent / reconstructed_filename
 
-    def perform_task(self, verbose=False):
+    def vector_to_mesh(self, to_mesh, m):
+        """
+        Maps an Optson vector to a salvus mesh.
+        # TODO: add option for multiple parameters.
+        """
+        # all_parameters = self.parameters
+        m_init = um.from_h5(self.initial_model)
+        normalization = True
+        if normalization:
+            m_init.element_nodal_fields["VSV"][:] = m_init.element_nodal_fields[
+                                                        "VSV"][:] * m.x[
+                                                        m_init.connectivity]
+        else:
+            m_init.element_nodal_fields["VSV"][:] = m.x[m_init.connectivity]
+        m_init.write_h5(to_mesh)
+
+    def mesh_to_vector(self, mesh_filename, gradient=True):
+        """
+        Maps a salvus mesh to a vector suitable for use with Optson.
+        #TODO: add option for multiple parameters.
+        """
+        m = um.from_h5(mesh_filename)
+        m_init = um.from_h5(self.initial_model)
+        _, i = np.unique(m.connectivity, return_index=True)
+
+        normalization = True
+        # Normalization, still have to make the case with zero velocity work
+        # TODO: fix case with velocities of zero
+        if normalization:
+            if gradient:
+                vsv = m.element_nodal_fields["VSV"] * \
+                      m_init.element_nodal_fields["VSV"]
+            else:
+                vsv = m.element_nodal_fields["VSV"] / \
+                      m_init.element_nodal_fields["VSV"]
+        else:
+            vsv = m.element_nodal_fields["VSV"]
+
+        # Gradient, this also implies the mesh filename is a gradient
+        # and thus has the FemMassMatrix and Valence fields.
+        if gradient:
+            mm = m.element_nodal_fields["FemMassMatrix"]
+            valence = m.element_nodal_fields["Valence"]
+            vsv = vsv * mm * valence  # multiply with valence to account for duplication.
+        v = vsv.flatten()[i]
+        return v
+
+    def perform_task(self, verbose=True):
         """
         THIS is the key entry point for inversionson!!!!
         # TODO make this the entry
         Look at which task is the current one and call the function which does it.
         """
-        problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=1)
         from optson.optimize import Optimize
         from optson.methods.trust_region_LBFGS import StochasticTrustRegionLBFGS
         from optson.methods.steepest_descent import StochasticSteepestDescent
+        from inversionson.optimizers.StochasticFWI import StochasticFWI
 
-        method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=2e-2, verbose=True, step_length_as_percentage=True), verbose=True)
-        x_0 = mesh_to_vector(self.initial_model, self.initial_model,
-                             gradient=False)
+        if self.do_gradient_test:
+            self.gradient_test()
+            sys.exit()
 
-        grdtest = self.gradient_test()
+        problem = StochasticFWI(comm=self.comm, optlink=self,
+                                batch_size=1)
 
+        steepest_descent = StochasticSteepestDescent(
+            initial_step_length=3e-2,
+            verbose=verbose,
+            step_length_as_percentage=True)
+        method = StochasticTrustRegionLBFGS(
+            steepest_descent=steepest_descent,
+            verbose=verbose)
+
+        x_0 = self.mesh_to_vector(self.initial_model, gradient=False)
         self.opt = Optimize(x_0=x_0, problem=problem, method=method)
-        self.opt.iterate(20)
-        # raise NotImplementedError
+        self.opt.iterate(self.max_iterations)
 
     def gradient_test(self, h=None):
         """
@@ -150,16 +160,24 @@ class OptsonLink(Optimize):
             grd_test = opt.gradient_test()
 
         """
+        from inversionson.optimizers.StochasticFWI import StochasticFWI
         if not h:
             h = np.logspace(-7, -1, 7)
-        print("All h values that will be tested", h)
+        print("All these h values that will be tested:", h)
         problem = StochasticFWI(comm=self.comm, optlink=self,
                                 batch_size=1, gradient_test=True)
         from optson.gradient_test import GradientTest
 
-        x_0 = mesh_to_vector(self.initial_model, self.initial_model, gradient=False)
+        x_0 = self.mesh_to_vector(self.initial_model, gradient=False)
         grdtest = GradientTest(x_0=x_0, h=h,
                                problem=problem)
+
+        import matplotlib.pyplot as plt
+        plt.loglog(grdtest.h, grdtest.relative_errors)
+        plt.title(f"Minimum relative error: {min(grdtest.relative_errors)}")
+        plt.xlabel("h")
+        plt.ylabel("Relative error")
+        plt.savefig("gradient_test.png")
         return grdtest
 
     def find_iteration_numbers(self):
@@ -187,8 +205,8 @@ class OptsonLink(Optimize):
         self.initial_model = config["initial_model"]
         self.smoothing_timestep = config["smoothing_timestep"]
         self.gradient_smoothing_length = config["gradient_smoothing_length"]
-        self.grad_scaling_fac = config["gradient_scaling_factor"]
-        self.do_gradient_test = False
+        self.do_gradient_test = config["do_gradient_test"]
+        self.max_iterations = config["max_iterations"]
 
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
@@ -204,8 +222,6 @@ class OptsonLink(Optimize):
             self.average_model_dir,
             self.smooth_gradient_dir,
             self.raw_gradient_dir,
-            self.raw_update_dir,
-            self.task_dir,
             self.regularization_dir,
             self.gradient_norm_dir,
         ]
@@ -340,171 +356,3 @@ class OptsonLink(Optimize):
 
     def compute_gradient(self, verbose):
         pass
-
-class StochasticFWI(StochasticBaseProblem):
-    def __init__(self, comm: Communicator,
-                 optlink: OptsonLink,
-                 batch_size=2,
-                 gradient_test=False):
-        self.comm = comm
-        self.known_tags = []
-        self.optlink = optlink
-        self.gradient_test = gradient_test
-
-        # All these things need to be cached
-        self.mini_batch_dict = {}
-        self.control_group_dict = {}
-        self.batch_size = batch_size
-        # list model names per iteration here to figure out the accepted and rejected models
-        self.model_names = {}
-        self.mass_matrix = None
-        self.valence = None
-
-    def create_iteration_if_needed(self, m: ModelStochastic):
-        """
-        Here, we create the iteration if needed. This also requires us
-        to select the mini_batch already, but that is no problem.
-        """
-        previous_control_group = []
-        events = []
-        self.optlink.current_iteration_name = m.name
-
-        if not os.path.exists(self.optlink.model_path):
-            vector_to_mesh(self.optlink.initial_model,
-                           self.optlink.model_path, m)
-
-        if not self.comm.lasif.has_iteration(m.name):
-            if m.iteration_number > 0:
-                previous_control_group = \
-                    self.control_group_dict[m.iteration_number-1]
-            events = self.optlink.pick_data_for_iteration(
-                batch_size=self.batch_size,
-                prev_control_group=previous_control_group)
-
-        # the below line will set the proper parameters in the project
-        # component
-        self.optlink.prepare_iteration(iteration_name=m.name, events=events)
-        if m.iteration_number not in self.model_names.keys():
-            self.model_names[m.iteration_number] = [m.name]
-        else:
-            if m.name not in self.model_names[m.iteration_number]:
-                self.model_names[m.iteration_number].append(m.name)
-        self.mini_batch_dict[m.iteration_number] = self.comm.project.events_in_iteration
-
-    def select_batch(self, m: ModelStochastic):
-        #
-        self.create_iteration_if_needed(m=m)
-
-    def _misfit(
-        self, m: ModelStochastic, it_num: int, control_group: bool = False,
-            misfit_only=True,
-    ) -> float:
-        self.create_iteration_if_needed(m=m)
-        prev_control_group = []
-        control_group_events = []
-        misfit_only = misfit_only
-        previous_iteration = None
-        events = self.comm.project.events_in_iteration
-
-        if control_group:
-            # If we only want control group misfits, we don't need the gradients
-            # and only ensure the control group events are simulated.
-            events = self.control_group_dict[it_num]
-
-        if m.iteration_number > 0 and m.iteration_number > it_num:
-            # if it not the first model,
-            # we need to consider the previous control group
-            prev_control_group = self.control_group_dict[it_num]
-            previous_iteration = self.model_names[it_num][-1]
-
-        # Else we just take everything and immediately also compute the
-        # gradient
-
-        it_listen = IterationListener(
-            comm=self.comm,
-            events=events,
-            control_group_events=control_group_events,
-            prev_control_group_events=prev_control_group,
-            misfit_only=misfit_only,
-            prev_iteration=previous_iteration
-        )
-        it_listen.listen()
-
-        # Now we need a way to actually collect the misfit for the events.
-        # this involves the proper name for the mdoel and the set of events.
-        self.comm.project.get_iteration_attributes(m.name)
-        total_misfit = 0.0
-        for event in events:
-            total_misfit += self.comm.project.misfits[event]
-        return total_misfit / len(events)
-
-    def misfit(
-        self, m: ModelStochastic, it_num: int, control_group: bool = False,
-    ) -> float:
-        """
-        We may want some identifier to say which solution vector x is used.
-        Things like model_00000_step_... or model_00000_TrRadius_....
-        # TODO cache these results as well.
-        """
-        if control_group:
-            return self._misfit(m=m, it_num=it_num, control_group=control_group,
-                                misfit_only=True)
-        else:
-            return self._misfit(m=m, it_num=it_num, control_group=control_group,
-                                misfit_only=False)
-
-    def gradient(
-        self, m: ModelStochastic, it_num: int, control_group: bool = False
-    ) -> np.array:
-
-        # Simply call the misfit function, but ensure we also compute the gradients.
-        self._misfit(m=m, it_num=it_num, control_group=control_group,
-                    misfit_only=False)
-
-        # now we need to figure out how to sum the proper gradients.
-        # for this we need the events
-        if control_group:
-            events = self.control_group_dict[it_num]
-        else:
-            events = set(self.mini_batch_dict[it_num]) - set(self.comm.project.validation_dataset)
-            events = list(events)
-        output_location = "tmp_gradient.h5"
-
-        grad_summer = GradientSummer(comm=self.comm)
-        store_norms = False if self.gradient_test else True
-        grad_summer.sum_gradients(
-            events=events,
-            output_location=output_location,
-            batch_average=True,
-            sum_vpv_vph=True,
-            store_norms=store_norms,
-        )
-        write_xdmf(output_location)
-
-        return mesh_to_vector(output_location, self.optlink.initial_model)
-
-    def select_control_group(self, m: ModelStochastic):
-        current_batch = self.mini_batch_dict[m.iteration_number]
-
-        control_group = self.optlink.pick_data_for_iteration(
-            self.batch_size,
-            current_batch=current_batch,
-            select_new_control_group=True
-        )
-        self.control_group_dict[m.iteration_number] = control_group
-
-    def extend_control_group(self, m: ModelStochastic) -> bool:
-        current_batch = self.mini_batch_dict[m.iteration_number]
-        current_control_group = self.control_group_dict[m.iteration_number]
-        non_control_events = set(current_batch) - set(current_control_group)
-
-        if len(current_control_group) == len(current_batch):
-            return False
-        additional_controls = self.optlink.pick_data_for_iteration(
-            self.batch_size,
-            current_batch=list(non_control_events),
-            select_new_control_group=True
-        )
-        self.control_group_dict[m.iteration_number] = \
-            current_control_group + additional_controls
-        return True

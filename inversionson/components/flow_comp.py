@@ -139,6 +139,8 @@ class SalvusFlowComponent(Component):
         :type sim_type: str
         :param iteration: name of iteration, defaults to "current"
         :type iteration: str, optional
+        #TODO, this needs work for the case when the iteration
+         is not the current iteration
         """
         if iteration == "current" or iteration == self.comm.project.current_iteration:
             if sim_type in ["gradient_interp", "prepare_forward", "hpc_processing"]:
@@ -935,7 +937,8 @@ class SalvusFlowComponent(Component):
             ):
                 continue
             try:
-                job = self.get_job(event=event, sim_type=sim_type)
+                job = self.get_job(event=event, sim_type=sim_type,
+                                   iteration=iteration)
                 job.delete()
             except:
                 self.print(
