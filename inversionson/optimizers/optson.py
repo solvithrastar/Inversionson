@@ -8,6 +8,10 @@ import shutil
 import inspect
 
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
+from optson.base_classes.model import ModelStochastic
+
+from inversionson import InversionsonError
+from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.utils import write_xdmf
 from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
@@ -19,6 +23,18 @@ class OptsonLink(Optimize):
 
     #TODO: Add smoothing
     #TODO: Clean up old iterations
+    #TODO optimize calls to control group misfit/gradient.
+
+    # Simply perform the mini-batch job first, and then call control group.
+    # in this way adjoint jobs will be submitted already, so the next call will
+    # be quick.
+    #TODO: Add flag to iteration listerener that does misfit only, but still submits the adjoint jobs
+
+    # Become smarter about the jobs. For example when gx_cg_prev is called, we know
+    the model is accepted. we can run the iteration listener with all_events.
+    # then we can for cg_prev, also already immediately smooth the mini-batch gradient,
+    the new control group gradient and the previous gradient.
+    #
     """
     optimizer_name = "Optson"
     config_template_path = os.path.join(
@@ -40,7 +56,7 @@ class OptsonLink(Optimize):
         """These folder are needed only for Optson."""
         self.smooth_gradient_dir = self.opt_folder / "SMOOTHED_GRADIENTS"
 
-    def get_raw_gradient_path(self, model_name, set_flag: str = "mb"):
+    def get_smooth_gradient_path(self, model_name, set_flag: str = "mb"):
         allowed_set_flags = ["mb", "cg", "cg_prev"]
         if set_flag not in allowed_set_flags:
             raise Exception(f"Only {allowed_set_flags} can be passed")
@@ -74,6 +90,7 @@ class OptsonLink(Optimize):
         Maps an Optson vector to a salvus mesh.
         # TODO: add option for multiple parameters.
         """
+        print("start vector_to_mesh")
         # all_parameters = self.parameters
         m_init = um.from_h5(self.initial_model)
         normalization = True
@@ -84,19 +101,22 @@ class OptsonLink(Optimize):
         else:
             m_init.element_nodal_fields["VSV"][:] = m.x[m_init.connectivity]
         m_init.write_h5(to_mesh)
+        print("end_vector_to_mesh")
 
-    def mesh_to_vector(self, mesh_filename, gradient=True):
+
+    def mesh_to_vector(self, mesh_filename, gradient=True, raw_grad_file=None):
         """
         Maps a salvus mesh to a vector suitable for use with Optson.
         #TODO: add option for multiple parameters.
         """
+        print("start mesh to vector")
         m = um.from_h5(mesh_filename)
         m_init = um.from_h5(self.initial_model)
         _, i = np.unique(m.connectivity, return_index=True)
 
         normalization = True
         # Normalization, still have to make the case with zero velocity work
-        # TODO: fix case with velocities of zero
+        # TODO: fix case with velocities of zero, simply catch exception and replace with zero or 1
         if normalization:
             if gradient:
                 vsv = m.element_nodal_fields["VSV"] * \
@@ -110,23 +130,23 @@ class OptsonLink(Optimize):
         # Gradient, this also implies the mesh filename is a gradient
         # and thus has the FemMassMatrix and Valence fields.
         if gradient:
-            mm = m.element_nodal_fields["FemMassMatrix"]
-            valence = m.element_nodal_fields["Valence"]
+            rg = um.from_h5(raw_grad_file)
+            mm = rg.element_nodal_fields["FemMassMatrix"]
+            valence = rg.element_nodal_fields["Valence"]
             vsv = vsv * mm * valence  # multiply with valence to account for duplication.
         v = vsv.flatten()[i]
+        print("end mesh to vector")
         return v
 
     def perform_task(self, verbose=True):
         """
-        THIS is the key entry point for inversionson!!!!
-        # TODO make this the entry
-        Look at which task is the current one and call the function which does it.
+        Task manager calls this class. Main entry point. Here, all the magic will happen.
         """
         from optson.optimize import Optimize
         from optson.methods.trust_region_LBFGS import StochasticTrustRegionLBFGS
         from optson.methods.steepest_descent import StochasticSteepestDescent
         from inversionson.optimizers.StochasticFWI import StochasticFWI
-
+        self.find_iteration_numbers()
         if self.do_gradient_test:
             self.gradient_test()
             sys.exit()
@@ -186,7 +206,10 @@ class OptsonLink(Optimize):
             return [0]
         iteration_numbers = []
         for model in models:
-            iteration_numbers.append(int(model.split("/")[-1].split(".")[0].split("_")[2]))
+            it_number = int(model.split("/")[-1].split(".")[0].split("_")[2])
+            if it_number not in iteration_numbers:
+                iteration_numbers.append(it_number)
+        iteration_numbers.sort()
         return iteration_numbers
 
     @property
@@ -310,49 +333,37 @@ class OptsonLink(Optimize):
         # this should become smart with control groups etc.
         super().prepare_iteration(it_name=iteration_name, events=events)
 
-    def perform_smoothing(self):
+    def perform_smoothing(self, m: ModelStochastic, set_flag, file):
+        """
+        Todo, if control group getx extended, this should be reset.
+        """
         tasks = {}
-        if max(self.update_smoothing_length) > 0.0:
-            tasks["smooth_raw_update"] = {
+        tag = file.name
+        output_location = self.get_smooth_gradient_path(m.name, set_flag=set_flag)
+        if max(self.gradient_smoothing_length) > 0.0:
+            tasks[tag] = {
                 "reference_model": str(self.comm.lasif.get_master_model()),
-                "model_to_smooth": str(self.raw_update_path),
-                "smoothing_lengths": self.update_smoothing_length,
+                "model_to_smooth": str(file),
+                "smoothing_lengths": self.gradient_smoothing_length,
                 "smoothing_parameters": self.parameters,
-                "output_location": str(self.smooth_update_path),
+                "output_location": str(output_location),
             }
+        else:
+            shutil.copy(file, output_location)
 
-        if max(self.roughness_decay_smoothing_length) > 0.0:
-            # We either smooth the physical model and then map the results back
-            # to the internal parameterization
+        if len(tasks.keys()) > 0:
+            reg_helper = RegularizationHelper(
+                comm=self.comm, iteration_name=m.name, tasks=tasks,
+                optimizer=self
+            )
+            if tag in reg_helper.tasks.keys() and not os.path.exists(output_location):
+                # remove the completed tag if we need to redo smoothing.
+                reg_helper.tasks[tag].update(reg_helper.base_dict)
+                reg_helper._write_tasks(reg_helper.tasks)
 
-            # Or we smooth the relative perturbations with respect to
-            if self.roughness_decay_type == "absolute":
-                model_to_smooth = self.model_path
-            else:
-                model_to_smooth = os.path.join(
-                    self.regularization_dir,
-                    f"relative_perturbation_{self.iteration_name}",
-                )
-                shutil.copy(self.model_path, model_to_smooth)
+            reg_helper.monitor_tasks()
 
-                # relative perturbation = (latest - start) / start
-                theta_prev = self.get_h5_data(self.model_path)
-                theta_0 = self.get_h5_data(
-                    self._get_path_for_iteration(0, self.model_path)
-                )
-
-                theta_prev[theta_0 != 0] = (
-                    theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
-                )
-                self.set_h5_data(model_to_smooth, theta_prev)
-
-            tasks["roughness_decay"] = {
-                "reference_model": str(self.comm.lasif.get_master_model()),
-                "model_to_smooth": str(model_to_smooth),
-                "smoothing_lengths": self.roughness_decay_smoothing_length,
-                "smoothing_parameters": self.parameters,
-                "output_location": str(self.smoothed_model_path),
-            }
+        write_xdmf(str(output_location))
 
     def compute_gradient(self, verbose):
         pass

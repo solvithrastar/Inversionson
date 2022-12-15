@@ -195,10 +195,12 @@ class Optimize(object):
 
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
+        print(models)
         if len(models) == 0:
             return [0]
         iteration_numbers = []
         for model in models:
+            print(model)
             iteration_numbers.append(int(model.split(".")[0].split("_")[-1]))
         return iteration_numbers
 
@@ -237,8 +239,8 @@ class Optimize(object):
 
         return events
 
-    def delete_remote_files(self, it_name=None):
-        if not it_name:
+    def delete_remote_files(self, iteration=None):
+        if not iteration:
             iteration = self.iteration_name
 
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")

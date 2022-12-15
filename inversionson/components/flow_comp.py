@@ -129,7 +129,7 @@ class SalvusFlowComponent(Component):
             event=event, sim_type=sim_type, new=False, iteration=iteration
         )
 
-    def get_job(self, event: str, sim_type: str, iteration="current") -> object:
+    def get_job(self, event: str, sim_type: str, iteration=None) -> object:
         """
         Get Salvus.Flow Job Object, or JobArray Object
 
@@ -142,9 +142,12 @@ class SalvusFlowComponent(Component):
         #TODO, this needs work for the case when the iteration
          is not the current iteration
         """
-        if iteration == "current" or iteration == self.comm.project.current_iteration:
+        if not iteration or iteration == "current":
+            iteration = self.comm.project.current_iteration
+        if iteration == self.comm.project.current_iteration:
             if sim_type in ["gradient_interp", "prepare_forward", "hpc_processing"]:
-                return self.__get_custom_job(event=event, sim_type=sim_type)
+                return self.__get_custom_job(event=event, sim_type=sim_type,
+                                             iteration=iteration)
             if sim_type == "forward":
                 if self.comm.project.forward_job[event]["submitted"]:
                     job_name = self.comm.project.forward_job[event]["name"]
@@ -191,12 +194,16 @@ class SalvusFlowComponent(Component):
             site_name = self.comm.project.smoothing_site_name
             job = sapi.get_job_array(job_array_name=job_name, site_name=site_name)
         else:
-            site_name = self.comm.project.site_name
-            job = sapi.get_job(job_name=job_name, site_name=site_name)
+            if sim_type in ["gradient_interp", "prepare_forward", "hpc_processing"]:
+                return self.__get_custom_job(event=event, sim_type=sim_type,
+                                             iteration=iteration)
+            else:
+                site_name = self.comm.project.site_name
+                job = sapi.get_job(job_name=job_name, site_name=site_name)
 
         return job
 
-    def __get_custom_job(self, event: str, sim_type: str):
+    def __get_custom_job(self, event: str, sim_type: str, iteration=None):
         """
         A get_job function which handles job types which are not of type
         salvus.flow.sites.salvus_job.SalvusJob
@@ -207,6 +214,12 @@ class SalvusFlowComponent(Component):
         :type sim_type: str
         """
         gradient = False
+        if not iteration:
+            iteration = self.comm.project.current_iteration
+        if iteration != self.comm.project.current_iteration:
+            self.comm.project.change_attribute("current_iteration",
+                                               self.comm.project.current_iteration)
+            self.comm.project.get_iteration_attributes(iteration=iteration)
 
         if sim_type == "prepare_forward":
             if self.comm.project.prepare_forward_job[event]["submitted"]:
@@ -918,15 +931,17 @@ class SalvusFlowComponent(Component):
             Defaults to None
         :type event_name: str, optional
         """
+        from salvus.flow.db import SalvusFlowDoesNotExistDBException
         if event_name is not None:
             try:
                 job = self.get_job(event=event_name, sim_type=sim_type)
                 job.delete()
-            except:
+            except SalvusFlowDoesNotExistDBException as e:
                 self.print(
                     f"Could not delete job {sim_type} for event {event_name}",
                     emoji_alias=":hankey:",
                 )
+                print(e)
             return
         events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
         non_val_tasks = ["gradient_interp", "hpc_processing"]
@@ -937,14 +952,18 @@ class SalvusFlowComponent(Component):
             ):
                 continue
             try:
-                job = self.get_job(event=event, sim_type=sim_type,
-                                   iteration=iteration)
-                job.delete()
-            except:
+                try:
+                    job = self.get_job(event=event, sim_type=sim_type,
+                                       iteration=iteration)
+                    job.delete()
+                except InversionsonError:
+                    continue
+            except SalvusFlowDoesNotExistDBException as e:
                 self.print(
                     f"Could not delete job {sim_type} for event {event}",
                     emoji_alias=":hankey:",
                 )
+                print(e)
 
     def submit_smoothing_job(self, event: str, simulation, par):
         """

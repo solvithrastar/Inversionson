@@ -28,6 +28,7 @@ class StochasticFWI(StochasticBaseProblem):
         self.batch_size = batch_size
         # list model names per iteration here to figure out the accepted and rejected models
         self.model_names = {}
+        self.deleted_iterations = []
         self.performed_tasks = [] # tasks will be a dict with as a key, the name of the iteration, the type of job,
         self.read_status_json()
 
@@ -55,7 +56,30 @@ class StochasticFWI(StochasticBaseProblem):
             self.control_group_dict = status_dict["control_group_dict"]
             self.batch_size = status_dict["batch_size"]
             self.performed_tasks = status_dict["performed_tasks"]
+            if "deleted_iterations" in status_dict.keys():
+                self.deleted_iterations = status_dict["deleted_iterations"]
             self.model_names = status_dict["model_names"]
+
+    def clean_files(self):
+        # Delete anything from the prior iterations
+        all_its = self.optlink.find_iteration_numbers()
+        for it in all_its[:-2]:
+            for model in self.model_names[str(it)]:
+                if model in self.deleted_iterations:
+                    continue
+                self.optlink.delete_remote_files(model)
+                self.deleted_iterations.append(model)
+                self.update_status_json()
+
+        # Delete rejected models in most recent iterations.
+        for it in all_its[-2:]:
+            if str(it) in self.model_names.keys():
+                for model in self.model_names[str(it)][:-1]:
+                    if model in self.deleted_iterations:
+                        continue
+                    self.optlink.delete_remote_files(model)
+                    self.deleted_iterations.append(model)
+                    self.update_status_json()
 
     def update_status_json(self):
         """
@@ -65,7 +89,8 @@ class StochasticFWI(StochasticBaseProblem):
                            control_group_dict=self.control_group_dict,
                            batch_size=self.batch_size,
                            model_names=self.model_names,
-                           performed_tasks=self.performed_tasks)
+                           performed_tasks=self.performed_tasks,
+                           deleted_iterations=self.deleted_iterations)
 
         with open(self.status_file, "w") as fh:
             json.dump(status_dict, fh)
@@ -99,6 +124,7 @@ class StochasticFWI(StochasticBaseProblem):
             if m.name not in self.model_names[str(m.iteration_number)]:
                 self.model_names[str(m.iteration_number)].append(m.name)
         self.mini_batch_dict[str(m.iteration_number)] = self.comm.project.events_in_iteration
+        self.update_status_json()
 
     def select_batch(self, m: ModelStochastic):
         #
@@ -113,6 +139,7 @@ class StochasticFWI(StochasticBaseProblem):
         control_group_events = []
         misfit_only = misfit_only
         previous_iteration = None
+        submit_adjoint = False
         events = self.comm.project.events_in_iteration
 
         if misfit_only:
@@ -126,6 +153,8 @@ class StochasticFWI(StochasticBaseProblem):
             # If we only want control group misfits, we don't need the gradients
             # and only ensure the control group events are simulated.
             events = self.control_group_dict[str(it_num)]
+        else:
+            submit_adjoint = True  # only submit when not a control group
 
         if task_name not in self.performed_tasks:
             if m.iteration_number > 0 and m.iteration_number > it_num:
@@ -142,7 +171,8 @@ class StochasticFWI(StochasticBaseProblem):
                 control_group_events=control_group_events,
                 prev_control_group_events=prev_control_group,
                 misfit_only=misfit_only,
-                prev_iteration=previous_iteration
+                prev_iteration=previous_iteration,
+                submit_adjoint=submit_adjoint
             )
             it_listen.listen()
             if job_type == "misfit":
@@ -165,6 +195,7 @@ class StochasticFWI(StochasticBaseProblem):
         Things like model_00000_step_... or model_00000_TrRadius_....
         # TODO cache these results as well.
         """
+        self.clean_files()
         if control_group:
             return self._misfit(m=m, it_num=it_num, control_group=control_group,
                                 misfit_only=True)
@@ -175,14 +206,13 @@ class StochasticFWI(StochasticBaseProblem):
     def gradient(
         self, m: ModelStochastic, it_num: int, control_group: bool = False
     ) -> np.array:
-
+        self.clean_files()
         # Simply call the misfit function, but ensure we also compute the gradients.
         self._misfit(m=m, it_num=it_num, control_group=control_group,
                     misfit_only=False)
         set_flag = self.get_set_flag(m, it_num, control_group)
-        output_location = self.optlink.get_raw_gradient_path(m.name, set_flag)
+        raw_grad_file = self.optlink.get_raw_gradient_path(m.name, set_flag)
         task_name = self.get_task_name(m, it_num, "gradient", control_group)
-        print(task_name, task_name in self.performed_tasks)
 
         if task_name not in self.performed_tasks:
             # now we need to figure out how to sum the proper gradients.
@@ -197,15 +227,19 @@ class StochasticFWI(StochasticBaseProblem):
             store_norms = False if self.gradient_test else True
             grad_summer.sum_gradients(
                 events=events,
-                output_location=output_location,
+                output_location=raw_grad_file,
                 batch_average=True,
                 sum_vpv_vph=True,
                 store_norms=store_norms,
             )
-            write_xdmf(output_location)
+            write_xdmf(raw_grad_file)
             self.performed_tasks.append(task_name)
         self.update_status_json()
-        return self.optlink.mesh_to_vector(output_location)
+
+        self.optlink.perform_smoothing(m, set_flag, raw_grad_file)
+        smooth_grad = self.optlink.get_smooth_gradient_path(m.name, set_flag=set_flag)
+        # smooth grad does not have the fields
+        return self.optlink.mesh_to_vector(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
     def select_control_group(self, m: ModelStochastic):
         current_batch = self.mini_batch_dict[str(m.iteration_number)]
@@ -216,6 +250,7 @@ class StochasticFWI(StochasticBaseProblem):
             select_new_control_group=True
         )
         self.control_group_dict[str(m.iteration_number)] = control_group
+        self.update_status_json()
 
     def extend_control_group(self, m: ModelStochastic) -> bool:
         current_batch = self.mini_batch_dict[str(m.iteration_number)]
@@ -245,4 +280,12 @@ class StochasticFWI(StochasticBaseProblem):
         while task_name_grad in self.performed_tasks:
             self.performed_tasks.remove(task_name_grad)
         self.update_status_json()
+        # also delete gradients
+        raw_grad = self.optlink.get_raw_gradient_path(m.name, "cg")
+        if os.path.exists(raw_grad):
+            os.remove(raw_grad)
+        smooth_grad = self.optlink.get_smooth_gradient_path(m.name, "cg")
+        if os.path.exists(smooth_grad):
+            os.remove(smooth_grad)
+
         return True

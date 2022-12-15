@@ -32,7 +32,8 @@ class IterationListener(object):
 
     def __init__(self, comm, events, control_group_events=[],
                  prev_control_group_events=[],
-                 misfit_only=False, prev_iteration=None):
+                 misfit_only=False, prev_iteration=None,
+                 submit_adjoint=True):
         """
         Extension to include special cases for control group related stuff
         """
@@ -41,6 +42,8 @@ class IterationListener(object):
         self.control_group_events = control_group_events
         self.prev_control_group_events = prev_control_group_events
         self.misfit_only = misfit_only
+        self.do_adjoint = True
+        self.submit_adjoint = submit_adjoint
         self.prev_iteration = prev_iteration
 
     def print(
@@ -965,7 +968,8 @@ class IterationListener(object):
             if self.comm.project.hpc_processing:
                 if len(all_non_val_f_retrieved_events) > 0 and len(all_hpc_proc_retrieved_events) != len_non_validation_events:
                     anything_retrieved_hpc_proc, all_hpc_proc_retrieved_events = self.__listen_to_hpc_processing(
-                        all_non_val_f_retrieved_events, adjoint=do_adjoint)
+                        all_non_val_f_retrieved_events,
+                        adjoint=self.submit_adjoint)
                     anything_checked = True
                 if anything_retrieved_hpc_proc:
                     anything_retrieved = True

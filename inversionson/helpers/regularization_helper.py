@@ -13,7 +13,7 @@ class RegularizationHelper(object):
     It can then dispatch the jobs, monitor and retrieve them.
     """
 
-    def __init__(self, comm, iteration_name, tasks):
+    def __init__(self, comm, iteration_name, tasks, optimizer=None):
         """
         Each tasks is a dict that has a reference model, a model that contains the fields
         that require smoothing, the smoothing lengths, the parameters that require
@@ -31,9 +31,13 @@ class RegularizationHelper(object):
         self.comm = comm
         self.site_name = self.comm.project.smoothing_site_name
         self.iteration_name = iteration_name
-        self.optimizer = self.comm.project.get_optimizer()
+        if not optimizer:
+            self.optimizer = self.comm.project.get_optimizer()
+        else:
+            self.optimizer = optimizer
+        self.job_toml = self.optimizer.regularization_dir / f"regularization_{iteration_name}.toml"
         self._write_tasks(tasks)
-        self.tasks = toml.load(self.optimizer.regularization_job_toml)
+        self.tasks = toml.load(self.job_toml)
 
     def print(
         self,
@@ -50,29 +54,30 @@ class RegularizationHelper(object):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
+    @property
+    def base_dict(self):
+        return dict(job_name="", submitted=False, retrieved=False, reposts=0)
 
     def _write_tasks(self, tasks):
         """
         This function writes the tasks to file or updates the task file.
         """
-        # Write initial toml if there is no task toml yet
-        base_dict = dict(job_name="", submitted=False, retrieved=False, reposts=0)
-        if not os.path.exists(self.optimizer.regularization_job_toml):
+        if not os.path.exists(self.job_toml):
             for task_dict in tasks.values():
-                task_dict.update(base_dict)
-            with open(self.optimizer.regularization_job_toml, "w") as fh:
+                task_dict.update(self.base_dict)
+            with open(self.job_toml, "w") as fh:
                 toml.dump(tasks, fh)
 
         else:  # We add the tasks to the existing tasks if needed
-            existing_tasks = toml.load(self.optimizer.regularization_job_toml)
+            existing_tasks = toml.load(self.job_toml)
             for task_name, task in tasks.items():
                 # Add the empty task if it does not exist
                 if task_name not in existing_tasks.keys():
                     existing_tasks[task_name] = tasks[task_name]
-                    existing_tasks[task_name].update(base_dict)
+                    existing_tasks[task_name].update(self.base_dict)
                 else:  # Update existing tasks with passed tasks
                     existing_tasks[task_name].update(tasks[task_name])
-            with open(self.optimizer.regularization_job_toml, "w") as fh:
+            with open(self.job_toml, "w") as fh:
                 toml.dump(existing_tasks, fh)
 
     def dispatch_smoothing_tasks(self):
