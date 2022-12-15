@@ -169,7 +169,7 @@ def create_simulation_object(
             longitude=rec["longitude"],
             network_code=rec["network-code"],
             station_code=rec["station-code"],
-            depth_in_m=0.0,
+            depth_in_m=1.0,
             fields=["displacement"],
             side_set_name="r1",
         )
@@ -202,7 +202,7 @@ def create_simulation_object(
 
     w.physics.wave_equation.end_time_in_seconds = simulation_info["end_time"]
     # We don't set the time step anymore
-    # w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
+    w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
     w.physics.wave_equation.start_time_in_seconds = simulation_info["start_time"]
     w.physics.wave_equation.attenuation = simulation_info["attenuation"]
 
@@ -239,12 +239,12 @@ def create_simulation_object(
             samples_per_min_period / 50.0)
         # if reduction_factor_syn >= 2:
         #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
-        if reduction_factor >= 2:
-            checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
-        else:
-            checkpointing_flag = "auto-for-checkpointing"
-    else:
-        checkpointing_flag = "auto-for-checkpointing_5"
+        # if reduction_factor >= 2:
+        #     checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        # else:
+    checkpointing_flag = "auto-for-checkpointing"
+    #else:
+     #   checkpointing_flag = "auto-for-checkpointing_5"
 
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"

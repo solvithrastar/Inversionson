@@ -586,7 +586,7 @@ class SalvusFlowComponent(Component):
         #     else:
         #         checkpointing_flag = "auto-for-checkpointing"
         # else:
-            checkpointing_flag = "auto-for-checkpointing_10"
+        checkpointing_flag = "auto-for-checkpointing"
         # For gradient computation
         w.output.volume_data.format = "hdf5"
         w.output.volume_data.filename = "output.h5"

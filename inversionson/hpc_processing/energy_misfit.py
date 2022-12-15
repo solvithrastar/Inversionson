@@ -19,6 +19,7 @@ from __future__ import (
 )
 
 from obspy import Trace
+import numpy as np
 from scipy.integrate import simps
 
 
@@ -101,26 +102,13 @@ def calculate_adjoint_source(
     # object. At this point they will be guaranteed to have the same
     # sampling rate, be sampled at the same points in time and a couple
     # other things.
-
-    ret_val = {}
     scaling = 1e5
-    weight = scaling * 1.0
-
-    if window:
-        if len(window) == 2:
-            weight = 1.0 * scaling
-        else:
-            weight = window[2] * scaling
-
-    diff = (observed.data - synthetic.data) * weight
-    # 0.5 * (s-o) ** 2
-    # (s-
-    # Integrate with the composite Simpson's rule.
-    ret_val["misfit"] = 0.5 * simps(y=diff ** 2, dx=observed.stats.delta)
+    ret_val = {}
+    ret_val["misfit"] = scaling * np.sum((synthetic.data * synthetic.data)) * synthetic.stats.delta
 
     if adjoint_src is True:
         adj_src = Trace(
-            data=diff * weight * synthetic.stats.delta, header=observed.stats
+            data=-scaling*synthetic.stats.delta * synthetic.data, header=synthetic.stats
         )
 
         ret_val["adjoint_source"] = adj_src

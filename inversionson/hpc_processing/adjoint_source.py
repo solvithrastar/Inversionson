@@ -40,13 +40,15 @@ def calculate_adjoint_source(
     # a list.
     if not isinstance(window, list):
         window = [window]
-    adj_src_type = "waveform_difference"
+    adj_src_type = "tf_phase_misfit"
     if adj_src_type == "tf_phase_misfit":
         from inversionson.hpc_processing.tf_phase_misfit import calculate_adjoint_source as fct
     elif adj_src_type == "ccc":
         from inversionson.hpc_processing.ccc import calculate_adjoint_source as fct
     elif adj_src_type == "waveform_difference":
         from inversionson.hpc_processing.waveform_misfit import calculate_adjoint_source as fct
+    elif adj_src_type == "energy_misfit":
+        from inversionson.hpc_processing.energy_misfit import calculate_adjoint_source as fct
     else:
         raise Exception("Not implemented error")
 
@@ -81,8 +83,7 @@ def calculate_adjoint_source(
         observed = original_observed.copy()
         synthetic = original_synthetic.copy()
 
-        # The window trace function tapers the trace and this modifies it.
-        dt = 1.0 / observed.stats.sampling_rate
+        # Window traces
         observed = window_trace(
             trace=observed,
             window=win,
@@ -97,10 +98,7 @@ def calculate_adjoint_source(
             taper_ratio=taper_ratio,
             taper_type=taper_type,
         )
-        # s, e = observed.stats.starttime, observed.stats.endtime
-        # observed.trim(win[0] - dt*1500, win[1] + dt * 1500)
-        # synthetic.trim(win[0] - dt*1500, win[1] + dt * 1500) # with padding to the trim, this matches
-        # window is set to false, because we already taper here.
+        # Call adjoint source time function with the full windowed trace.
         adjoint = fct(
             observed=observed,
             synthetic=synthetic,
@@ -113,9 +111,6 @@ def calculate_adjoint_source(
             taper_ratio=taper_ratio,
             taper_type=taper_type,
         )
-        # repad it to full length
-        # adjoint["adjoint_source"].trim(s, e, pad=True, fill_value=0.0)
-        # print(max(adjoint["adjoint_source"].data))
         adjoint["adjoint_source"] = window_trace(
             trace=adjoint["adjoint_source"],
             window=win,
@@ -123,7 +118,7 @@ def calculate_adjoint_source(
             taper_ratio=taper_ratio,
             taper_type=taper_type,
         )
-        if win_tuple == window[0]:
+        if win_tuple == window[0]: # only for the first window
             full_ad_src = adjoint["adjoint_source"]
             # print(max(full_ad_src.data))
         else:

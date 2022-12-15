@@ -211,8 +211,11 @@ def run(info):
     processed_filename = info["processed_filename"]
     synthetic_filename = info["synthetic_filename"]
     event_name = info["event_name"]
-    delta = info["delta"]
-    npts = info["npts"]
+
+    with pyasdf.ASDFDataSet(synthetic_filename, mode="r") as ds:
+        tag = ds.waveforms[ds.waveforms.list()[0]].get_waveform_tags()[0]
+        delta = ds.waveforms[ds.waveforms.list()[0]][tag][0].stats.delta
+        npts = ds.waveforms[ds.waveforms.list()[0]][tag][0].stats.npts
 
     minimum_period = info["minimum_period"]
     maximum_period = info["maximum_period"]
@@ -243,6 +246,7 @@ def run(info):
         scale_data_to_synthetics = info["scale_data_to_synthetics"]
     else:
         scale_data_to_synthetics = True
+    # scale_data_to_synthetics=False Used for testing
 
     if not os.path.exists(processed_filename):
         raise Exception(f"File {processed_filename} does not exists.")
@@ -509,7 +513,7 @@ def run(info):
                 "misfit": misfit,
                 "adj_source": adj_source,
             }
-        # TODO figure out what happens when no adjoint source is calculated
+        # TODO: Handle case without adjoint source elegantly.
         adj_dict = {station: adjoint_sources}
         return adj_dict
 
@@ -535,7 +539,7 @@ def run(info):
         pool.close()
         pool.join()
 
-    # Write adjoint sources # TODO add station weighting
+    # Write adjoint sources
     sta_with_sources = [k for k, v in all_adj_srcs.items() if v]
     num_sta_with_sources = len(sta_with_sources)
 
@@ -572,6 +576,7 @@ def run(info):
 
             zne = np.array((z_comp, n_comp, e_comp)) * \
                   station_weights[station]["station_weight"]
+            # zne = np.array((z_comp, n_comp, e_comp))
             # replace name to match the forward output run from salvus
             new_station_name = station.replace(".", "_")
             source = f.create_dataset(new_station_name, data=zne.T)
@@ -592,7 +597,7 @@ def run(info):
         for trace in all_adj_srcs[station].keys():
             station_tr_misfit = all_adj_srcs[station][trace]["misfit"] * \
                 station_weights[station]["station_weight"]
-
+            # station_tr_misfit = all_adj_srcs[station][trace]["misfit"]
             misfit_dict[station][trace] = station_tr_misfit
             total_misfit += station_tr_misfit
 

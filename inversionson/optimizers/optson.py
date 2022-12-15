@@ -24,114 +24,42 @@ from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
 def mesh_to_vector(mesh_filename, initial_model, gradient=True):
     """
-    We map the model and the gradient to a vector here.
-    # in the case of the gradient we scale with mass matrix.
-
-    # I don't
+    Maps a salvus mesh to a vector suitable for use with Optson.
+    #TODO: add option for multiple parameters.
     """
     m = um.from_h5(mesh_filename)
-    grad_m = um.from_h5("tmp_gradient.h5")
     m_init = um.from_h5(initial_model)
     _, i = np.unique(m.connectivity, return_index=True)
 
-
-    # Divide by initial
-    # We do this for both the gradients and the model parameters
-    # Try
-    # vsv = m.element_nodal_fields["VSV"]
-
-    # with normalization:
-    if gradient:
-        vsv = m.element_nodal_fields["VSV"] * m_init.element_nodal_fields["VSV"]
+    normalization = True
+    # Normalization, still have to make the case with zero velocity work
+    # TODO: fix case with velocities of zero
+    if normalization:
+        if gradient:
+            vsv = m.element_nodal_fields["VSV"] * m_init.element_nodal_fields["VSV"]
+        else:
+            vsv = m.element_nodal_fields["VSV"] / m_init.element_nodal_fields["VSV"]
     else:
-        vsv = m.element_nodal_fields["VSV"] / m_init.element_nodal_fields["VSV"]
+        vsv = m.element_nodal_fields["VSV"]
 
-    # It looks like I should multipy with init in the case of the gradient.
-    # it is change per unit of change and sine we now change much less the gradient gets steeper.
-    # if gradient, we scale with the mass matrix. In this way
-    mm = grad_m.element_nodal_fields["FemMassMatrix"]
-    valence = grad_m.element_nodal_fields["Valence"]
-
-    # I don't need to account for the valence as I take the unique coords only
-    # I need to account for the mass matrix to ensure that the gradient is integrated
-    # it somehow makes the model parameters go to strongly.
-
-    # Gradient
+    # Gradient, this also implies the mesh filename is a gradient
+    # and thus has the FemMassMatrix and Valence fields.
     if gradient:
-        # we divide by the valence, because the vsv vallue might be shared by
-        # several nodes in this array. i.e. it is duplicated.
-        # we need to multiply with valence
-        vsv = vsv * mm / valence
-    # v = vsv.flatten()[i]
-    v = vsv.flatten()
+        mm = m.element_nodal_fields["FemMassMatrix"]
+        valence = m.element_nodal_fields["Valence"]
+        vsv = vsv * mm * valence # multiply with valence to account for duplication.
+    v = vsv.flatten()[i]
     return v
 
 
-def vector_to_mesh(initial_model, to_mesh, m, prev_model=None,prev_v=None):
+def vector_to_mesh(initial_model, to_mesh, m):
     """
-    We map the model vector a mesh here.
+    Maps an Optson vector to a salvus mesh.
+    # TODO: add option for multiple parameters.
     """
-    from numpy.linalg import norm
-    # also write the file
-
-    v = m.x
-    v_prev = m.prev_x
-    m = um.from_h5(initial_model)
-    grad_m = um.from_h5("tmp_gradient.h5")
-    mm = grad_m.element_nodal_fields["FemMassMatrix"]
-    valence = grad_m.element_nodal_fields["Valence"]
-
-    # now the problem is that the update becomes too small where the mass matrix is small
-
-    # def map_update(p: np.array, m: ModelStochastic):
-    #     """
-    #     We take a p, divide by the mm, but then still keep the same length to the update, so it doesnn't get super small
-    #     Does that make sense?
-    #     """
-    #     norm_p = norm(p)
-    #     print("norm_p", norm_p)
-    #     print("max(abs(p))", max(abs(p)))
-    #     new_update = p / m.problem.get_mass_matrix()
-    #     norm_new_update = norm(new_update)
-    #     print("norm_new_update", norm_new_update)
-    #     upd = norm_p / norm_new_update * new_update
-    #     print("upd", norm(upd))
-    #     print("max(abs(upd))", max(abs(upd)))
-    #     return norm_p / norm_new_update * new_update
-    #
-    _, i = np.unique(m.connectivity, return_index=True)
-    mm_flat = mm.flatten()[i]
-    #
-    # print("before mapping norm and max", norm(v), np.max(np.abs(v)))
-    # vdiff = v - 1
-    # v_diff_norm = np.linalg.norm(vdiff)
-    # vdiff_mapped = vdiff / mm_flat
-    # vdiff_mapped_morm = np.linalg.norm(vdiff_mapped)
-    # v = v_diff_norm / vdiff_mapped_morm * vdiff_mapped + 1
-    # print("after mapping norm and max", norm(v), np.max(np.abs(v)))
-    # new_v = v/mm_flat
-    # v_update = v - v_prev
-
-    # v_update = v_update.reshape(grad_m.element_nodal_fields["Valence"].shape)
-    # we need to multiply the conributions from each cell (the valence)
-    update = v.reshape(grad_m.element_nodal_fields["Valence"].shape)
-
-    update = update-1
-    print(np.shape(update))
-    update *= (grad_m.element_nodal_fields["Valence"] * grad_m.element_nodal_fields["Valence"])
-    update += 1
-    # add back again
-    # v_update += v_prev.reshape(grad_m.element_nodal_fields["Valence"].shape)
-    #TODO the way this is, it is clearly wrong. We only want to add the valence to each update.
-    # In the best case this only works for the first iteration at the moment.
-    # v += 1
-    # with normalization
-    m.element_nodal_fields["VSV"][:] = m.element_nodal_fields["VSV"][:] * update#[m.connectivity]
-    # without normalization
-    # m.element_nodal_fields["VSV"][:] = v_update
-    # Now I map the values
-
-    m.write_h5(to_mesh)
+    m_init = um.from_h5(initial_model)
+    m_init.element_nodal_fields["VSV"][:] = m_init.element_nodal_fields["VSV"][:] * m.x[m_init.connectivity]
+    m_init.write_h5(to_mesh)
 
 class OptsonLink(Optimize):
     """
@@ -197,12 +125,42 @@ class OptsonLink(Optimize):
         from optson.optimize import Optimize
         from optson.methods.trust_region_LBFGS import StochasticTrustRegionLBFGS
         from optson.methods.steepest_descent import StochasticSteepestDescent
-        method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=2e-2, verbose=True,
-                                                                                       step_length_as_percentage=True), verbose=True)
-        x_0 = mesh_to_vector(self.initial_model, self.initial_model, gradient=False)
+
+        method = StochasticTrustRegionLBFGS(steepest_descent=StochasticSteepestDescent(initial_step_length=2e-2, verbose=True, step_length_as_percentage=True), verbose=True)
+        x_0 = mesh_to_vector(self.initial_model, self.initial_model,
+                             gradient=False)
+
+        grdtest = self.gradient_test()
+
         self.opt = Optimize(x_0=x_0, problem=problem, method=method)
         self.opt.iterate(20)
         # raise NotImplementedError
+
+    def gradient_test(self, h=None):
+        """
+        Function to perform a gradient test for the current project.
+        from a notebook in the root directory of inversionson, you may call this
+        like this in the following way:
+
+            from inversionson.autoinverter import read_info_toml, AutoInverter
+            info = read_info_toml("")
+            auto = AutoInverter(info, manual_mode=True)
+            auto.move_files_to_cluster()
+            opt = auto.comm.project.get_optimizer()
+            grd_test = opt.gradient_test()
+
+        """
+        if not h:
+            h = np.logspace(-7, -1, 7)
+        print("All h values that will be tested", h)
+        problem = StochasticFWI(comm=self.comm, optlink=self,
+                                batch_size=1, gradient_test=True)
+        from optson.gradient_test import GradientTest
+
+        x_0 = mesh_to_vector(self.initial_model, self.initial_model, gradient=False)
+        grdtest = GradientTest(x_0=x_0, h=h,
+                               problem=problem)
+        return grdtest
 
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
@@ -230,6 +188,7 @@ class OptsonLink(Optimize):
         self.smoothing_timestep = config["smoothing_timestep"]
         self.gradient_smoothing_length = config["gradient_smoothing_length"]
         self.grad_scaling_fac = config["gradient_scaling_factor"]
+        self.do_gradient_test = False
 
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
@@ -243,6 +202,7 @@ class OptsonLink(Optimize):
         folders = [
             self.model_dir,
             self.average_model_dir,
+            self.smooth_gradient_dir,
             self.raw_gradient_dir,
             self.raw_update_dir,
             self.task_dir,
@@ -258,11 +218,12 @@ class OptsonLink(Optimize):
         write_xdmf(self.model_path)
 
     def _finalize_iteration(self, verbose: bool):
-        """
-        Here we can do some documentation. Maybe just call a base function for that
-        """
-        super().delete_remote_files()
-        self.comm.storyteller.document_task(task="adam_documentation")
+        pass
+        # """
+        # Here we can do some documentation. Maybe just call a base function for that
+        # """
+        # super().delete_remote_files()
+        # self.comm.storyteller.document_task(task="adam_documentation")
 
     def pick_data_for_iteration(self, batch_size, prev_control_group=[],
                                 current_batch=[],
@@ -378,33 +339,17 @@ class OptsonLink(Optimize):
             }
 
     def compute_gradient(self, verbose):
-        """
-        This task does forward simulations and then gradient computations
-        straight afterward..
-        """
-        from inversionson.helpers.autoinverter_helpers import IterationListener
-
-        # Attempt to dispatch model smoothing right at the beginning.
-        # So there is no smoothing bottleneck when updates are not smoothed.
-        it_listen = IterationListener(
-            self.comm,
-            events=self.comm.project.events_in_iteration)
-        it_listen.listen()
-
-        self.task_dict["forward_submitted"] = True
-        self.task_dict["misfit_completed"] = True
-        self.task_dict["gradient_completed"] = True
-        self._update_task_file()
-        self.finish_task()
-
+        pass
 
 class StochasticFWI(StochasticBaseProblem):
     def __init__(self, comm: Communicator,
                  optlink: OptsonLink,
-                 batch_size=2):
+                 batch_size=2,
+                 gradient_test=False):
         self.comm = comm
         self.known_tags = []
         self.optlink = optlink
+        self.gradient_test = gradient_test
 
         # All these things need to be cached
         self.mini_batch_dict = {}
@@ -449,22 +394,6 @@ class StochasticFWI(StochasticBaseProblem):
     def select_batch(self, m: ModelStochastic):
         #
         self.create_iteration_if_needed(m=m)
-
-    # def get_mass_matrix(self):
-    #     if self.mass_matrix is None:
-    #         grad = um.from_h5("tmp_gradient.h5")
-    #         _, i = np.unique(grad.connectivity, return_index=True)
-    #         mm = grad.element_nodal_fields["FemMassMatrix"]
-    #         self.mass_matrix = mm.flatten()[i]
-    #     return self.mass_matrix
-    #
-    def get_valence(self):
-        if self.valence is None:
-            grad = um.from_h5("tmp_gradient.h5")
-            # _, i = np.unique(grad.connectivity, return_index=True)
-            self.valence = grad.element_nodal_fields["Valence"]
-            # self.valence = mm.flatten()[i]
-        return self.valence
 
     def _misfit(
         self, m: ModelStochastic, it_num: int, control_group: bool = False,
@@ -542,12 +471,13 @@ class StochasticFWI(StochasticBaseProblem):
         output_location = "tmp_gradient.h5"
 
         grad_summer = GradientSummer(comm=self.comm)
+        store_norms = False if self.gradient_test else True
         grad_summer.sum_gradients(
             events=events,
             output_location=output_location,
             batch_average=True,
             sum_vpv_vph=True,
-            store_norms=True,
+            store_norms=store_norms,
         )
         write_xdmf(output_location)
 
