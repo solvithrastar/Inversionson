@@ -267,25 +267,23 @@ class StochasticFWI(StochasticBaseProblem):
         self.control_group_dict[str(m.iteration_number)] = \
             current_control_group + additional_controls
 
-        #TODO clear control group gradient + misfit if needed
         task_name_grad = self.get_task_name(m, m.iteration_number,
                                        "gradient", control_group=True)
 
         task_name_misfit = self.get_task_name(m, m.iteration_number,
                                        "misfit", control_group=True)
 
-        # ensure removal of all occurences. We should only have one occurence though.
+        # Ensure removal of all occurences. We should only have one occurence though.
         while task_name_misfit in self.performed_tasks:
             self.performed_tasks.remove(task_name_misfit)
         while task_name_grad in self.performed_tasks:
             self.performed_tasks.remove(task_name_grad)
         self.update_status_json()
-        # also delete gradients
+        # Also delete gradients
         raw_grad = self.optlink.get_raw_gradient_path(m.name, "cg")
         if os.path.exists(raw_grad):
             os.remove(raw_grad)
         smooth_grad = self.optlink.get_smooth_gradient_path(m.name, "cg")
         if os.path.exists(smooth_grad):
             os.remove(smooth_grad)
-
         return True

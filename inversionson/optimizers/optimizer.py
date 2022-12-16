@@ -439,7 +439,9 @@ class Optimize(object):
                     avg_model_name)
         self.set_h5_data(filename=avg_model_name, data=average_model)
 
-    def get_parameter_indices(self, filename):
+    def get_parameter_indices(self, filename, parameters=None):
+        if not parameters:
+            parameters = self.parameters
         """Get parameter indices in h5 file"""
         with h5py.File(filename, "r") as h5:
             h5_data = h5["MODEL/data"]
@@ -451,19 +453,36 @@ class Optimize(object):
                 dim_labels = dim_labels.decode()
             dim_labels = dim_labels.replace(" ", "").split("|")
             indices = []
-            for param in self.parameters:
+            for param in parameters:
                 indices.append(dim_labels.index(param))
         return indices
 
-    def get_h5_data(self, filename):
+    def get_h5_data(self, filename, parameters=None):
         """
         Returns the relevant data in the form of ND_array with all the data.
         """
-        indices = self.get_parameter_indices(filename)
+        if not parameters:
+            parameters = self.parameters
+        indices = self.get_parameter_indices(filename, parameters)
 
         with h5py.File(filename, "r") as h5:
             data = h5["MODEL/data"][:, :, :].copy()
             return data[:, indices, :]
+
+    def get_points(self, filename):
+        """
+        Returns the relevant data in the form of ND_array with all the data.
+        """
+        with h5py.File(filename, "r") as h5:
+            return h5["MODEL/coordinates"][()]
+
+    def get_flat_non_duplicated_data(self, parameters:list, filename:str,
+                                     pt_idcs:np.array):
+        flat_pars = []
+        all_data = self.get_h5_data(filename, parameters=parameters)
+        for idx, param in enumerate(parameters):
+            flat_pars.append(all_data[:, idx, :].flatten()[pt_idcs])
+        return flat_pars
 
     def set_h5_data(self, filename, data, create_xdmf=True):
         """Writes the data with shape [:, indices :]. Requires existing file."""

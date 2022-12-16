@@ -69,6 +69,10 @@ class OptsonLink(Optimize):
         return self.raw_gradient_dir / f"raw_g_{set_flag}_{model_name}.h5"
 
     @property
+    def status_file(self):
+        return str(self.opt_folder / "optson_status_tracker.json")
+
+    @property
     def gradient_norm_path(self):
         return (
             self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
@@ -85,58 +89,171 @@ class OptsonLink(Optimize):
         )
         return path.parent / reconstructed_filename
 
-    def vector_to_mesh(self, to_mesh, m):
-        """
-        Maps an Optson vector to a salvus mesh.
-        # TODO: add option for multiple parameters.
-        """
-        print("start vector_to_mesh")
-        # all_parameters = self.parameters
-        m_init = um.from_h5(self.initial_model)
-        normalization = True
-        if normalization:
-            m_init.element_nodal_fields["VSV"][:] = m_init.element_nodal_fields[
-                                                        "VSV"][:] * m.x[
-                                                        m_init.connectivity]
-        else:
-            m_init.element_nodal_fields["VSV"][:] = m.x[m_init.connectivity]
-        m_init.write_h5(to_mesh)
-        print("end_vector_to_mesh")
+    # def vector_to_mesh(self, to_mesh, m):
+    #     """
+    #     Maps an Optson vector to a salvus mesh.
+    #     # TODO: add option for multiple parameters.
+    #     """
+    #     print("start vector_to_mesh")
+    #     # all_parameters = self.parameters
+    #     m_init = um.from_h5(self.initial_model)
+    #     normalization = True
+    #     if normalization:
+    #         m_init.element_nodal_fields["VSV"][:] = m_init.element_nodal_fields[
+    #                                                     "VSV"][:] * m.x[
+    #                                                     m_init.connectivity]
+    #     else:
+    #         m_init.element_nodal_fields["VSV"][:] = m.x[m_init.connectivity]
+    #     m_init.write_h5(to_mesh)
+    #     print("end_vector_to_mesh")
+    # def vector_to_mesh(self, to_mesh, m):
+    #     parameters = ["VSV", "VSH"]
+    #     par_vals = np.array_split(m.x, len(parameters))
+    #     m_init = um.from_h5(self.initial_model)
+    #
+    #     for idx, par in enumerate(parameters):
+    #         normalization = True
+    #         if normalization:
+    #             m_init.element_nodal_fields[par][:] = \
+    #             m_init.element_nodal_fields[
+    #                 par][:] * par_vals[idx][
+    #                 m_init.connectivity]
+    #         else:
+    #             m_init.element_nodal_fields[par][:] = par_vals[idx][
+    #                 m_init.connectivity]
+    #     m_init.write_h5(to_mesh)
 
+    # def mesh_to_vector(self, mesh_filename, gradient=True, raw_grad_file=None):
+    #     parameters = ["VSV", "VSH"]
+    #     m = um.from_h5(mesh_filename)
+    #     m_init = um.from_h5(self.initial_model)
+    #
+    #     if gradient:
+    #         rg = um.from_h5(raw_grad_file)
+    #         mm = rg.element_nodal_fields["FemMassMatrix"]
+    #         valence = rg.element_nodal_fields["Valence"]
+    #
+    #     _, i = np.unique(m.connectivity, return_index=True)
+    #
+    #     normalization = True
+    #     # par_dict = {}
+    #     par_list = []
+    #     for par in parameters:
+    #         if normalization:
+    #             if gradient:
+    #                 par_val = m.element_nodal_fields[par] * \
+    #                           m_init.element_nodal_fields[par]
+    #             else:
+    #                 par_val = m.element_nodal_fields[par] / \
+    #                           m_init.element_nodal_fields[par]
+    #         else:
+    #             par_val = m.element_nodal_fields[par]
+    #
+    #         if gradient:
+    #             par_val = par_val * mm * valence  # multiply with valence to account for duplication.
+    #         # par_dict[par] = par_val.flatten()[i]
+    #         par_list.append(par_val.flatten()[i])
+    #
+    #     v = np.concatenate(par_list)
+    #     return v
+
+    def vector_to_mesh(self, to_mesh, m):
+        parameters = ["VSV", "VSH"]
+        points = self.get_points(self.initial_model)
+        nelem = points.shape[0]
+        ngll = points.shape[1]
+        ndim = 3
+        par_vals = np.array_split(m.x, len(parameters))
+        _, pt_idcs, inv_pt_idcs = np.unique(
+            points.reshape(nelem, ngll, ndim),
+            return_index=True, return_inverse=True, axis=0)
+
+        m_init = self.get_flat_non_duplicated_data(
+            parameters, self.initial_model,pt_idcs)
+
+        par_list = []
+        for idx, _ in enumerate(parameters):
+            normalization = True
+            if normalization:
+                m_init[idx] = m_init[idx] * par_vals[idx]
+            else:
+                m_init[idx] = m_init[idx] * par_vals[idx]
+            # now shape to original form
+            par = m_init[idx][inv_pt_idcs]
+            par = par.reshape((nelem, ngll))
+            par_list.append(par)
+        data_in_original_shape = np.stack(par_list, axis=1)
+        shutil.copy(self.initial_model, to_mesh)
+        self.set_h5_data(to_mesh, data_in_original_shape, create_xdmf=True)
 
     def mesh_to_vector(self, mesh_filename, gradient=True, raw_grad_file=None):
-        """
-        Maps a salvus mesh to a vector suitable for use with Optson.
-        #TODO: add option for multiple parameters.
-        """
-        print("start mesh to vector")
-        m = um.from_h5(mesh_filename)
-        m_init = um.from_h5(self.initial_model)
-        _, i = np.unique(m.connectivity, return_index=True)
+        parameters = ["VSV", "VSH"]
+        points = self.get_points(mesh_filename)
+        _, pt_idcs = np.unique(
+            points.reshape(points.shape[0] * points.shape[1], points.shape[2]),
+            return_index=True, axis=0)
+
+        if gradient:
+            mm, valence = self.get_flat_non_duplicated_data(
+                ["FemMassMatrix", "Valence"], raw_grad_file, pt_idcs)
+
+        mesh_data = self.get_flat_non_duplicated_data(
+            parameters, mesh_filename, pt_idcs)
+        initial_data = self.get_flat_non_duplicated_data(
+            parameters, self.initial_model, pt_idcs)
 
         normalization = True
-        # Normalization, still have to make the case with zero velocity work
-        # TODO: fix case with velocities of zero, simply catch exception and replace with zero or 1
-        if normalization:
-            if gradient:
-                vsv = m.element_nodal_fields["VSV"] * \
-                      m_init.element_nodal_fields["VSV"]
+        # par_dict = {}
+        par_list = []
+        for idx, par in enumerate(parameters):
+            if normalization:
+                if gradient:
+                    par_val = mesh_data[idx] * initial_data[idx]
+                else:
+                    par_val = mesh_data[idx] / initial_data[idx]
             else:
-                vsv = m.element_nodal_fields["VSV"] / \
-                      m_init.element_nodal_fields["VSV"]
-        else:
-            vsv = m.element_nodal_fields["VSV"]
+                par_val = mesh_data[idx]
 
-        # Gradient, this also implies the mesh filename is a gradient
-        # and thus has the FemMassMatrix and Valence fields.
-        if gradient:
-            rg = um.from_h5(raw_grad_file)
-            mm = rg.element_nodal_fields["FemMassMatrix"]
-            valence = rg.element_nodal_fields["Valence"]
-            vsv = vsv * mm * valence  # multiply with valence to account for duplication.
-        v = vsv.flatten()[i]
-        print("end mesh to vector")
+            if gradient:
+                par_val = par_val * mm * valence  # multiply with valence to account for duplication.
+            # par_dict[par] = par_val.flatten()[i]
+            par_list.append(par_val)
+        v = np.concatenate(par_list)
         return v
+
+    # def mesh_to_vector(self, mesh_filename, gradient=True, raw_grad_file=None):
+    #     """
+    #     Maps a salvus mesh to a vector suitable for use with Optson.
+    #     #TODO: add option for multiple parameters.
+    #     """
+    #     print("start mesh to vector")
+    #     m = um.from_h5(mesh_filename)
+    #     m_init = um.from_h5(self.initial_model)
+    #     _, i = np.unique(m.connectivity, return_index=True)
+    #
+    #     normalization = True
+    #     # Normalization, still have to make the case with zero velocity work
+    #     # TODO: fix case with velocities of zero, simply catch exception and replace with zero or 1
+    #     if normalization:
+    #         if gradient:
+    #             vsv = m.element_nodal_fields["VSV"] * \
+    #                   m_init.element_nodal_fields["VSV"]
+    #         else:
+    #             vsv = m.element_nodal_fields["VSV"] / \
+    #                   m_init.element_nodal_fields["VSV"]
+    #     else:
+    #         vsv = m.element_nodal_fields["VSV"]
+    #
+    #     # Gradient, this also implies the mesh filename is a gradient
+    #     # and thus has the FemMassMatrix and Valence fields.
+    #     if gradient:
+    #         rg = um.from_h5(raw_grad_file)
+    #         mm = rg.element_nodal_fields["FemMassMatrix"]
+    #         valence = rg.element_nodal_fields["Valence"]
+    #         vsv = vsv * mm * valence  # multiply with valence to account for duplication.
+    #     v = vsv.flatten()[i]
+    #     print("end mesh to vector")
+    #     return v
 
     def perform_task(self, verbose=True):
         """
@@ -152,7 +269,7 @@ class OptsonLink(Optimize):
             sys.exit()
 
         problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=1)
+                                batch_size=1, status_file=self.status_file)
 
         steepest_descent = StochasticSteepestDescent(
             initial_step_length=3e-2,
@@ -185,7 +302,8 @@ class OptsonLink(Optimize):
             h = np.logspace(-7, -1, 7)
         print("All these h values that will be tested:", h)
         problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=1, gradient_test=True)
+                                batch_size=1, gradient_test=True,
+                                status_file=self.status_file)
         from optson.gradient_test import GradientTest
 
         x_0 = self.mesh_to_vector(self.initial_model, gradient=False)

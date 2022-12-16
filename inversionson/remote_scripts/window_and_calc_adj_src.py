@@ -599,9 +599,10 @@ def run(info):
             station_tr_misfit = all_adj_srcs[station][trace]["misfit"] * \
                 station_weights[station]["station_weight"]
             # station_tr_misfit = all_adj_srcs[station][trace]["misfit"]
-            misfit_dict[station][trace] = station_tr_misfit
+            # misfit_dict[station][trace] = station_tr_misfit # also write all trace misfits.
             total_misfit += station_tr_misfit
 
+    # Note: for now we only write the total misfit to reduce the size of file transfers.
     misfit_dict["total_misfit"] = total_misfit
     event_misfit_dict = {event_name: misfit_dict}
 
