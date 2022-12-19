@@ -605,11 +605,11 @@ def run(info):
     # Note: for now we only write the total misfit to reduce the size of file transfers.
     misfit_dict["total_misfit"] = total_misfit
     event_misfit_dict = {event_name: misfit_dict}
-
     if misfit_json_filename:
         print("Writing misfit dict...")
+        total_misfit_dict = {event_name: dict(total_misfit=total_misfit)}
         with open(misfit_json_filename, "w") as outfile:
-            json.dump(event_misfit_dict, outfile)
+            json.dump(total_misfit_dict, outfile)
         shutil.copy(misfit_json_filename, info["misfit_json_filename"])
 
 

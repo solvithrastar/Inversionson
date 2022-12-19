@@ -105,8 +105,8 @@ class StochasticFWI(StochasticBaseProblem):
         self.optlink.current_iteration_name = m.name
 
         if not os.path.exists(self.optlink.model_path):
-            self.optlink.vector_to_mesh(self.optlink.model_path, m)
-
+            self.optlink.vector_to_mesh_new(self.optlink.model_path, m)
+        # self.optlink.vector_to_mesh_new(self.optlink.model_path, m)
         if not self.comm.lasif.has_iteration(m.name):
             if m.iteration_number > 0:
                 previous_control_group = \
@@ -239,7 +239,12 @@ class StochasticFWI(StochasticBaseProblem):
         self.optlink.perform_smoothing(m, set_flag, raw_grad_file)
         smooth_grad = self.optlink.get_smooth_gradient_path(m.name, set_flag=set_flag)
         # smooth grad does not have the fields
-        return self.optlink.mesh_to_vector(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
+
+        # v1 = self.optlink.mesh_to_vector(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
+        # # v2 = self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
+        # print(np.sum(v1-v2))
+        # print(v1, v2)
+        return self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
     def select_control_group(self, m: ModelStochastic):
         current_batch = self.mini_batch_dict[str(m.iteration_number)]

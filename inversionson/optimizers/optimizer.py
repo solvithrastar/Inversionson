@@ -481,15 +481,18 @@ class Optimize(object):
         flat_pars = []
         all_data = self.get_h5_data(filename, parameters=parameters)
         for idx, param in enumerate(parameters):
+            # first flatten and then select unique values...
             flat_pars.append(all_data[:, idx, :].flatten()[pt_idcs])
         return flat_pars
 
-    def set_h5_data(self, filename, data, create_xdmf=True):
+    def set_h5_data(self, filename, data, create_xdmf=True, parameters=None):
         """Writes the data with shape [:, indices :]. Requires existing file."""
         if not os.path.exists(filename):
             raise Exception("only works on existing files.")
 
-        indices = self.get_parameter_indices(filename)
+        if not parameters:
+            parameters=self.parameters
+        indices = self.get_parameter_indices(filename, parameters)
 
         with h5py.File(filename, "r+") as h5:
             dat = h5["MODEL/data"]
@@ -504,6 +507,7 @@ class Optimize(object):
             dat[:, indices, :] = data_copy[:, indices, :]
 
         if create_xdmf:
+            print("writing XDMF")
             write_xdmf(filename)
 
     def get_tensor_order(self, filename):
