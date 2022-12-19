@@ -300,7 +300,9 @@ class StochasticFWI(StochasticBaseProblem):
         current_batch = self.mini_batch_dict[str(m.iteration_number)]
         current_control_group = self.control_group_dict[str(m.iteration_number)]
         non_control_events = set(current_batch) - set(current_control_group)
-
+        blocked_data = \
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
+        non_control_events = non_control_events - blocked_data
         if len(current_control_group) == len(current_batch):
             return False
         additional_controls = self.optlink.pick_data_for_iteration(
