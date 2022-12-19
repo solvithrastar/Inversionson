@@ -150,6 +150,13 @@ class StochasticFWI(StochasticBaseProblem):
         mb_completed = True if mb_task_name in self.performed_tasks else False
         events = self.control_group_dict[str(it_num)] if control_group else self.comm.project.events_in_iteration
 
+        # With the below option, we always just submit all events
+        speculative_submission = True
+        if speculative_submission:
+            submission_events = self.comm.project.events_in_iteration
+        else:
+            submission_events = events
+
         if task_name not in self.performed_tasks and not mb_completed:
             if m.iteration_number > 0 and m.iteration_number > it_num:
                 # if it not the first model,
@@ -161,7 +168,7 @@ class StochasticFWI(StochasticBaseProblem):
             # gradient
             it_listen = IterationListener(
                 comm=self.comm,
-                events=events,
+                events=submission_events,
                 control_group_events=control_group_events,
                 prev_control_group_events=prev_control_group,
                 misfit_only=misfit_only,
