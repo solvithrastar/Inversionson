@@ -202,9 +202,10 @@ def create_simulation_object(
 
     w.physics.wave_equation.end_time_in_seconds = simulation_info["end_time"]
     # We don't set the time step anymore
-    w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
+    # w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
     w.physics.wave_equation.start_time_in_seconds = simulation_info["start_time"]
     w.physics.wave_equation.attenuation = simulation_info["attenuation"]
+    w.physics.wave_equation.courant_number = 0.44
 
     bound = False
     boundaries = []

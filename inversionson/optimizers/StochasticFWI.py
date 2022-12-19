@@ -150,6 +150,17 @@ class StochasticFWI(StochasticBaseProblem):
 
         task_name = self.get_task_name(m, it_num, job_type, control_group)
 
+        # We can check if the mini-batch was already done.
+        # if this is the case, we already have everything and don't need to
+        # start the iteration listener.
+        mb_task_name = self.get_task_name(m, m.iteration_number,
+                                          job_type, control_group)
+
+        if mb_task_name in self.performed_tasks:
+            mb_completed = True
+        else:
+            mb_completed = False
+
         if control_group:
             # If we only want control group misfits, we don't need the gradients
             # and only ensure the control group events are simulated.
@@ -157,7 +168,7 @@ class StochasticFWI(StochasticBaseProblem):
         else:
             submit_adjoint = True  # only submit when not a control group
 
-        if task_name not in self.performed_tasks:
+        if task_name not in self.performed_tasks and not mb_completed:
             if m.iteration_number > 0 and m.iteration_number > it_num:
                 # if it not the first model,
                 # we need to consider the previous control group
@@ -304,6 +315,12 @@ class StochasticFWI(StochasticBaseProblem):
         )
         self.control_group_dict[str(m.iteration_number)] = \
             current_control_group + additional_controls
+
+        all_events = self.comm.lasif.list_events()
+        blocked_data = set(self.comm.project.validation_dataset +
+                           self.comm.project.test_dataset)
+        all_events = list(set(all_events) - blocked_data)
+        self.batch_size = min(2 * len(self.control_group_dict[str(m.iteration_number)]), len(all_events))
 
         task_name_grad = self.get_task_name(m, m.iteration_number,
                                        "gradient", control_group=True)

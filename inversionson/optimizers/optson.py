@@ -232,7 +232,8 @@ class OptsonLink(Optimize):
             sys.exit()
 
         problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=1, status_file=self.status_file)
+                                batch_size=self.comm.project.batch_size,
+                                status_file=self.status_file)
 
         steepest_descent = StochasticSteepestDescent(
             initial_step_length=3e-2,
@@ -268,7 +269,8 @@ class OptsonLink(Optimize):
             h = np.logspace(-7, -1, 7)
         print("All these h values that will be tested:", h)
         problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=1, gradient_test=True,
+                                batch_size=self.comm.project.batch_size,
+                                gradient_test=True,
                                 status_file=self.status_file)
 
 
