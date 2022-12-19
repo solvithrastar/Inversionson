@@ -51,8 +51,7 @@ class OptsonLink(Optimize):
         # Call the super init with all the common stuff
         super().__init__(comm)
         self.opt = None
-        self.ptd_idcs = None
-        self.inv_ptd_idcs = None
+        self.isotropic_vp = True
 
     def _initialize_derived_class_folders(self):
         """These folder are needed only for Optson."""
@@ -91,76 +90,88 @@ class OptsonLink(Optimize):
         )
         return path.parent / reconstructed_filename
 
-    def vector_to_mesh(self, to_mesh, m):
-        parameters = ["VSV", "VSH"]
-        par_vals = np.array_split(m.x, len(parameters))
-        m_init = um.from_h5(self.initial_model)
-        m_grad = um.from_h5(os.path.join(self.raw_gradient_dir, "raw_g_cg_x_00000.h5"))
-
-        for idx, par in enumerate(parameters):
-            normalization = True
-            par_val = par_vals[idx].reshape(m_init.element_nodal_fields[par].shape)
-            if normalization:
-                par_val = (par_val-1) * m_grad.element_nodal_fields["Valence"]
-                par_val += 1
-                m_init.element_nodal_fields[par][:] = m_init.element_nodal_fields[par][:] * par_val
-                    #m_init.connectivity]
-            else:
-                m_init.element_nodal_fields[par][:] = par_val
-                    #m_init.connectivity]
-        m_init.write_h5(to_mesh)
-
-    def mesh_to_vector(self, mesh_filename, gradient=True, raw_grad_file=None):
-        parameters = ["VSV", "VSH"]
-        m = um.from_h5(mesh_filename)
-        m_init = um.from_h5(self.initial_model)
-
-        if gradient:
-            rg = um.from_h5(raw_grad_file)
-            mm = rg.element_nodal_fields["FemMassMatrix"]
-            # valence = rg.element_nodal_fields["Valence"]
-
-        # _, i = np.unique(m.connectivity, return_index=True)
-
-        normalization = True
-        # par_dict = {}
-        par_list = []
-        for par in parameters:
-            if normalization:
-                if gradient:
-                    par_val = m.element_nodal_fields[par] * \
-                              m_init.element_nodal_fields[par]
-                else:
-                    par_val = m.element_nodal_fields[par] / \
-                              m_init.element_nodal_fields[par]
-            else:
-                par_val = m.element_nodal_fields[par]
-
-            if gradient:
-                par_val = par_val * mm# * valence  # multiply with valence to account for duplication.
-            # par_dict[par] = par_val.flatten()[i]
-            par_list.append(par_val.flatten())#[i])
-
-        v = np.concatenate(par_list)
-        return v
+    # def vector_to_mesh(self, to_mesh, m):
+    #     parameters = ["VPV", "VPH"]
+    #     par_vals = np.array_split(m.x, len(parameters))
+    #     m_init = um.from_h5(self.initial_model)
+    #     m_grad = um.from_h5(os.path.join(self.raw_gradient_dir, "raw_g_cg_x_00000.h5"))
+    #
+    #     for idx, par in enumerate(parameters):
+    #         normalization = True
+    #         par_val = par_vals[idx].reshape(m_init.element_nodal_fields[par].shape)
+    #         if normalization:
+    #             par_val = (par_val-1) * m_grad.element_nodal_fields["Valence"]
+    #             par_val += 1
+    #             m_init.element_nodal_fields[par][:] = m_init.element_nodal_fields[par][:] * par_val
+    #                 #m_init.connectivity]
+    #         else:
+    #             m_init.element_nodal_fields[par][:] = par_val
+    #                 #m_init.connectivity]
+    #     m_init.write_h5(to_mesh)
+    #
+    # def mesh_to_vector(self, mesh_filename, gradient=True, raw_grad_file=None):
+    #     parameters = ["VPV", "VPH"]
+    #     m = um.from_h5(mesh_filename)
+    #     m_init = um.from_h5(self.initial_model)
+    #
+    #     if gradient:
+    #         rg = um.from_h5(raw_grad_file)
+    #         mm = rg.element_nodal_fields["FemMassMatrix"]
+    #         # valence = rg.element_nodal_fields["Valence"]
+    #
+    #     # _, i = np.unique(m.connectivity, return_index=True)
+    #
+    #     normalization = True
+    #     # par_dict = {}
+    #     par_list = []
+    #     for par in parameters:
+    #         if normalization:
+    #             if gradient:
+    #                 par_val = m.element_nodal_fields[par] * \
+    #                           m_init.element_nodal_fields[par]
+    #             else:
+    #                 par_val = m.element_nodal_fields[par] / \
+    #                           m_init.element_nodal_fields[par]
+    #         else:
+    #             par_val = m.element_nodal_fields[par]
+    #
+    #         if gradient:
+    #             par_val = par_val * mm# * valence  # multiply with valence to account for duplication.
+    #         # par_dict[par] = par_val.flatten()[i]
+    #         par_list.append(par_val.flatten())#[i])
+    #
+    #     v = np.concatenate(par_list)
+    #     return v
 
     def vector_to_mesh_new(self, to_mesh, m):
-        parameters = ["VSV", "VSH", "RHO"]
+        parameters = self.parameters
+        if self.isotropic_vp:
+            isotropic_pars = parameters.copy()
+            isotropic_pars.remove("VPH")
+        else:
+            isotropic_pars = parameters
         to_mesh = str(to_mesh)# + "new_func"
         shutil.copy(self.initial_model, to_mesh)
         points = self.get_points(to_mesh)
         nelem, ngll, ndim = points.shape
-        par_vals = np.array_split(m.x, len(parameters))
+        # we now split in isotropic pars
+        par_vals = np.array_split(m.x, len(isotropic_pars))
 
         _, inv_ptd_idcs = np.unique(
             points.reshape(nelem * ngll, ndim),
             return_inverse=True, axis=0)
-
+        # here we get all parameters. That's good
         m_init = self.get_h5_data(self.initial_model, parameters)
 
         par_list = []
-        for idx in range(len(parameters)):
-            par = par_vals[idx] # these are now flat with the same sorting.
+        for idx, val in enumerate(parameters):
+            if self.isotropic_vp:
+                if val == "VPH":
+                    val = "VPV"
+                opt_idx = isotropic_pars.index(val)
+            else:
+                opt_idx = idx
+            par = par_vals[opt_idx] # these are now flat with the same sorting.
             par = par[inv_ptd_idcs]
             par = par.reshape((nelem, ngll)) # reshape into original form
             par = m_init[:, idx, :] * par
@@ -172,7 +183,10 @@ class OptsonLink(Optimize):
 
     def mesh_to_vector_new(self, mesh_filename, gradient=True,
                            raw_grad_file=None):
-        parameters = ["VSV", "VSH", "RHO"]
+        parameters = self.parameters.copy()
+        # a simple thing we can do is only take VPV, but write it to both fields
+        if self.isotropic_vp:
+            parameters.remove("VPH") # only do VPV
         points = self.get_points(mesh_filename)
         nelem, ngll, ndim = points.shape
         _, ptd_idcs = np.unique(
@@ -299,6 +313,7 @@ class OptsonLink(Optimize):
         self.gradient_smoothing_length = config["gradient_smoothing_length"]
         self.do_gradient_test = config["do_gradient_test"]
         self.max_iterations = config["max_iterations"]
+        self.isotropic_vp = config["isotropic_vp"]
 
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
@@ -399,7 +414,7 @@ class OptsonLink(Optimize):
 
     def perform_smoothing(self, m: ModelStochastic, set_flag, file):
         """
-        Todo, if control group getx extended, this should be reset.
+        Writes the smoothing task, does not yet monitor anymore...
         """
         tasks = {}
         tag = file.name
@@ -425,9 +440,9 @@ class OptsonLink(Optimize):
                 reg_helper.tasks[tag].update(reg_helper.base_dict)
                 reg_helper._write_tasks(reg_helper.tasks)
 
-            reg_helper.monitor_tasks()
+            # reg_helper.monitor_tasks()
 
-        write_xdmf(str(output_location))
+        # write_xdmf(str(output_location))
 
     def compute_gradient(self, verbose):
         pass

@@ -14,3 +14,6 @@ smoothing_timestep = "auto"
 
 # Calls Optson gradient test instead of the inversion.
 do_gradient_test = false
+
+# Use isotropic VP. This requires the starting model to have VPV=VPH and ETA=`
+isotropic_vp = true

@@ -465,8 +465,13 @@ class Optimize(object):
             parameters = self.parameters
         indices = self.get_parameter_indices(filename, parameters)
 
+        # get_layer_mask
+        layer_idx = self.get_elemental_parameter_indices(filename, ["layer"])
+
         with h5py.File(filename, "r") as h5:
-            data = h5["MODEL/data"][:, :, :].copy()
+            layer = h5["MODEL/element_data"][:, layer_idx]
+            layer_mask = np.where(layer < 1.1, False, True).squeeze()
+            data = h5["MODEL/data"][:, :, :][layer_mask].copy()
             return data[:, indices, :]
 
     def get_points(self, filename):
@@ -494,12 +499,19 @@ class Optimize(object):
             parameters=self.parameters
         indices = self.get_parameter_indices(filename, parameters)
 
+        # get_layer_mask
+        layer_idx = self.get_elemental_parameter_indices(filename, ["layer"])
+
         with h5py.File(filename, "r+") as h5:
+            layer = h5["MODEL/element_data"][:, layer_idx]
+            layer_mask = np.where(layer < 1.1, False, True).squeeze()
+
             dat = h5["MODEL/data"]
             data_copy = dat[:, :, :].copy()
+
             # avoid writing the file many times. work on array in memory
             for i in range(len(indices)):
-                data_copy[:, indices[i], :] = data[:, i, :]
+                data_copy[:, indices[i], :][layer_mask] = data[:, i, :]
 
             # writing only works in sorted order. This sort can only happen after
             # the above executed to preserve the ordering that data came in
@@ -509,6 +521,19 @@ class Optimize(object):
         if create_xdmf:
             print("writing XDMF")
             write_xdmf(filename)
+
+    def get_elemental_parameter_indices(self, filename, parameters):
+        """Get parameter indices in h5 file"""
+        with h5py.File(filename, "r") as h5:
+            h5_data = h5["MODEL/element_data"]
+            dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+            if not type(dim_labels) == str:
+                dim_labels = dim_labels.decode()
+            dim_labels = dim_labels.replace(" ", "").split("|")
+            indices = []
+            for param in parameters:
+                indices.append(dim_labels.index(param))
+        return indices
 
     def get_tensor_order(self, filename):
         """

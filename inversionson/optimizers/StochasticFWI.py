@@ -4,6 +4,7 @@ import json
 
 from inversionson.helpers.autoinverter_helpers import IterationListener
 from inversionson.helpers.gradient_summer import GradientSummer
+from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.utils import write_xdmf
 from optson.base_classes.base_problem import StochasticBaseProblem
 from optson.base_classes.model import ModelStochastic
@@ -203,17 +204,21 @@ class StochasticFWI(StochasticBaseProblem):
             return self._misfit(m=m, it_num=it_num, control_group=control_group,
                                 misfit_only=False)
 
-    def gradient(
+    def _gradient(
         self, m: ModelStochastic, it_num: int, control_group: bool = False
     ) -> np.array:
         self.clean_files()
+
         # Simply call the misfit function, but ensure we also compute the gradients.
         self._misfit(m=m, it_num=it_num, control_group=control_group,
                     misfit_only=False)
+
         set_flag = self.get_set_flag(m, it_num, control_group)
         raw_grad_file = self.optlink.get_raw_gradient_path(m.name, set_flag)
+        # For gradient we only track the mb_task!
         task_name = self.get_task_name(m, it_num, "gradient", control_group)
 
+        sum_grads = True if self.optlink.isotropic_vp else False
         if task_name not in self.performed_tasks:
             # now we need to figure out how to sum the proper gradients.
             # for this we need the events
@@ -229,7 +234,7 @@ class StochasticFWI(StochasticBaseProblem):
                 events=events,
                 output_location=raw_grad_file,
                 batch_average=True,
-                sum_vpv_vph=True,
+                sum_vpv_vph=sum_grads,
                 store_norms=store_norms,
             )
             write_xdmf(raw_grad_file)
@@ -237,13 +242,41 @@ class StochasticFWI(StochasticBaseProblem):
         self.update_status_json()
 
         self.optlink.perform_smoothing(m, set_flag, raw_grad_file)
-        smooth_grad = self.optlink.get_smooth_gradient_path(m.name, set_flag=set_flag)
-        # smooth grad does not have the fields
+        # smooth_grad = self.optlink.get_smooth_gradient_path(m.name, set_flag=set_flag)
+        # return self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
-        # v1 = self.optlink.mesh_to_vector(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
-        # # v2 = self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
-        # print(np.sum(v1-v2))
-        # print(v1, v2)
+
+    def gradient(
+            self, m: ModelStochastic, it_num: int, control_group: bool = False
+        ) -> np.array:
+        if control_group and it_num < m.iteration_number:
+            # CG prev triggers MB, CG and CG prev
+            self.select_control_group(m)
+            self._gradient(m, m.iteration_number, False)
+            self._gradient(m, m.iteration_number, control_group=True)
+            self._gradient(m, it_num, control_group)
+        elif not control_group and it_num == m.iteration_number and \
+                str(it_num) in self.control_group_dict.keys() and \
+                len(self.control_group_dict[str(it_num)]) > 0:
+            # MB triggers CG and MB
+            self._gradient(m, it_num, control_group)
+            self._gradient(m, it_num, control_group=True)
+        else:
+            # only trigger what is asked for.
+            self._gradient(m, it_num, control_group)
+
+        # Now we monitor all gradients in one go.
+        reg_helper = RegularizationHelper(
+            comm=self.comm, iteration_name=m.name, tasks=False,
+            optimizer=self.optlink
+        )
+        reg_helper.monitor_tasks()
+
+        set_flag = self.get_set_flag(m, it_num, control_group)
+        raw_grad_file = self.optlink.get_raw_gradient_path(m.name, set_flag)
+        smooth_grad = self.optlink.get_smooth_gradient_path(m.name,
+                                                            set_flag=set_flag)
+        # return what is asked for.
         return self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
     def select_control_group(self, m: ModelStochastic):
