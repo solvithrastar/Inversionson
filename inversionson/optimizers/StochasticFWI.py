@@ -156,6 +156,10 @@ class StochasticFWI(StochasticBaseProblem):
         else:
             submission_events = events
 
+        blocked_data = \
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
+        misfit_events = set(events) - blocked_data
+
         if task_name not in self.performed_tasks and not mb_completed:
             if m.iteration_number > 0 and m.iteration_number > it_num:
                 # if it not the first model,
@@ -182,7 +186,7 @@ class StochasticFWI(StochasticBaseProblem):
         # this involves the proper name for the mdoel and the set of events.
         self.comm.project.get_iteration_attributes(m.name)
         total_misfit = 0.0
-        for event in events:
+        for event in misfit_events:
             total_misfit += self.comm.project.misfits[event]
         self.update_status_json()
         return total_misfit / len(events)
@@ -218,6 +222,7 @@ class StochasticFWI(StochasticBaseProblem):
         task_name = self.get_task_name(m, it_num, "gradient", control_group)
 
         sum_grads = True if self.optlink.isotropic_vp else False
+
         if task_name not in self.performed_tasks:
             # now we need to figure out how to sum the proper gradients.
             # for this we need the events
@@ -227,10 +232,15 @@ class StochasticFWI(StochasticBaseProblem):
                 events = set(self.mini_batch_dict[str(it_num)]) - set(self.comm.project.validation_dataset)
                 events = list(events)
 
+            blocked_data = \
+                set(
+                    self.comm.project.validation_dataset + self.comm.project.test_dataset)
+            gradient_events = set(events) - blocked_data
+
             grad_summer = GradientSummer(comm=self.comm)
             store_norms = False if self.gradient_test else True
             grad_summer.sum_gradients(
-                events=events,
+                events=gradient_events,
                 output_location=raw_grad_file,
                 batch_average=True,
                 sum_vpv_vph=sum_grads,
