@@ -313,8 +313,11 @@ class StochasticFWI(StochasticBaseProblem):
         blocked_data = \
             set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
         non_control_events = non_control_events - blocked_data
-        if len(current_control_group) == len(current_batch):
+
+        non_validation_mb_events = set(current_batch- blocked_data)
+        if len(current_control_group) == len(non_validation_mb_events):
             return False
+        print("Extending Control group...")
         additional_controls = self.optlink.pick_data_for_iteration(
             self.batch_size,
             current_batch=list(non_control_events),
