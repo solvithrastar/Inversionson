@@ -273,8 +273,10 @@ class StochasticFWI(StochasticBaseProblem):
         return self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
     def select_control_group(self, m: ModelStochastic):
-        current_batch = self.mini_batch_dict[str(m.iteration_number)]
+        if str(m.iteration_number) in self.control_group_dict.keys():
+            return
 
+        current_batch = self.mini_batch_dict[str(m.iteration_number)]
         control_group = self.optlink.pick_data_for_iteration(
             self.batch_size,
             current_batch=current_batch,
