@@ -151,8 +151,7 @@ class StochasticFWI(StochasticBaseProblem):
         events = self.control_group_dict[str(it_num)] if control_group else self.comm.project.events_in_iteration
 
         # With the below option, we always just submit all events
-        speculative_submission = True
-        if speculative_submission:
+        if self.optlink.speculative_forwards:
             submission_events = self.comm.project.events_in_iteration
         else:
             submission_events = events
@@ -284,9 +283,14 @@ class StochasticFWI(StochasticBaseProblem):
             return
 
         current_batch = self.mini_batch_dict[str(m.iteration_number)]
+
+        blocked_data = \
+            set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
+
+        all_events = set(current_batch) - blocked_data
         control_group = self.optlink.pick_data_for_iteration(
             self.batch_size,
-            current_batch=current_batch,
+            current_batch=list(all_events),
             select_new_control_group=True
         )
         self.control_group_dict[str(m.iteration_number)] = control_group

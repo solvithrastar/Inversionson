@@ -51,7 +51,6 @@ class OptsonLink(Optimize):
         # Call the super init with all the common stuff
         super().__init__(comm)
         self.opt = None
-        self.isotropic_vp = True
 
     def _initialize_derived_class_folders(self):
         """These folder are needed only for Optson."""
@@ -316,6 +315,7 @@ class OptsonLink(Optimize):
         self.do_gradient_test = config["do_gradient_test"]
         self.max_iterations = config["max_iterations"]
         self.isotropic_vp = config["isotropic_vp"]
+        self.speculative_forwards = config["speculative_forwards"]
 
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]

@@ -17,3 +17,8 @@ do_gradient_test = false
 
 # Use isotropic VP. This requires the starting model to have VPV=VPH and ETA=`
 isotropic_vp = true
+
+# With the below option set to true, forward simulations will be submitted before a model is accepted.
+# This may result in a faster iteration time, at the potential waste of ~12.5 - 25% of the total iteration cost.
+# if the model does not end up being accepted.
+speculative_forwards = true
