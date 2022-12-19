@@ -140,33 +140,15 @@ class StochasticFWI(StochasticBaseProblem):
         control_group_events = []
         misfit_only = misfit_only
         previous_iteration = None
-        submit_adjoint = False
-        events = self.comm.project.events_in_iteration
 
-        if misfit_only:
-            job_type = "misfit"
-        else:
-            job_type = "gradient"
-
+        job_type = "misfit" if misfit_only else "gradient"
         task_name = self.get_task_name(m, it_num, job_type, control_group)
-
-        # We can check if the mini-batch was already done.
-        # if this is the case, we already have everything and don't need to
-        # start the iteration listener.
         mb_task_name = self.get_task_name(m, m.iteration_number,
-                                          job_type, control_group)
+                                          job_type, control_group=False)
 
-        if mb_task_name in self.performed_tasks:
-            mb_completed = True
-        else:
-            mb_completed = False
-
-        if control_group:
-            # If we only want control group misfits, we don't need the gradients
-            # and only ensure the control group events are simulated.
-            events = self.control_group_dict[str(it_num)]
-        else:
-            submit_adjoint = True  # only submit when not a control group
+        submit_adjoint = True if mb_task_name == task_name else False
+        mb_completed = True if mb_task_name in self.performed_tasks else False
+        events = self.control_group_dict[str(it_num)] if control_group else self.comm.project.events_in_iteration
 
         if task_name not in self.performed_tasks and not mb_completed:
             if m.iteration_number > 0 and m.iteration_number > it_num:

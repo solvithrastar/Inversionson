@@ -1,7 +1,7 @@
 # Optson Config (https://github.com/dirkphilip/Optson)
 
 # Smoothing length of the gradients, in radial and lateral directions.
-gradient_smoothing_length = [ 0.4, 0.8, 0.8,]
+gradient_smoothing_length = [ 0.2, 0.5, 0.5,]
 
 # The starting model. This must be a .h5 file as provided by the Salvus Mesher.
 initial_model = ""
