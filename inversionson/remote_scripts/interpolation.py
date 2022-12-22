@@ -240,12 +240,12 @@ def create_simulation_object(
             samples_per_min_period / 50.0)
         # if reduction_factor_syn >= 2:
         #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
-        # if reduction_factor >= 2:
-        #     checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
-        # else:
-    checkpointing_flag = "auto-for-checkpointing"
-    #else:
-     #   checkpointing_flag = "auto-for-checkpointing_5"
+        if reduction_factor >= 2:
+            checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
+        else:
+            checkpointing_flag = "auto-for-checkpointing"
+    else:
+       checkpointing_flag = "auto-for-checkpointing_5"
 
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"

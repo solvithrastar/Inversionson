@@ -51,6 +51,9 @@ class OptsonLink(Optimize):
         # Call the super init with all the common stuff
         super().__init__(comm)
         self.opt = None
+        self.pt_idcs = None
+        self.inv_pt_idcs = None
+
 
     def _initialize_derived_class_folders(self):
         """These folder are needed only for Optson."""
@@ -143,6 +146,7 @@ class OptsonLink(Optimize):
     #     return v
 
     def vector_to_mesh_new(self, to_mesh, m):
+        print("Writing vector to mesh started...")
         parameters = self.parameters
         if self.isotropic_vp:
             isotropic_pars = parameters.copy()
@@ -156,9 +160,11 @@ class OptsonLink(Optimize):
         # we now split in isotropic pars
         par_vals = np.array_split(m.x, len(isotropic_pars))
 
-        _, inv_ptd_idcs = np.unique(
-            points.reshape(nelem * ngll, ndim),
-            return_inverse=True, axis=0)
+        if self.pt_idcs is None:
+            _, self.pt_idcs, self.inv_pt_idcs = np.unique(
+                points.reshape(nelem * ngll, ndim),
+                return_index=True, return_inverse=True, axis=0)
+
         # here we get all parameters. That's good
         m_init = self.get_h5_data(self.initial_model, parameters)
 
@@ -171,36 +177,59 @@ class OptsonLink(Optimize):
             else:
                 opt_idx = idx
             par = par_vals[opt_idx] # these are now flat with the same sorting.
-            par = par[inv_ptd_idcs]
+            par = par[self.inv_pt_idcs]
             par = par.reshape((nelem, ngll)) # reshape into original form
-            par = m_init[:, idx, :] * par
+            par = m_init[:, idx, :] * par # here we have a mismatch perhaps. We nora
             par_list.append(par)
 
         data_in_original_shape = np.stack(par_list, axis=1)
         self.set_h5_data(to_mesh, data_in_original_shape, create_xdmf=True,
                          parameters=parameters)
+        print("Writing vector to mesh completed.")
+
+    def get_mm(self):
+        # the below line is a bit slow 
+        if self.pt_idcs is None:
+            points = self.get_points(mesh_filename)
+            nelem, ngll, ndim = points.shape
+            _, self.pt_idcs, self.inv_pt_idcs = np.unique(
+                points.reshape(nelem * ngll, ndim),
+                return_index=True, return_inverse=True, axis=0)
+
+        mm, valence = self.get_flat_non_duplicated_data(
+            ["FemMassMatrix", "Valence"], self.mass_matrix_mesh, self.pt_idcs)
+        mm_val = mm*valence
+
+        parameters = self.parameters.copy()
+        if self.isotropic_vp:
+            parameters.remove("VPH")
+        return np.tile(mm_val, len(parameters))
+
+
 
     def mesh_to_vector_new(self, mesh_filename, gradient=True,
                            raw_grad_file=None):
+        print("Writing mesh to vector started...")
         parameters = self.parameters.copy()
         # a simple thing we can do is only take VPV, but write it to both fields
         if self.isotropic_vp:
             parameters.remove("VPH") # only do VPV
-        points = self.get_points(mesh_filename)
-        nelem, ngll, ndim = points.shape
-        _, ptd_idcs = np.unique(
-            points.reshape(nelem * ngll, ndim),
-            return_index=True, axis=0)
 
-        if gradient:
-            mm, valence = self.get_flat_non_duplicated_data(
-                ["FemMassMatrix", "Valence"], raw_grad_file, ptd_idcs)
-
+        # the below line is a bit slow 
+        if self.pt_idcs is None:
+            points = self.get_points(mesh_filename)
+            nelem, ngll, ndim = points.shape
+            _, self.pt_idcs, self.inv_pt_idcs = np.unique(
+                points.reshape(nelem * ngll, ndim),
+                return_index=True, return_inverse=True, axis=0)
+        # if gradient:
+        #     mass_matrix_mesh = self.mass_matrix_mesh if self.mass_matrix_mesh else raw_grad_file
+        #     mm, valence = self.get_flat_non_duplicated_data(
+        #         ["FemMassMatrix", "Valence"], mass_matrix_mesh, self.pt_idcs)
         mesh_data = self.get_flat_non_duplicated_data(
-            parameters, mesh_filename, ptd_idcs)
+            parameters, mesh_filename, self.pt_idcs)
         initial_data = self.get_flat_non_duplicated_data(
-            parameters, self.initial_model, ptd_idcs)
-
+            parameters, self.initial_model, self.pt_idcs)
         par_list = []
         for idx in range(len(parameters)):
             if gradient:
@@ -208,10 +237,11 @@ class OptsonLink(Optimize):
             else:
                 par_val = mesh_data[idx] / initial_data[idx]
 
-            if gradient:
-                par_val = par_val * mm * valence
+            # if gradient:
+            #     par_val = par_val * mm * valence
             par_list.append(par_val)
         v = np.concatenate(par_list)
+        print("Writing mesh to vector completed.")
         return v
 
     def vector_to_mesh_debug(self):
@@ -316,6 +346,8 @@ class OptsonLink(Optimize):
         self.max_iterations = config["max_iterations"]
         self.isotropic_vp = config["isotropic_vp"]
         self.speculative_forwards = config["speculative_forwards"]
+        self.mass_matrix_mesh = config["mass_matrix_mesh"] if "mass_matrix_mesh" in config.keys() else None
+
 
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
@@ -349,7 +381,7 @@ class OptsonLink(Optimize):
                                 current_batch=[],
                                 select_new_control_group=False,
                                 control_group_size: int = None):
-
+        print("Selecting data...")
         all_events = self.comm.lasif.list_events()
         blocked_data = set(self.comm.project.validation_dataset +
                            self.comm.project.test_dataset
@@ -395,7 +427,7 @@ class OptsonLink(Optimize):
             )
             events += self.comm.project.validation_dataset
         events += prev_control_group
-
+        print("Data selection completed.")
         return events
 
     def pick_control_group(self):

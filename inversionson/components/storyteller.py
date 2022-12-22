@@ -372,6 +372,8 @@ class StoryTellerComponent(Component):
             misfits_dict = toml.load(misfits_toml)
             event_misfit = misfits_dict[event]["event_misfit"]
             validation_dict[iteration]["events"][event] = float(event_misfit)
+        
+        validation_dict[iteration]["events"] = dict(sorted(validation_dict[iteration]["events"].items()))
         self.validation_dict = validation_dict
         with open(self.validation_toml, mode="w") as fh:
             toml.dump(validation_dict, fh)

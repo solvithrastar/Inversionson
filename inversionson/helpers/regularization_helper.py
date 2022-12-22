@@ -156,9 +156,12 @@ class RegularizationHelper(object):
         if not self.tasks:
             return
         self.dispatch_smoothing_tasks()
-        self.print("Monitoring smoothing jobs...")
+        first = True
         self.update_task_status_and_retrieve()  # Start with retrieval to skip loop
         while not self.all_retrieved():
+            if first:
+                self.print("Monitoring smoothing jobs...")
+                first = False
             sleep_or_process(self.comm, color="magenta", emoji_alias=":cop:")
             self.dispatch_smoothing_tasks()
             self.update_task_status_and_retrieve()

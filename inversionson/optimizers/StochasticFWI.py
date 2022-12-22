@@ -9,6 +9,7 @@ from inversionson.utils import write_xdmf
 from optson.base_classes.base_problem import StochasticBaseProblem
 from optson.base_classes.model import ModelStochastic
 from lasif.components.communicator import Communicator
+from inversionson import InversionsonError
 from inversionson.optimizers.optson import OptsonLink
 
 
@@ -119,7 +120,7 @@ class StochasticFWI(StochasticBaseProblem):
         # the below line will set the proper parameters in the project
         # component
         self.optlink.prepare_iteration(iteration_name=m.name, events=events)
-        if m.iteration_number not in self.model_names.keys():
+        if m.iteration_number not in self.model_names:
             self.model_names[str(m.iteration_number)] = [m.name]
         else:
             if m.name not in self.model_names[str(m.iteration_number)]:
@@ -146,8 +147,8 @@ class StochasticFWI(StochasticBaseProblem):
         mb_task_name = self.get_task_name(m, m.iteration_number,
                                           job_type, control_group=False)
 
-        submit_adjoint = True if mb_task_name == task_name else False
-        mb_completed = True if mb_task_name in self.performed_tasks else False
+        submit_adjoint = (mb_task_name == task_name)
+        mb_completed = (mb_task_name in self.performed_tasks)
         events = self.control_group_dict[str(it_num)] if control_group else self.comm.project.events_in_iteration
 
         # With the below option, we always just submit all events
@@ -155,6 +156,24 @@ class StochasticFWI(StochasticBaseProblem):
             submission_events = self.comm.project.events_in_iteration
         else:
             submission_events = events
+
+        speculative_adjoints = True
+        if speculative_adjoints and control_group and self.optlink.speculative_forwards:
+            submit_adjoint = True
+            if len(self.model_names[str(m.iteration_number)]) > 1:
+                iter_name = self.model_names[str(m.iteration_number)][-2]
+                # There was a failed iteration. Try cancelling jobs here
+                for event in self.comm.project.events_in_iteration:
+                    if self.comm.comm.project.is_validation_event(event):
+                        continue
+                    else:
+                        try:
+                            job = self.comm.salvus_flow.get_job(
+                                event=event, im_type="adjoint", iteration=iter_name)
+                            job.cancel()
+                        except (KeyError, InversionsonError):
+                            continue
+                    
 
         blocked_data = \
             set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
@@ -189,7 +208,7 @@ class StochasticFWI(StochasticBaseProblem):
         for event in misfit_events:
             total_misfit += self.comm.project.misfits[event]
         self.update_status_json()
-        return total_misfit / len(events)
+        return total_misfit / len(misfit_events)
 
     def misfit(
         self, m: ModelStochastic, it_num: int, control_group: bool = False,
@@ -314,7 +333,7 @@ class StochasticFWI(StochasticBaseProblem):
             set(self.comm.project.validation_dataset + self.comm.project.test_dataset)
         non_control_events = non_control_events - blocked_data
 
-        non_validation_mb_events = set(current_batch- blocked_data)
+        non_validation_mb_events = set(current_batch)- blocked_data
         if len(current_control_group) == len(non_validation_mb_events):
             return False
         print("Extending Control group...")
@@ -352,3 +371,6 @@ class StochasticFWI(StochasticBaseProblem):
         if os.path.exists(smooth_grad):
             os.remove(smooth_grad)
         return True
+
+    def get_mm(self):
+        return self.optlink.get_mm()

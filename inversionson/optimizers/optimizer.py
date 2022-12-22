@@ -478,8 +478,13 @@ class Optimize(object):
         """
         Returns the relevant data in the form of ND_array with all the data.
         """
+        layer_idx = self.get_elemental_parameter_indices(filename, ["layer"])
+
         with h5py.File(filename, "r") as h5:
-            return h5["MODEL/coordinates"][()]
+            layer = h5["MODEL/element_data"][:, layer_idx]
+            layer_mask = np.where(layer < 1.1, False, True).squeeze()
+            points =  h5["MODEL/coordinates"][:,:,:][layer_mask]
+            return points
 
     def get_flat_non_duplicated_data(self, parameters:list, filename:str,
                                      pt_idcs:np.array):

@@ -936,7 +936,7 @@ class SalvusFlowComponent(Component):
             try:
                 job = self.get_job(event=event_name, sim_type=sim_type)
                 job.delete()
-            except SalvusFlowDoesNotExistDBException as e:
+            except (SalvusFlowDoesNotExistDBException, InversionsonError) as e:
                 self.print(
                     f"Could not delete job {sim_type} for event {event_name}",
                     emoji_alias=":hankey:",
@@ -956,7 +956,7 @@ class SalvusFlowComponent(Component):
                     job = self.get_job(event=event, sim_type=sim_type,
                                        iteration=iteration)
                     job.delete()
-                except InversionsonError:
+                except (KeyError, InversionsonError):
                     continue
             except SalvusFlowDoesNotExistDBException as e:
                 self.print(
