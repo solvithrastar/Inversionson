@@ -935,7 +935,7 @@ class SalvusFlowComponent(Component):
         if event_name is not None:
             try:
                 job = self.get_job(event=event_name, sim_type=sim_type)
-                job.delete()
+                job.delete(verbosity=0)
             except (SalvusFlowDoesNotExistDBException, InversionsonError) as e:
                 self.print(
                     f"Could not delete job {sim_type} for event {event_name}",
@@ -955,7 +955,7 @@ class SalvusFlowComponent(Component):
                 try:
                     job = self.get_job(event=event, sim_type=sim_type,
                                        iteration=iteration)
-                    job.delete()
+                    job.delete(verbosity=0)
                 except (KeyError, InversionsonError):
                     continue
             except SalvusFlowDoesNotExistDBException as e:

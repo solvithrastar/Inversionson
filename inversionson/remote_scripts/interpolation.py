@@ -205,7 +205,7 @@ def create_simulation_object(
     # w.physics.wave_equation.time_step_in_seconds = simulation_info["time_step"]
     w.physics.wave_equation.start_time_in_seconds = simulation_info["start_time"]
     w.physics.wave_equation.attenuation = simulation_info["attenuation"]
-    w.physics.wave_equation.courant_number = 0.44
+    w.physics.wave_equation.courant_number = 0.45
 
     bound = False
     boundaries = []
@@ -233,11 +233,11 @@ def create_simulation_object(
         samples_per_min_period = (
                 simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
         )
-        min_samples_per_min_period = 50.0
+        min_samples_per_min_period = 40.0
         reduction_factor = int(
             samples_per_min_period / min_samples_per_min_period)
         reduction_factor_syn = int(
-            samples_per_min_period / 50.0)
+            samples_per_min_period / 40.0)
         # if reduction_factor_syn >= 2:
         #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
         if reduction_factor >= 2:

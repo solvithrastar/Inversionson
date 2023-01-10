@@ -154,12 +154,12 @@ class OptsonLink(Optimize):
         else:
             isotropic_pars = parameters
         to_mesh = str(to_mesh)# + "new_func"
-        shutil.copy(self.initial_model, to_mesh)
-        points = self.get_points(to_mesh)
-        nelem, ngll, ndim = points.shape
+        tmp_mesh_file = "tmp_mesh_file.h5"
+        shutil.copy(self.initial_model, tmp_mesh_file)
         # we now split in isotropic pars
         par_vals = np.array_split(m.x, len(isotropic_pars))
-
+        points = self.get_points(tmp_mesh_file)
+        nelem, ngll, ndim = points.shape
         if self.pt_idcs is None:
             _, self.pt_idcs, self.inv_pt_idcs = np.unique(
                 points.reshape(nelem * ngll, ndim),
@@ -183,6 +183,7 @@ class OptsonLink(Optimize):
             par_list.append(par)
 
         data_in_original_shape = np.stack(par_list, axis=1)
+        shutil.move(tmp_mesh_file, to_mesh)
         self.set_h5_data(to_mesh, data_in_original_shape, create_xdmf=True,
                          parameters=parameters)
         print("Writing vector to mesh completed.")
@@ -210,7 +211,9 @@ class OptsonLink(Optimize):
     def mesh_to_vector_new(self, mesh_filename, gradient=True,
                            raw_grad_file=None):
         print("Writing mesh to vector started...")
+        import time
         parameters = self.parameters.copy()
+        print(1, time.time())
         # a simple thing we can do is only take VPV, but write it to both fields
         if self.isotropic_vp:
             parameters.remove("VPH") # only do VPV
@@ -222,25 +225,30 @@ class OptsonLink(Optimize):
             _, self.pt_idcs, self.inv_pt_idcs = np.unique(
                 points.reshape(nelem * ngll, ndim),
                 return_index=True, return_inverse=True, axis=0)
+        print(2, time.time())
         # if gradient:
         #     mass_matrix_mesh = self.mass_matrix_mesh if self.mass_matrix_mesh else raw_grad_file
         #     mm, valence = self.get_flat_non_duplicated_data(
         #         ["FemMassMatrix", "Valence"], mass_matrix_mesh, self.pt_idcs)
+        print(3, time.time())
         mesh_data = self.get_flat_non_duplicated_data(
             parameters, mesh_filename, self.pt_idcs)
+        print(4, time.time())
         initial_data = self.get_flat_non_duplicated_data(
             parameters, self.initial_model, self.pt_idcs)
         par_list = []
         for idx in range(len(parameters)):
             if gradient:
-                par_val = mesh_data[idx] * initial_data[idx]
+                par_val = mesh_data[idx] / initial_data[idx]
             else:
                 par_val = mesh_data[idx] / initial_data[idx]
 
             # if gradient:
             #     par_val = par_val * mm * valence
             par_list.append(par_val)
+        print(5, time.time())
         v = np.concatenate(par_list)
+        print(6, time.time())
         print("Writing mesh to vector completed.")
         return v
 
@@ -265,7 +273,7 @@ class OptsonLink(Optimize):
                                 status_file=self.status_file)
 
         steepest_descent = StochasticSteepestDescent(
-            initial_step_length=3e-2,
+            initial_step_length=1.0e-2,
             verbose=verbose,
             step_length_as_percentage=True)
         method = StochasticTrustRegionLBFGS(
@@ -480,3 +488,18 @@ class OptsonLink(Optimize):
 
     def compute_gradient(self, verbose):
         pass
+
+    def get_mref(self):
+        parameters = self.parameters.copy()
+        # a simple thing we can do is only take VPV, but write it to both fields
+        if self.isotropic_vp:
+            parameters.remove("VPH")  # only do VPV
+        initial_data = self.get_flat_non_duplicated_data(
+            parameters, self.initial_model, self.pt_idcs
+        )
+        par_list = []
+        for idx in range(len(parameters)):
+            par_val = initial_data[idx]
+            par_list.append(par_val)
+        return np.concatenate(par_list)
+        

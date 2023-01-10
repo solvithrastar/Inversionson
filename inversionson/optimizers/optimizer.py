@@ -66,6 +66,7 @@ class Optimize(object):
 
         # Do any folder initilization for the derived classes
         self._initialize_derived_class_folders()
+        self.layer_mask = None
 
         self.config_file = self.opt_folder / "opt_config.toml"
 
@@ -242,7 +243,7 @@ class Optimize(object):
     def delete_remote_files(self, iteration=None):
         if not iteration:
             iteration = self.iteration_name
-
+        print("Deleting old iteration files...")
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "forward")
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
 
@@ -463,15 +464,21 @@ class Optimize(object):
         """
         if not parameters:
             parameters = self.parameters
-        indices = self.get_parameter_indices(filename, parameters)
+        indices = np.array(self.get_parameter_indices(filename, parameters))
+        argsort_idcs = np.argsort(indices)
+        sorted_indices = indices[argsort_idcs]
+        idx_in_original = np.arange(len(indices))[argsort_idcs]
 
         # get_layer_mask
         layer_idx = self.get_elemental_parameter_indices(filename, ["layer"])
 
         with h5py.File(filename, "r") as h5:
-            layer = h5["MODEL/element_data"][:, layer_idx]
-            layer_mask = np.where(layer < 1.1, False, True).squeeze()
-            data = h5["MODEL/data"][:, :, :][layer_mask].copy()
+            if self.layer_mask is None:
+                layer = h5["MODEL/element_data"][:, layer_idx]
+                self.layer_mask = np.where(layer < 1.1, False, True).squeeze()
+            data = h5["MODEL/data"][:, sorted_indices, :][self.layer_mask]
+            return data[:, idx_in_original, :]
+            data = h5["MODEL/data"][:, :, :][self.layer_mask].copy()
             return data[:, indices, :]
 
     def get_points(self, filename):

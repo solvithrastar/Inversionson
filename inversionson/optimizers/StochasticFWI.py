@@ -33,6 +33,7 @@ class StochasticFWI(StochasticBaseProblem):
         self.deleted_iterations = []
         self.performed_tasks = [] # tasks will be a dict with as a key, the name of the iteration, the type of job,
         self.read_status_json()
+        self.misfit_scaling_fac = 1e4
 
     @staticmethod
     def get_set_flag(m: ModelStochastic, it_num: int, control_group: bool):
@@ -267,9 +268,11 @@ class StochasticFWI(StochasticBaseProblem):
             )
             write_xdmf(raw_grad_file)
             self.performed_tasks.append(task_name)
-        self.update_status_json()
+            # The below line only writes the task into the smoothing file
+            self.optlink.perform_smoothing(m, set_flag, raw_grad_file)
+            self.update_status_json()
 
-        self.optlink.perform_smoothing(m, set_flag, raw_grad_file)
+        
         # smooth_grad = self.optlink.get_smooth_gradient_path(m.name, set_flag=set_flag)
         # return self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
@@ -280,9 +283,34 @@ class StochasticFWI(StochasticBaseProblem):
         if control_group and it_num < m.iteration_number:
             # CG prev triggers MB, CG and CG prev
             self.select_control_group(m)
+            self.update_status_json()
             self._gradient(m, m.iteration_number, False)
             self._gradient(m, m.iteration_number, control_group=True)
             self._gradient(m, it_num, control_group)
+            
+            if list(self.model_names.keys())[-1] == str(m.iteration_number):
+                from optson.utils import angle_between
+                set_flag_mb = self.get_set_flag(m, m.iteration_number, False)
+                raw_grad_mb = self.optlink.get_raw_gradient_path(m.name, set_flag_mb)
+                set_flag_cg = self.get_set_flag(m, m.iteration_number, True)
+                raw_grad_cg = self.optlink.get_raw_gradient_path(m.name, set_flag_cg)
+                v_mb = self.optlink.mesh_to_vector_new(mesh_filename=raw_grad_mb)
+                v_cg = self.optlink.mesh_to_vector_new(mesh_filename=raw_grad_cg)
+                angle = angle_between(v1=v_mb, v2=v_cg)
+                print("angle between raw cg and mb gradients", angle)
+                angle_threshold = 70.0
+
+                if angle > angle_threshold:
+                    self.extend_control_group(m=m)
+                    self._gradient(m, m.iteration_number, control_group=True)
+                if angle < 30.0:
+                    latest_control_group_size = len(list(self.control_group_dict.values())[-1])
+                    new_batch_size = int(1.5*latest_control_group_size)
+                    if new_batch_size != self.batch_size:
+                        print(f"Reducing batch size from {self.batch_size} to {new_batch_size}")
+                        self.batch_size = new_batch_size
+                    self.update_status_json()
+            
         elif not control_group and it_num == m.iteration_number and \
                 str(it_num) in self.control_group_dict.keys() and \
                 len(self.control_group_dict[str(it_num)]) > 0:
@@ -305,7 +333,7 @@ class StochasticFWI(StochasticBaseProblem):
         smooth_grad = self.optlink.get_smooth_gradient_path(m.name,
                                                             set_flag=set_flag)
         # return what is asked for.
-        return self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
+        return self.misfit_scaling_fac * self.optlink.mesh_to_vector_new(smooth_grad, gradient=True, raw_grad_file=raw_grad_file)
 
     def select_control_group(self, m: ModelStochastic):
         if str(m.iteration_number) in self.control_group_dict.keys():
@@ -373,4 +401,4 @@ class StochasticFWI(StochasticBaseProblem):
         return True
 
     def get_mm(self):
-        return self.optlink.get_mm()
+        return self.optlink.get_mm() / self.misfit_scaling_fac * self.optlink.get_mref()**2

@@ -293,7 +293,6 @@ class IterationListener(object):
             new_window_path = os.path.join(self.comm.project.remote_windows_dir,
                                            get_window_filename(event, iteration))
             # copy the windows over to ensure it works in the future.
-            print("Copying windows from ", window_path, "to", new_window_path)
             hpc_cluster.run_ssh_command(f"cp {window_path} {new_window_path}")
         else:
             windowing_needed = True
@@ -887,6 +886,9 @@ class IterationListener(object):
                 new_value=False,
             )
             self.comm.project.update_iteration_toml()
+            self.__dispatch_raw_gradient_interpolation(event=event)
+
+        for event in int_job_listener.not_submitted:
             self.__dispatch_raw_gradient_interpolation(event=event)
 
         if int_job_listener.events_retrieved_now:
