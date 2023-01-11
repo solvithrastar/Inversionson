@@ -13,6 +13,22 @@ from inversionson.optimizers.optson import OptsonLink
 from optson.base_classes.vector import Vector
 from numpy.typing import ArrayLike
 
+from optson.base_classes.preconditioner import AbstractPreconditioner
+
+
+class InnerProductPrecondtioner(AbstractPreconditioner):
+    def __init__(self, optlink, misfit_scaling_fac=1):
+        self.optlink = optlink
+        self.misfit_scaling_fac = misfit_scaling_fac
+
+    def __call__(self, x: ArrayLike) -> ArrayLike:
+        return (
+            self.optlink.get_mm()
+            / self.misfit_scaling_fac
+            * self.optlink.get_mref() ** 2
+            * x
+        )
+
 
 class StochasticFWI(StochasticBaseProblem):
     def __init__(
@@ -28,6 +44,10 @@ class StochasticFWI(StochasticBaseProblem):
         self.optlink = optlink
         self.gradient_test = gradient_test
         self.status_file = status_file
+        self.misfit_scaling_fac = 1e4
+        self.preconditioner = InnerProductPrecondtioner(
+            optlink=optlink, misfit_scaling_fac=self.misfit_scaling_fac
+        )
 
         # All these things need to be cached
         self.mini_batch_dict = {}
@@ -38,7 +58,6 @@ class StochasticFWI(StochasticBaseProblem):
         self.deleted_iterations = []
         self.performed_tasks = []
         self.read_status_json()
-        self.misfit_scaling_fac = 1e4
 
     @staticmethod
     def get_set_flag(x: Vector, it_num: int, control_group: bool):
@@ -422,11 +441,3 @@ class StochasticFWI(StochasticBaseProblem):
         if os.path.exists(smooth_grad):
             os.remove(smooth_grad)
         return True
-
-    def apply_preconditioner(self, v: ArrayLike) -> ArrayLike:
-        return (
-            self.optlink.get_mm()
-            / self.misfit_scaling_fac
-            * self.optlink.get_mref() ** 2
-            * v
-        )

@@ -264,7 +264,7 @@ class OptsonLink(Optimize):
         """
         Task manager calls this class. Main entry point. Here, all the magic will happen.
         """
-        from optson.optimize import Optimizer
+        from optson.optimizer import Optimizer
         from optson.methods.trust_region_LBFGS import TrustRegionLBFGS
         from optson.methods.steepest_descent import SteepestDescent
         from inversionson.optimizers.StochasticFWI import StochasticFWI
