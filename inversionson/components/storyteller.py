@@ -160,7 +160,7 @@ class StoryTellerComponent(Component):
                 self.comm.project.change_attribute(
                     attribute=f'updated["{event}"]', new_value=True
                 )
-                self.comm.project.update_iteration_toml()
+        self.comm.project.update_iteration_toml()
         with open(self.events_used_toml, "w") as fh:
             toml.dump(self.events_used, fh)
 
@@ -372,8 +372,10 @@ class StoryTellerComponent(Component):
             misfits_dict = toml.load(misfits_toml)
             event_misfit = misfits_dict[event]["event_misfit"]
             validation_dict[iteration]["events"][event] = float(event_misfit)
-        
-        validation_dict[iteration]["events"] = dict(sorted(validation_dict[iteration]["events"].items()))
+
+        validation_dict[iteration]["events"] = dict(
+            sorted(validation_dict[iteration]["events"].items())
+        )
         self.validation_dict = validation_dict
         with open(self.validation_toml, mode="w") as fh:
             toml.dump(validation_dict, fh)

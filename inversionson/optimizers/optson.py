@@ -8,9 +8,9 @@ import shutil
 import inspect
 
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
-from optson.base_classes.model import ModelStochastic
 
 from inversionson import InversionsonError
+from optson.base_classes.vector import Vector
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.optimizers.optimizer import Optimize
 from inversionson.utils import write_xdmf
@@ -36,16 +36,17 @@ class OptsonLink(Optimize):
     the new control group gradient and the previous gradient.
     #
     """
+
     optimizer_name = "Optson"
     config_template_path = os.path.join(
         os.path.dirname(
-            os.path.dirname(
-                os.path.abspath(inspect.getfile(inspect.currentframe())))
+            os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
         ),
         "file_templates",
-        "Optson.toml"
+        "Optson.toml",
     )
     current_iteration_name = "x_00000"
+
     def __init__(self, comm):
 
         # Call the super init with all the common stuff
@@ -53,7 +54,6 @@ class OptsonLink(Optimize):
         self.opt = None
         self.pt_idcs = None
         self.inv_pt_idcs = None
-
 
     def _initialize_derived_class_folders(self):
         """These folder are needed only for Optson."""
@@ -145,7 +145,7 @@ class OptsonLink(Optimize):
     #     v = np.concatenate(par_list)
     #     return v
 
-    def vector_to_mesh_new(self, to_mesh, m):
+    def vector_to_mesh_new(self, to_mesh, x):
         print("Writing vector to mesh started...")
         parameters = self.parameters
         if self.isotropic_vp:
@@ -157,13 +157,16 @@ class OptsonLink(Optimize):
         tmp_mesh_file = "tmp_mesh_file.h5"
         shutil.copy(self.initial_model, tmp_mesh_file)
         # we now split in isotropic pars
-        par_vals = np.array_split(m.x, len(isotropic_pars))
+        par_vals = np.array_split(x, len(isotropic_pars))
         points = self.get_points(tmp_mesh_file)
         nelem, ngll, ndim = points.shape
         if self.pt_idcs is None:
             _, self.pt_idcs, self.inv_pt_idcs = np.unique(
                 points.reshape(nelem * ngll, ndim),
-                return_index=True, return_inverse=True, axis=0)
+                return_index=True,
+                return_inverse=True,
+                axis=0,
+            )
 
         # here we get all parameters. That's good
         m_init = self.get_h5_data(self.initial_model, parameters)
@@ -176,10 +179,10 @@ class OptsonLink(Optimize):
                 opt_idx = isotropic_pars.index(val)
             else:
                 opt_idx = idx
-            par = par_vals[opt_idx] # these are now flat with the same sorting.
+            par = par_vals[opt_idx]  # these are now flat with the same sorting.
             par = par[self.inv_pt_idcs]
-            par = par.reshape((nelem, ngll)) # reshape into original form
-            par = m_init[:, idx, :] * par # here we have a mismatch perhaps. We nora
+            par = par.reshape((nelem, ngll))  # reshape into original form
+            par = m_init[:, idx, :] * par  # here we have a mismatch perhaps. We nora
             par_list.append(par)
 
         data_in_original_shape = np.stack(par_list, axis=1)
@@ -189,36 +192,37 @@ class OptsonLink(Optimize):
         print("Writing vector to mesh completed.")
 
     def get_mm(self):
-        # the below line is a bit slow 
+        # the below line is a bit slow
         if self.pt_idcs is None:
-            points = self.get_points(mesh_filename)
+            points = self.get_points(self.initial_model)
             nelem, ngll, ndim = points.shape
             _, self.pt_idcs, self.inv_pt_idcs = np.unique(
                 points.reshape(nelem * ngll, ndim),
-                return_index=True, return_inverse=True, axis=0)
+                return_index=True,
+                return_inverse=True,
+                axis=0,
+            )
 
         mm, valence = self.get_flat_non_duplicated_data(
-            ["FemMassMatrix", "Valence"], self.mass_matrix_mesh, self.pt_idcs)
-        mm_val = mm*valence
+            ["FemMassMatrix", "Valence"], self.mass_matrix_mesh, self.pt_idcs
+        )
+        mm_val = mm * valence
 
         parameters = self.parameters.copy()
         if self.isotropic_vp:
             parameters.remove("VPH")
         return np.tile(mm_val, len(parameters))
 
-
-
-    def mesh_to_vector_new(self, mesh_filename, gradient=True,
-                           raw_grad_file=None):
+    def mesh_to_vector_new(self, mesh_filename, gradient=True, raw_grad_file=None):
         print("Writing mesh to vector started...")
         import time
         parameters = self.parameters.copy()
         print(1, time.time())
         # a simple thing we can do is only take VPV, but write it to both fields
         if self.isotropic_vp:
-            parameters.remove("VPH") # only do VPV
+            parameters.remove("VPH")  # only do VPV
 
-        # the below line is a bit slow 
+        # the below line is a bit slow
         if self.pt_idcs is None:
             points = self.get_points(mesh_filename)
             nelem, ngll, ndim = points.shape
@@ -235,7 +239,8 @@ class OptsonLink(Optimize):
             parameters, mesh_filename, self.pt_idcs)
         print(4, time.time())
         initial_data = self.get_flat_non_duplicated_data(
-            parameters, self.initial_model, self.pt_idcs)
+            parameters, self.initial_model, self.pt_idcs
+        )
         par_list = []
         for idx in range(len(parameters)):
             if gradient:
@@ -259,30 +264,34 @@ class OptsonLink(Optimize):
         """
         Task manager calls this class. Main entry point. Here, all the magic will happen.
         """
-        from optson.optimize import Optimize
-        from optson.methods.trust_region_LBFGS import StochasticTrustRegionLBFGS
-        from optson.methods.steepest_descent import StochasticSteepestDescent
+        from optson.optimize import Optimizer
+        from optson.methods.trust_region_LBFGS import TrustRegionLBFGS
+        from optson.methods.steepest_descent import SteepestDescent
         from inversionson.optimizers.StochasticFWI import StochasticFWI
+
         self.find_iteration_numbers()
         if self.do_gradient_test:
             self.gradient_test()
             sys.exit()
 
-        problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=self.comm.project.batch_size,
-                                status_file=self.status_file)
+        problem = StochasticFWI(
+            comm=self.comm,
+            optlink=self,
+            batch_size=self.comm.project.batch_size,
+            status_file=self.status_file,
+        )
 
-        steepest_descent = StochasticSteepestDescent(
+        steepest_descent = SteepestDescent(
             initial_step_length=1.0e-2,
             verbose=verbose,
             step_length_as_percentage=True)
-        method = StochasticTrustRegionLBFGS(
-            steepest_descent=steepest_descent,
-            verbose=verbose)
+        method = TrustRegionLBFGS(
+            steepest_descent=steepest_descent, verbose=verbose
+        )
 
         x_0 = self.mesh_to_vector_new(self.initial_model, gradient=False)
-        self.opt = Optimize(x_0=x_0, problem=problem, method=method)
-        self.opt.iterate(self.max_iterations)
+        self.opt = Optimizer(problem=problem, method=method)
+        self.opt.iterate(x0=x_0, n_iter=self.max_iterations)
 
     def gradient_test(self, h=None):
         """
@@ -305,16 +314,22 @@ class OptsonLink(Optimize):
         if not h:
             h = np.logspace(-7, -1, 7)
         print("All these h values that will be tested:", h)
-        problem = StochasticFWI(comm=self.comm, optlink=self,
-                                batch_size=self.comm.project.batch_size,
-                                gradient_test=True,
-                                status_file=self.status_file)
-
+        problem = StochasticFWI(
+            comm=self.comm,
+            optlink=self,
+            batch_size=self.comm.project.batch_size,
+            gradient_test=True,
+            status_file=self.status_file,
+        )
 
         x_0 = self.mesh_to_vector_new(self.initial_model, gradient=False)
-        grdtest = GradientTest(x_0=x_0, h=h,
-                               problem=problem)
+        grdtest = GradientTest(x0=x_0, h=h, problem=problem, verbose=True)
 
+        # We need to enforce that the previous iteration has a control group
+        grdtest.m.fx
+        grdtest.m.gx
+        grdtest.m.gx_cg
+        grdtest()
         plt.loglog(grdtest.h, grdtest.relative_errors)
         plt.title(f"Minimum relative error: {min(grdtest.relative_errors)}")
         plt.xlabel("h")
@@ -354,8 +369,9 @@ class OptsonLink(Optimize):
         self.max_iterations = config["max_iterations"]
         self.isotropic_vp = config["isotropic_vp"]
         self.speculative_forwards = config["speculative_forwards"]
-        self.mass_matrix_mesh = config["mass_matrix_mesh"] if "mass_matrix_mesh" in config.keys() else None
-
+        self.mass_matrix_mesh = (
+            config["mass_matrix_mesh"] if "mass_matrix_mesh" in config.keys() else None
+        )
 
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
@@ -385,31 +401,41 @@ class OptsonLink(Optimize):
     def _finalize_iteration(self, verbose: bool):
         pass
 
-    def pick_data_for_iteration(self, batch_size, prev_control_group=[],
-                                current_batch=[],
-                                select_new_control_group=False,
-                                control_group_size: int = None):
+    def pick_data_for_iteration(
+        self,
+        batch_size,
+        prev_control_group=[],
+        current_batch=[],
+        select_new_control_group=False,
+        control_group_size: int = None,
+    ):
         print("Selecting data...")
         all_events = self.comm.lasif.list_events()
-        blocked_data = set(self.comm.project.validation_dataset +
-                           self.comm.project.test_dataset
-                           + prev_control_group)
+        blocked_data = set(
+            self.comm.project.validation_dataset
+            + self.comm.project.test_dataset
+            + prev_control_group
+        )
         all_events = list(set(all_events) - blocked_data)
         n_events = batch_size - len(prev_control_group)
         events = []
 
         if select_new_control_group:
             if not current_batch:
-                raise Exception("I need the current batch if you want"
-                                "a control group to be selected.")
+                raise Exception(
+                    "I need the current batch if you want"
+                    "a control group to be selected."
+                )
             all_events = current_batch
             if not control_group_size:
-                control_group_size = int(np.ceil(0.5*len(current_batch)))
+                control_group_size = int(np.ceil(0.5 * len(current_batch)))
             n_events = control_group_size
 
         all_norms_path = self.gradient_norm_dir / "all_norms.toml"
 
-        if n_events > 0: # for edge case batch size is same length as prev control group
+        if (
+            n_events > 0
+        ):  # for edge case batch size is same length as prev control group
             if os.path.exists(all_norms_path):
                 norm_dict = toml.load(all_norms_path)
                 unused_events = list(set(all_events).difference(set(norm_dict.keys())))
@@ -444,8 +470,7 @@ class OptsonLink(Optimize):
     def prepare_iteration(self, events, iteration_name=None):
         iteration_name = iteration_name if iteration_name else self.iteration_name
         if self.comm.lasif.has_iteration(iteration_name):
-            self.comm.project.change_attribute("current_iteration",
-                                               iteration_name)
+            self.comm.project.change_attribute("current_iteration", iteration_name)
             self.comm.project.get_iteration_attributes(iteration=iteration_name)
             return
         self.comm.project.change_attribute("current_iteration", iteration_name)
@@ -454,13 +479,13 @@ class OptsonLink(Optimize):
         # this should become smart with control groups etc.
         super().prepare_iteration(it_name=iteration_name, events=events)
 
-    def perform_smoothing(self, m: ModelStochastic, set_flag, file):
+    def perform_smoothing(self, x: Vector, set_flag, file):
         """
-        Writes the smoothing task, does not yet monitor anymore...
+        Writes the smoothing task only, does not monitor...
         """
         tasks = {}
         tag = file.name
-        output_location = self.get_smooth_gradient_path(m.name, set_flag=set_flag)
+        output_location = self.get_smooth_gradient_path(x.descriptor, set_flag=set_flag)
         if max(self.gradient_smoothing_length) > 0.0:
             tasks[tag] = {
                 "reference_model": str(self.comm.lasif.get_master_model()),
@@ -474,17 +499,13 @@ class OptsonLink(Optimize):
 
         if len(tasks.keys()) > 0:
             reg_helper = RegularizationHelper(
-                comm=self.comm, iteration_name=m.name, tasks=tasks,
-                optimizer=self
+                comm=self.comm, iteration_name=m.name, tasks=tasks, optimizer=self
             )
             if tag in reg_helper.tasks.keys() and not os.path.exists(output_location):
                 # remove the completed tag if we need to redo smoothing.
                 reg_helper.tasks[tag].update(reg_helper.base_dict)
                 reg_helper._write_tasks(reg_helper.tasks)
 
-            # reg_helper.monitor_tasks()
-
-        # write_xdmf(str(output_location))
 
     def compute_gradient(self, verbose):
         pass

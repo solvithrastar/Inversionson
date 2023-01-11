@@ -248,17 +248,11 @@ class Optimize(object):
         self.comm.salvus_flow.delete_stored_wavefields(iteration, "adjoint")
 
         if self.comm.project.prepare_forward:
-            self.comm.salvus_flow.delete_stored_wavefields(
-                iteration, "prepare_forward"
-            )
+            self.comm.salvus_flow.delete_stored_wavefields(iteration, "prepare_forward")
         if self.comm.project.meshes == "multi-mesh":
-            self.comm.salvus_flow.delete_stored_wavefields(
-                iteration, "gradient_interp"
-            )
+            self.comm.salvus_flow.delete_stored_wavefields(iteration, "gradient_interp")
         if self.comm.project.hpc_processing:
-            self.comm.salvus_flow.delete_stored_wavefields(
-                iteration, "hpc_processing"
-            )
+            self.comm.salvus_flow.delete_stored_wavefields(iteration, "hpc_processing")
 
     def prepare_iteration(
         self,
@@ -293,7 +287,9 @@ class Optimize(object):
         if not hpc_cluster.remote_exists(remote_mesh_file.parent):
             if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir):
                 hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir)
-            if not hpc_cluster.remote_exists(self.comm.project.remote_mesh_dir / "MODELS"):
+            if not hpc_cluster.remote_exists(
+                self.comm.project.remote_mesh_dir / "MODELS"
+            ):
                 hpc_cluster.remote_mkdir(self.comm.project.remote_mesh_dir / "MODELS")
             hpc_cluster.remote_mkdir(remote_mesh_file.parent)
         self.print(
@@ -302,17 +298,24 @@ class Optimize(object):
         )
         hpc_cluster.remote_put(model, remote_mesh_file)
 
-        if self.time_for_validation() and self.comm.project.use_model_averaging\
-                and self.iteration_number > 0:
+        if (
+            self.time_for_validation()
+            and self.comm.project.use_model_averaging
+            and self.iteration_number > 0
+        ):
             remote_avg_mesh_file = (
-                    self.comm.project.remote_mesh_dir / "AVERAGE_MODELS" / it_name / "mesh.h5"
+                self.comm.project.remote_mesh_dir
+                / "AVERAGE_MODELS"
+                / it_name
+                / "mesh.h5"
             )
             # this enters when the iteration number is 4
             print("writing average validation model")
             # 4 - 5 + 1 = 0
-            starting_it_number = self.iteration_number - self.comm.project.val_it_interval + 1
-            self.write_average_model(starting_it_number,
-                                     self.iteration_number)
+            starting_it_number = (
+                self.iteration_number - self.comm.project.val_it_interval + 1
+            )
+            self.write_average_model(starting_it_number, self.iteration_number)
             self.print(
                 f"Moving average_model to {self.comm.project.interpolation_site}",
                 emoji_alias=":package:",
@@ -321,7 +324,7 @@ class Optimize(object):
                 hpc_cluster.remote_mkdir(remote_avg_mesh_file.parent)
             hpc_cluster.remote_put(
                 self.get_average_model_name(starting_it_number, self.iteration_number),
-                remote_avg_mesh_file
+                remote_avg_mesh_file,
             )
 
         self.comm.lasif.upload_stf(iteration=it_name)
@@ -344,8 +347,8 @@ class Optimize(object):
         return True
 
     def get_remote_model_path(self, iteration=None, model_average=False):
-        """ Gets the path to storage location of the remote
-        model path. """
+        """Gets the path to storage location of the remote
+        model path."""
         if iteration is None:
             iteration = self.comm.project.current_iteration
 
@@ -408,17 +411,21 @@ class Optimize(object):
         """
         pass
 
-    def get_average_model_name(self, first_iteration_number=None,
-                               last_iteration_number=None):
+    def get_average_model_name(
+        self, first_iteration_number=None, last_iteration_number=None
+    ):
         """
         Gets the filename of the average model.
         """
         if first_iteration_number is None:
-            first_iteration_number = self.iteration_number - \
-                                     self.comm.project.val_it_interval + 1
+            first_iteration_number = (
+                self.iteration_number - self.comm.project.val_it_interval + 1
+            )
         if last_iteration_number is None:
             self.iteration_number
-        filename = f"average_model_{first_iteration_number}_to_{last_iteration_number}.h5"
+        filename = (
+            f"average_model_{first_iteration_number}_to_{last_iteration_number}.h5"
+        )
         return os.path.join(self.average_model_dir, filename)
 
     def write_average_model(self, first_iteration_number, last_iteration_number):
@@ -427,17 +434,20 @@ class Optimize(object):
         number. Needs a minimum of 2 iterations to work and make sense.
         """
         import shutil
-        total_num_models = 1
-        average_model = self.get_h5_data(self._model_for_iteration(first_iteration_number))
 
-        for i in range(first_iteration_number+1, last_iteration_number+1):
+        total_num_models = 1
+        average_model = self.get_h5_data(
+            self._model_for_iteration(first_iteration_number)
+        )
+
+        for i in range(first_iteration_number + 1, last_iteration_number + 1):
             average_model += self.get_h5_data(self._model_for_iteration(i))
             total_num_models += 1
         average_model /= total_num_models
-        avg_model_name = self.get_average_model_name(first_iteration_number,
-                                                last_iteration_number)
-        shutil.copy(self._model_for_iteration(first_iteration_number),
-                    avg_model_name)
+        avg_model_name = self.get_average_model_name(
+            first_iteration_number, last_iteration_number
+        )
+        shutil.copy(self._model_for_iteration(first_iteration_number), avg_model_name)
         self.set_h5_data(filename=avg_model_name, data=average_model)
 
     def get_parameter_indices(self, filename, parameters=None):
@@ -465,20 +475,15 @@ class Optimize(object):
         if not parameters:
             parameters = self.parameters
         indices = np.array(self.get_parameter_indices(filename, parameters))
-        argsort_idcs = np.argsort(indices)
-        sorted_indices = indices[argsort_idcs]
-        idx_in_original = np.arange(len(indices))[argsort_idcs]
-
-        # get_layer_mask
         layer_idx = self.get_elemental_parameter_indices(filename, ["layer"])
 
         with h5py.File(filename, "r") as h5:
             if self.layer_mask is None:
                 layer = h5["MODEL/element_data"][:, layer_idx]
                 self.layer_mask = np.where(layer < 1.1, False, True).squeeze()
-            data = h5["MODEL/data"][:, sorted_indices, :][self.layer_mask]
-            return data[:, idx_in_original, :]
-            data = h5["MODEL/data"][:, :, :][self.layer_mask].copy()
+
+            # For some reason the below commented lines seem problematic when RHO is there as well. It flips VP and RHO)
+            data = h5["MODEL/data"][:, :, :][self.layer_mask]
             return data[:, indices, :]
 
     def get_points(self, filename):
@@ -490,11 +495,12 @@ class Optimize(object):
         with h5py.File(filename, "r") as h5:
             layer = h5["MODEL/element_data"][:, layer_idx]
             layer_mask = np.where(layer < 1.1, False, True).squeeze()
-            points =  h5["MODEL/coordinates"][:,:,:][layer_mask]
+            points = h5["MODEL/coordinates"][:, :, :][layer_mask]
             return points
 
-    def get_flat_non_duplicated_data(self, parameters:list, filename:str,
-                                     pt_idcs:np.array):
+    def get_flat_non_duplicated_data(
+        self, parameters: list, filename: str, pt_idcs: np.array
+    ):
         flat_pars = []
         all_data = self.get_h5_data(filename, parameters=parameters)
         for idx, param in enumerate(parameters):
@@ -508,7 +514,7 @@ class Optimize(object):
             raise Exception("only works on existing files.")
 
         if not parameters:
-            parameters=self.parameters
+            parameters = self.parameters
         indices = self.get_parameter_indices(filename, parameters)
 
         # get_layer_mask
