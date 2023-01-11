@@ -76,6 +76,10 @@ class OptsonLink(Optimize):
         return str(self.opt_folder / "optson_status_tracker.json")
 
     @property
+    def cache_file(self):
+        return str(self.opt_folder / "optson_cache.h5")
+
+    @property
     def gradient_norm_path(self):
         return (
             self.gradient_norm_dir / f"gradient_norms_{self.iteration_number:05d}.toml"
@@ -268,6 +272,9 @@ class OptsonLink(Optimize):
         from optson.methods.trust_region_LBFGS import TrustRegionLBFGS
         from optson.methods.steepest_descent import SteepestDescent
         from inversionson.optimizers.StochasticFWI import StochasticFWI
+        from optson.base_classes.stopping_criterion import BasicStoppingCriterion
+
+        bsc = BasicStoppingCriterion(maxIterations=10000, tolerance=1e-30, divergenceTolerance=1e30)
 
         self.find_iteration_numbers()
         if self.do_gradient_test:
@@ -290,7 +297,7 @@ class OptsonLink(Optimize):
         )
 
         x_0 = self.mesh_to_vector_new(self.initial_model, gradient=False)
-        self.opt = Optimizer(problem=problem, method=method)
+        self.opt = Optimizer(problem=problem, method=method, cache_file=self.cache_file, stopping_criterion=bsc, verbose=True)
         self.opt.iterate(x0=x_0, n_iter=self.max_iterations)
 
     def gradient_test(self, h=None):
