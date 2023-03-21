@@ -36,7 +36,9 @@ class RegularizationHelper(object):
             self.optimizer = self.comm.project.get_optimizer()
         else:
             self.optimizer = optimizer
-        self.job_toml = self.optimizer.regularization_dir / f"regularization_{iteration_name}.toml"
+        self.job_toml = (
+            self.optimizer.regularization_dir / f"regularization_{iteration_name}.toml"
+        )
         self._write_tasks(tasks)
         if os.path.exists(self.job_toml):
             self.tasks = toml.load(self.job_toml)
@@ -58,6 +60,7 @@ class RegularizationHelper(object):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
+
     @property
     def base_dict(self):
         return dict(job_name="", submitted=False, retrieved=False, reposts=0)

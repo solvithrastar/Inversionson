@@ -493,7 +493,7 @@ class OptsonLink(Optimize):
 
         if len(tasks.keys()) > 0:
             reg_helper = RegularizationHelper(
-                comm=self.comm, iteration_name=m.name, tasks=tasks, optimizer=self
+                comm=self.comm, iteration_name=x.descriptor, tasks=tasks, optimizer=self
             )
             if tag in reg_helper.tasks.keys() and not os.path.exists(output_location):
                 # remove the completed tag if we need to redo smoothing.
