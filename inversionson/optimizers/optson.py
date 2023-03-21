@@ -219,9 +219,7 @@ class OptsonLink(Optimize):
 
     def mesh_to_vector_new(self, mesh_filename, gradient=True, raw_grad_file=None):
         print("Writing mesh to vector started...")
-        import time
         parameters = self.parameters.copy()
-        print(1, time.time())
         # a simple thing we can do is only take VPV, but write it to both fields
         if self.isotropic_vp:
             parameters.remove("VPH")  # only do VPV
@@ -233,15 +231,9 @@ class OptsonLink(Optimize):
             _, self.pt_idcs, self.inv_pt_idcs = np.unique(
                 points.reshape(nelem * ngll, ndim),
                 return_index=True, return_inverse=True, axis=0)
-        print(2, time.time())
-        # if gradient:
-        #     mass_matrix_mesh = self.mass_matrix_mesh if self.mass_matrix_mesh else raw_grad_file
-        #     mm, valence = self.get_flat_non_duplicated_data(
-        #         ["FemMassMatrix", "Valence"], mass_matrix_mesh, self.pt_idcs)
-        print(3, time.time())
         mesh_data = self.get_flat_non_duplicated_data(
             parameters, mesh_filename, self.pt_idcs)
-        print(4, time.time())
+
         initial_data = self.get_flat_non_duplicated_data(
             parameters, self.initial_model, self.pt_idcs
         )
@@ -252,12 +244,8 @@ class OptsonLink(Optimize):
             else:
                 par_val = mesh_data[idx] / initial_data[idx]
 
-            # if gradient:
-            #     par_val = par_val * mm * valence
             par_list.append(par_val)
-        print(5, time.time())
         v = np.concatenate(par_list)
-        print(6, time.time())
         print("Writing mesh to vector completed.")
         return v
 
@@ -289,7 +277,7 @@ class OptsonLink(Optimize):
         )
 
         steepest_descent = SteepestDescent(
-            initial_step_length=1.0e-2,
+            initial_step_length=self.initial_step_length,
             verbose=verbose,
             step_length_as_percentage=True)
         method = TrustRegionLBFGS(
@@ -376,10 +364,9 @@ class OptsonLink(Optimize):
         self.max_iterations = config["max_iterations"]
         self.isotropic_vp = config["isotropic_vp"]
         self.speculative_forwards = config["speculative_forwards"]
-        self.mass_matrix_mesh = (
-            config["mass_matrix_mesh"] if "mass_matrix_mesh" in config.keys() else None
-        )
-
+        self.mass_matrix_mesh = config["mass_matrix_file"]
+        self.initial_step_length = config["initial_step_length"]
+        
         if "max_iterations" in config.keys():
             self.max_iterations = config["max_iterations"]
         else:
