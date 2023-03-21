@@ -38,12 +38,14 @@ class StochasticFWI(StochasticBaseProblem):
         batch_size=2,
         gradient_test=False,
         status_file="optson_status_tracker.json",
+        task_file="optson_task_tracker.json",
     ):
         super().__init__(batchManager=self)  # Hacky solution for now
         self.comm = comm
         self.optlink = optlink
         self.gradient_test = gradient_test
         self.status_file = status_file
+        self.task_file = task_file
         self.misfit_scaling_fac = 1e4
         self.preconditioner = InnerProductPrecondtioner(
             optlink=optlink, misfit_scaling_fac=self.misfit_scaling_fac
@@ -74,6 +76,13 @@ class StochasticFWI(StochasticBaseProblem):
         return f"{x.descriptor}_{it_num}_{job_type}_{set_flag}_completed"
 
     def read_status_json(self):
+        if os.path.exists(self.task_file):
+            with open(self.task_file, "r") as fh:
+                task_dict = json.load(fh)
+            self.performed_tasks = task_dict["performed_tasks"]
+            if "deleted_iterations" in task_dict.keys():
+                self.deleted_iterations = task_dict["deleted_iterations"]
+
         if os.path.exists(self.status_file):
             with open(self.status_file, "r") as fh:
                 status_dict = json.load(fh)
@@ -81,9 +90,6 @@ class StochasticFWI(StochasticBaseProblem):
             self.mini_batch_dict = status_dict["mini_batch_dict"]
             self.control_group_dict = status_dict["control_group_dict"]
             self.batch_size = status_dict["batch_size"]
-            self.performed_tasks = status_dict["performed_tasks"]
-            if "deleted_iterations" in status_dict.keys():
-                self.deleted_iterations = status_dict["deleted_iterations"]
             self.model_names = status_dict["model_names"]
 
     def clean_files(self):
@@ -111,14 +117,18 @@ class StochasticFWI(StochasticBaseProblem):
         """
         Store all job status in this mega file
         """
+        task_dict = dict(
+            performed_tasks=self.performed_tasks,
+            deleted_iterations=self.deleted_iterations,
+        )
         status_dict = dict(
             mini_batch_dict=self.mini_batch_dict,
             control_group_dict=self.control_group_dict,
             batch_size=self.batch_size,
             model_names=self.model_names,
-            performed_tasks=self.performed_tasks,
-            deleted_iterations=self.deleted_iterations,
         )
+        with open(self.task_file, "w") as fh:
+            json.dump(task_dict, fh)
         with open(self.status_file, "w") as fh:
             json.dump(status_dict, fh)
 

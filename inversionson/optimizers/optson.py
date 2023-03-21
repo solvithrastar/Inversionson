@@ -76,6 +76,10 @@ class OptsonLink(Optimize):
         return str(self.opt_folder / "optson_status_tracker.json")
 
     @property
+    def task_file(self):
+        return str(self.opt_folder / "optson_task_tracker.json")
+
+    @property
     def cache_file(self):
         return str(self.opt_folder / "optson_cache.h5")
 
@@ -274,6 +278,7 @@ class OptsonLink(Optimize):
             optlink=self,
             batch_size=self.comm.project.batch_size,
             status_file=self.status_file,
+            task_file=self.task_file
         )
 
         steepest_descent = SteepestDescent(
@@ -315,6 +320,7 @@ class OptsonLink(Optimize):
             batch_size=self.comm.project.batch_size,
             gradient_test=True,
             status_file=self.status_file,
+            task_file=self.task_file
         )
 
         x_0 = self.mesh_to_vector_new(self.initial_model, gradient=False)
