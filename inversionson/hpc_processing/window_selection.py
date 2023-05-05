@@ -34,10 +34,7 @@ def flatnotmasked_contiguous(time_windows):
     fc = np.ma.flatnotmasked_contiguous(time_windows)
     # If nothing could be found, set the mask to true (which should already
     # be the case).
-    if fc is None:
-        return []
-    else:
-        return fc
+    return [] if fc is None else fc
 
 
 def find_local_extrema(data):
@@ -53,11 +50,8 @@ def find_local_extrema(data):
     flats = np.argwhere(diff == 0)
 
     # Discard neighbouring flat points.
-    new_flats = list(flats[0:1])
-    for i, j in zip(flats[:-1], flats[1:]):
-        if j - i == 1:
-            continue
-        new_flats.append(j)
+    new_flats = list(flats[:1])
+    new_flats.extend(j for i, j in zip(flats[:-1], flats[1:]) if j - i != 1)
     flats = new_flats
 
     maxima = []
@@ -210,9 +204,7 @@ def _plot_mask(new_mask, old_mask, name=None):
             name,
             verticalalignment="center",
             horizontalalignment="right",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
             fontweight=500,
         )
     plt.xlim(0, len(new_mask) - 1)
@@ -245,8 +237,7 @@ def _log_window_selection(tr_id, msg):
     :param tr_id: The id of the current trace.
     :param msg: The message to be printed.
     """
-    print("[Window selection for %s] %s" % (tr_id, msg))
-
+    print(f"[Window selection for {tr_id}] {msg}")
 
 
 def select_windows(
@@ -273,7 +264,6 @@ def select_windows(
     window_everything=False,
     verbose=False,
     plot=False,
-
 ):
     """
     Window selection algorithm for picking windows suitable for misfit
@@ -394,18 +384,16 @@ def select_windows(
     # =========================================================================
 
     # Overall Correlation coefficient.
-    norm = np.sqrt(np.sum(data ** 2)) * np.sqrt(np.sum(synth ** 2))
+    norm = np.sqrt(np.sum(data**2)) * np.sqrt(np.sum(synth**2))
     cc = np.sum(data * synth) / norm
     if verbose:
-        _log_window_selection(
-            data_trace.id, "Correlation Coefficient: %.4f" % cc
-        )
+        _log_window_selection(data_trace.id, "Correlation Coefficient: %.4f" % cc)
 
     first_tt_arrival = np.where(np.abs(synth) > 5e-3 * np.max(np.abs(synth)))[0][0]
     idx_end = int(0.9 * first_tt_arrival)
-    idx_end = max(idx_end, 1) # ensure at least 1 sample is available
     idx_start = 0
 
+    idx_end = max(idx_end, 1)
     if idx_start >= idx_end:
         idx_start = max(0, idx_end - 10)
 
@@ -538,9 +526,7 @@ def select_windows(
             verticalalignment="top",
             horizontalalignment="left",
             color="#ee6e00",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
 
         plt.vlines(
@@ -557,9 +543,7 @@ def select_windows(
             verticalalignment="bottom",
             horizontalalignment="right",
             color="#ee6e00",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
 
         for velocity in [6, 5, 4, 3, min_velocity]:
@@ -574,7 +558,7 @@ def select_windows(
             plt.text(
                 tt + o_s,
                 ylim[0] + (ylim[1] - ylim[0]) * 0.02,
-                str(velocity) + " km/s",
+                f"{str(velocity)} km/s",
                 verticalalignment="bottom",
                 horizontalalignment=hal,
                 color="0.15",
@@ -593,17 +577,11 @@ def select_windows(
             verticalalignment="top",
             horizontalalignment="right",
             color="0.15",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
 
-        plt.hlines(
-            noise_absolute, xlim[0], xlim[1], linestyle="--", color="gray"
-        )
-        plt.hlines(
-            -noise_absolute, xlim[0], xlim[1], linestyle="--", color="gray"
-        )
+        plt.hlines(noise_absolute, xlim[0], xlim[1], linestyle="--", color="gray")
+        plt.hlines(-noise_absolute, xlim[0], xlim[1], linestyle="--", color="gray")
         plt.text(
             offset,
             noise_absolute + (ylim[1] - ylim[0]) * 0.01,
@@ -611,20 +589,17 @@ def select_windows(
             verticalalignment="bottom",
             horizontalalignment="left",
             color="0.15",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
-        plt.legend(
-            loc="lower right", fancybox=True, framealpha=0.5, fontsize="small"
-        )
+        plt.legend(loc="lower right", fancybox=True, framealpha=0.5, fontsize="small")
         plt.gca().xaxis.set_ticklabels([])
 
         # Plot the basic global information.
         ax = plt.gca()
-        txt = (
-            "Total CC Coeff: %.4f\nAbsolute Noise: %e\nRelative Noise: %.3f"
-            % (cc, noise_absolute, noise_relative,)
+        txt = "Total CC Coeff: %.4f\nAbsolute Noise: %e\nRelative Noise: %.3f" % (
+            cc,
+            noise_absolute,
+            noise_relative,
         )
         ax.text(
             0.01,
@@ -634,11 +609,11 @@ def select_windows(
             fontdict=dict(fontsize="small", ha="left", va="top"),
             bbox=dict(boxstyle="round", fc="w", alpha=0.8),
         )
-        plt.suptitle("Channel %s" % data_trace.id, fontsize="larger")
+        plt.suptitle(f"Channel {data_trace.id}", fontsize="larger")
 
         # Show plot and return if not accepted.
         if accept_traces is not True:
-            txt = "Rejected: %s" % (accept_traces)
+            txt = f"Rejected: {accept_traces}"
             ax.text(
                 0.99,
                 0.95,
@@ -673,25 +648,18 @@ def select_windows(
         threshold = 0.5 * np.max(stf_env.data)
         max_idx = int(
             math.ceil((dist_in_km / min_velocity + minimum_period / 2.0) / dt)
-        )
-        max_idx += int(
+        ) + int(
             np.argmax(stf_env[max_env_amplitude_idx:] < threshold)
             + np.argmax(stf_env.data)
         )
-
     if window_everything and accept_traces is True:
-        windows = [(data_starttime + dt * min_idx,
-                    data_starttime + max_idx * dt, 1.0)]
-        return windows
-
+        return [(data_starttime + dt * min_idx, data_starttime + max_idx * dt, 1.0)]
     time_windows.mask[: min_idx + 1] = True
     time_windows.mask[max_idx:] = True
 
     if plot:
         plt.subplot2grid(grid, (8, 0), rowspan=1)
-        _plot_mask(
-            time_windows, old_time_windows, name="TRAVELTIME ELIMINATION"
-        )
+        _plot_mask(time_windows, old_time_windows, name="TRAVELTIME ELIMINATION")
         old_time_windows = time_windows.copy()
 
     # -------------------------------------------------------------------------
@@ -738,30 +706,22 @@ def select_windows(
 
         time_shift = cc.argmax() - window_length + 1
         # Express the time shift in fraction of the minimum period.
-        sliding_time_shift[sw_start_idx:sw_end_idx] = (
-            time_shift * dt
-        ) / minimum_period
+        sliding_time_shift[sw_start_idx:sw_end_idx] = (time_shift * dt) / minimum_period
 
         # Normalized cross correlation.
         max_cc_value = cc.max() / np.sqrt(
-            (synthetic_window ** 2).sum() * (data_window ** 2).sum()
+            (synthetic_window**2).sum() * (data_window**2).sum()
         )
         max_cc_coeff[sw_start_idx:sw_end_idx] = max_cc_value
 
     if plot:
         plt.subplot2grid(grid, (9, 0), rowspan=1)
-        _plot_mask(
-            time_windows, old_time_windows, name="NO ENERGY IN CC WINDOW"
-        )
+        _plot_mask(time_windows, old_time_windows, name="NO ENERGY IN CC WINDOW")
         # Axes with the CC coeffs
         plt.subplot2grid(grid, (15, 0), rowspan=4)
         plt.hlines(0, xlim[0], xlim[1], color="lightgray")
-        plt.hlines(
-            -threshold_shift, xlim[0], xlim[1], color="gray", linestyle="--"
-        )
-        plt.hlines(
-            threshold_shift, xlim[0], xlim[1], color="gray", linestyle="--"
-        )
+        plt.hlines(-threshold_shift, xlim[0], xlim[1], color="gray", linestyle="--")
+        plt.hlines(threshold_shift, xlim[0], xlim[1], color="gray", linestyle="--")
         plt.text(
             5,
             -threshold_shift - (2) * 0.03,
@@ -769,9 +729,7 @@ def select_windows(
             verticalalignment="top",
             horizontalalignment="left",
             color="0.15",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
         plt.plot(
             times,
@@ -787,9 +745,7 @@ def select_windows(
         plt.ylim(-1.0, 1.0)
         plt.xlim(xlim)
         plt.gca().xaxis.set_ticklabels([])
-        plt.legend(
-            loc="lower right", fancybox=True, framealpha=0.5, fontsize="small"
-        )
+        plt.legend(loc="lower right", fancybox=True, framealpha=0.5, fontsize="small")
 
         plt.subplot2grid(grid, (10, 0), rowspan=4)
         plt.hlines(
@@ -808,9 +764,7 @@ def select_windows(
             verticalalignment="bottom",
             horizontalalignment="left",
             color="0.15",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
         plt.plot(
             times,
@@ -824,9 +778,7 @@ def select_windows(
         plt.xticks([300, 600, 900, 1200, 1500, 1800])
         plt.xlim(xlim)
         plt.gca().xaxis.set_ticklabels([])
-        plt.legend(
-            loc="lower right", fancybox=True, framealpha=0.5, fontsize="small"
-        )
+        plt.legend(loc="lower right", fancybox=True, framealpha=0.5, fontsize="small")
 
     # Elimination Stage 3: Mark all areas where the normalized cross
     # correlation coefficient is under threshold_correlation as negative
@@ -867,9 +819,7 @@ def select_windows(
         time_windows.mask[index - sample_buffer : index + sample_buffer] = True
     if plot:
         plt.subplot2grid(grid, (20, 0), rowspan=1)
-        _plot_mask(
-            time_windows, old_time_windows, name="TIME SHIFT JUMPS ELIMINATION"
-        )
+        _plot_mask(time_windows, old_time_windows, name="TIME SHIFT JUMPS ELIMINATION")
 
     # Clip both to avoid large numbers by division.
     stacked = np.vstack(
@@ -918,9 +868,7 @@ def select_windows(
             verticalalignment="bottom",
             horizontalalignment="left",
             color="0.15",
-            path_effects=[
-                PathEffects.withStroke(linewidth=3, foreground="white")
-            ],
+            path_effects=[PathEffects.withStroke(linewidth=3, foreground="white")],
         )
         plt.plot(
             times,
@@ -934,18 +882,14 @@ def select_windows(
         plt.xticks([300, 600, 900, 1200, 1500, 1800])
         plt.xlim(xlim)
         plt.gca().xaxis.set_ticklabels([])
-        plt.legend(
-            loc="lower right", fancybox=True, framealpha=0.5, fontsize="small"
-        )
+        plt.legend(loc="lower right", fancybox=True, framealpha=0.5, fontsize="small")
 
     # First minimum window length elimination stage. This is cheap and if
     # not done it can easily destabilize the peak-and-trough marching stage
     # which would then have to deal with way more edge cases.
     if plot:
         old_time_windows = time_windows.copy()
-    min_length = min(
-        minimum_period / dt * min_length_period, maximum_period / dt
-    )
+    min_length = min(minimum_period / dt * min_length_period, maximum_period / dt)
     for i in flatnotmasked_contiguous(time_windows):
         # Step 7: Throw away all windows with a length of less then
         # min_length_period the dominant period.
@@ -982,28 +926,16 @@ def select_windows(
             diffs = np.diff(closest_peaks)
 
             for idx in np.where(diffs == 1)[0]:
-                if idx > 0:
-                    start = synth_p[idx - 1]
-                else:
-                    start = 0
-                if idx < (len(synth_p) - 1):
-                    end = synth_p[idx + 1]
-                else:
-                    end = -1
+                start = synth_p[idx - 1] if idx > 0 else 0
+                end = synth_p[idx + 1] if idx < (len(synth_p) - 1) else -1
                 window_mask[start:end] = False
 
             closest_troughs = find_closest(data_t, synth_t)
             diffs = np.diff(closest_troughs)
 
             for idx in np.where(diffs == 1)[0]:
-                if idx > 0:
-                    start = synth_t[idx - 1]
-                else:
-                    start = 0
-                if idx < (len(synth_t) - 1):
-                    end = synth_t[idx + 1]
-                else:
-                    end = -1
+                start = synth_t[idx - 1] if idx > 0 else 0
+                end = synth_t[idx + 1] if idx < (len(synth_t) - 1) else -1
                 window_mask[start:end] = False
         except Exception as e:
             print(e)
@@ -1014,9 +946,10 @@ def select_windows(
         if window_mask.mask.all():
             continue
 
-        for j in flatnotmasked_contiguous(window_mask):
-            final_windows.append((i.start + j.start, i.start + j.stop))
-
+        final_windows.extend(
+            (i.start + j.start, i.start + j.stop)
+            for j in flatnotmasked_contiguous(window_mask)
+        )
     if plot:
         old_time_windows = time_windows.copy()
     time_windows.mask[:] = True
@@ -1055,9 +988,7 @@ def select_windows(
     # Second minimum window length elimination stage.
     if plot:
         old_time_windows = time_windows.copy()
-    min_length = min(
-        minimum_period / dt * min_length_period, maximum_period / dt
-    )
+    min_length = min(minimum_period / dt * min_length_period, maximum_period / dt)
     for i in flatnotmasked_contiguous(time_windows):
         # Step 7: Throw away all windows with a length of less then
         # min_length_period the dominant period.
@@ -1092,13 +1023,12 @@ def select_windows(
             continue
 
         # Check that amplitudes in the data are above the noise
-        if noise_absolute / data[j.start : j.stop].ptp() > max_noise_window:
-            if verbose:
-                _log_window_selection(
-                    data_trace.id,
-                    "Deselecting window due having no amplitude above the "
-                    "signal to noise ratio.",
-                )
+        if noise_absolute / data[j.start : j.stop].ptp() > max_noise_window and verbose:
+            _log_window_selection(
+                data_trace.id,
+                "Deselecting window due having no amplitude above the "
+                "signal to noise ratio.",
+            )
         final_windows.append((j.start, j.stop))
 
     if plot:
@@ -1109,9 +1039,7 @@ def select_windows(
 
     if plot:
         plt.subplot2grid(grid, (30, 0), rowspan=1)
-        _plot_mask(
-            time_windows, old_time_windows, name="LITTLE ENERGY ELIMINATION"
-        )
+        _plot_mask(time_windows, old_time_windows, name="LITTLE ENERGY ELIMINATION")
 
     if verbose:
         _log_window_selection(
@@ -1120,10 +1048,10 @@ def select_windows(
 
     # Final step is to convert the index value windows to actual times.
     windows = []
+    weight = 1.0
     for start, stop in final_windows:
         start = data_starttime + start * data_delta
         stop = data_starttime + stop * data_delta
-        weight = 1.0
         windows.append((start.timestamp, stop.timestamp, weight))
 
     if plot:
@@ -1131,9 +1059,7 @@ def select_windows(
         import matplotlib.transforms as mtransforms  # NOQA
 
         ax = data_plot
-        trans = mtransforms.blended_transform_factory(
-            ax.transData, ax.transAxes
-        )
+        trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
         for start, stop in final_windows:
             ax.fill_between(
                 [start * data_delta, stop * data_delta],

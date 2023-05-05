@@ -57,16 +57,14 @@ def get_adjoint_source_object(event_name, adjoint_filename,
     receivers = build_or_get_receiver_info(receiver_json_path, proc_filename)
     adjoint_recs = list(misfits[event_name].keys())
 
-    # Need to make sure I only take receivers with an adjoint source
-    adjoint_sources = []
-    for rec in receivers:
+    adjoint_sources = [
+        rec
+        for rec in receivers
         if (
-                rec["network-code"] + "_" + rec["station-code"] in adjoint_recs
-                or rec["network-code"] + "." + rec[
-            "station-code"] in adjoint_recs
-        ):
-            adjoint_sources.append(rec)
-
+            rec["network-code"] + "_" + rec["station-code"] in adjoint_recs
+            or rec["network-code"] + "." + rec["station-code"] in adjoint_recs
+        )
+    ]
     # Build meta_info_dict
     with open(forward_meta_json_filename) as json_file:
         data = json.load(json_file)
@@ -80,16 +78,16 @@ def get_adjoint_source_object(event_name, adjoint_filename,
             "station_code"] in adjoint_recs
         ):
             rec_name = rec["network_code"] + "_" + rec["station_code"]
-            meta_info_dict[rec_name] = {}
-            # this is the rotation from XYZ to ZNE,
-            # we still need to transpose to get ZNE -> XYZ
-            meta_info_dict[rec_name]["rotation_on_input"] = {
-                "matrix": np.array(
-                    rec["rotation_on_output"]["matrix"]).T.tolist()
+            meta_info_dict[rec_name] = {
+                "rotation_on_input": {
+                    "matrix": np.array(
+                        rec["rotation_on_output"]["matrix"]
+                    ).T.tolist()
+                }
             }
             meta_info_dict[rec_name]["location"] = rec["location"]
 
-    adj_src = [
+    return [
         source.cartesian.VectorPoint3D(
             x=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
                 "location"
@@ -105,16 +103,17 @@ def get_adjoint_source_object(event_name, adjoint_filename,
             fz=1.0,
             source_time_function=stf.Custom(
                 filename=adjoint_filename,
-                dataset_name="/" + rec["network-code"] + "_" + rec[
-                    "station-code"],
+                dataset_name="/"
+                + rec["network-code"]
+                + "_"
+                + rec["station-code"],
             ),
             rotation_on_input=meta_info_dict[
                 rec["network-code"] + "_" + rec["station-code"]
-                ]["rotation_on_input"],
+            ]["rotation_on_input"],
         )
         for rec in adjoint_sources
     ]
-    return adj_src
 
 
 def construct_adjoint_simulation(parameterization,
@@ -159,13 +158,13 @@ def get_station_weights(list_of_stations, processed_data,
         coordinates[station_name] = {"latitude": rec["latitude"],
                                      "longitude": rec["longitude"]}
 
-    # Make reduced list:
-    stations = {}
-    for station in list_of_stations:
-        stations[station] = {}
-        stations[station]["latitude"] = coordinates[station]["latitude"]
-        stations[station]["longitude"] = coordinates[station]["longitude"]
-
+    stations = {
+        station: {
+            "latitude": coordinates[station]["latitude"],
+            "longitude": coordinates[station]["longitude"],
+        }
+        for station in list_of_stations
+    }
     locations = np.zeros((2, len(stations)), dtype=np.float64)
 
     for _i, station in enumerate(stations):
@@ -351,10 +350,7 @@ def run(info):
                 continue
             all_windows[data_tr.id] = windows
 
-        if all_windows:
-            return {station: all_windows}
-        else:
-            return {station: None}
+        return {station: all_windows} if all_windows else {station: None}
 
     # Generate task list
     with pyasdf.ASDFDataSet(processed_filename, mode="r", mpi=False) as ds:
@@ -419,7 +415,7 @@ def run(info):
     env_scaling = False
 
     if len(all_windows.keys()) == 0:
-        raise Exception(f"No windows were found")
+        raise Exception("No windows were found")
 
     def _process(station):
         ds = pyasdf.ASDFDataSet(processed_filename, mode="r", mpi=False)
@@ -482,11 +478,11 @@ def run(info):
                 data_tr.data *= scaling_factor
 
             net, sta, cha = data_tr.id.split(".", 2)
-            station = net + "." + sta
+            station = f"{net}.{sta}"
 
             if station not in all_windows:
                 continue
-            if all_windows[station] == None:
+            if all_windows[station] is None:
                 continue
             if data_tr.id not in all_windows[station]:
                 continue
@@ -524,7 +520,7 @@ def run(info):
     # Use at most num_processes
     number_processes = min(num_processes, len(task_list))
 
-    if len(task_list) < 1:
+    if not task_list:
         raise Exception("At least one window is needed to compute"
                         "an adjoint source.")
 
@@ -555,10 +551,10 @@ def run(info):
     adjoint_source_file_name = os.path.join(output_folder, "stf.h5")
     f = h5py.File(adjoint_source_file_name, "w")
 
-    for station in all_adj_srcs.keys():
+    for station in all_adj_srcs:
         all_sta_channels = list(all_adj_srcs[station].keys())
 
-        if len(all_sta_channels) > 0:
+        if all_sta_channels:
             e_comp = np.zeros_like(
                 all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
             n_comp = np.zeros_like(
@@ -590,9 +586,9 @@ def run(info):
     # figuring out which stations should have adjoint sources.
     misfit_dict = {}
     total_misfit = 0
-    for station in all_adj_srcs.keys():
+    for station in all_adj_srcs:
         all_sta_channels = list(all_adj_srcs[station].keys())
-        if not len(all_sta_channels) > 0:
+        if not all_sta_channels:
             continue
         misfit_dict[station] = {}
         for trace in all_adj_srcs[station].keys():
@@ -614,7 +610,7 @@ def run(info):
 
 
     # now create adjoint source simulation object
-    adjoint_filename = "REMOTE:" + os.path.abspath(adjoint_source_file_name)
+    adjoint_filename = f"REMOTE:{os.path.abspath(adjoint_source_file_name)}"
     adj_src = get_adjoint_source_object(event_name,
                                         adjoint_filename,
                                         info["receiver_json_path"],

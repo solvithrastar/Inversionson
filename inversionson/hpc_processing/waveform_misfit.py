@@ -97,27 +97,13 @@ def calculate_adjoint_source(
     taper_type="cosine",
     **kwargs
 ):  # NOQA
-    # There is no need to perform any sanity checks on the passed trace
-    # object. At this point they will be guaranteed to have the same
-    # sampling rate, be sampled at the same points in time and a couple
-    # other things.
-
-    ret_val = {}
     scaling = 1e5
     weight = scaling * 1.0
 
     if window:
-        if len(window) == 2:
-            weight = 1.0 * scaling
-        else:
-            weight = window[2] * scaling
-
+        weight = 1.0 * scaling if len(window) == 2 else window[2] * scaling
     diff = (observed.data - synthetic.data) * weight
-    # 0.5 * (s-o) ** 2
-    # (s-
-    # Integrate with the composite Simpson's rule.
-    ret_val["misfit"] = 0.5 * simps(y=diff ** 2, dx=observed.stats.delta)
-
+    ret_val = {"misfit": 0.5 * simps(y=diff**2, dx=observed.stats.delta)}
     if adjoint_src is True:
         adj_src = Trace(
             data=diff * weight * synthetic.stats.delta, header=observed.stats

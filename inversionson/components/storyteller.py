@@ -135,16 +135,16 @@ class StoryTellerComponent(Component):
         """
         all_events = self.comm.lasif.list_events()
         already_in_list = list(self.events_used.keys())
-        new = [x for x in all_events if x not in already_in_list]
-        if len(new) == 0:
-            return
-        else:
+        if new := [x for x in all_events if x not in already_in_list]:
             for event in new:
                 self.events_used[event] = 0
             with open(self.events_used_toml, "w") as fh:
                 toml.dump(self.events_used, fh)
             with open(self.all_events, "a") as fh:
                 fh.writelines(f"{event}\n" for event in new)
+
+        else:
+            return
 
     def _update_usage_of_events(self):
         """
@@ -221,18 +221,23 @@ class StoryTellerComponent(Component):
         """
         self.markdown.add_header(header_style=3, text="Misfits")
         if not verbose:
-            text = "The events used in the iteration along with their misfits"
-            text += " are displayed below:"
+            text = (
+                "The events used in the iteration along with their misfits"
+                + " are displayed below:"
+            )
+        if verbose:
+            if "additional" not in verbose:
+                text = (
+                    "We have computed misfits for the control group events. "
+                    + "The misfits are displayed below. The additional events "
+                )
+                text += "are displayed with 0.0 misfit values."
 
-        if verbose and "additional" not in verbose:
-            text = "We have computed misfits for the control group events. "
-            text += "The misfits are displayed below. The additional events "
-            text += "are displayed with 0.0 misfit values."
-
-        if verbose and "additional" in verbose:
-            text = "We have now computed the misfits for all the events of "
-            text += "the iteration. These are displayed below."
-
+            if "additional" in verbose:
+                text = (
+                    "We have now computed the misfits for all the events of "
+                    + "the iteration. These are displayed below."
+                )
         self.markdown.add_paragraph(text=text)
         # iteration = self.comm.project.current_iteration
         self.comm.project.get_iteration_attributes()
@@ -286,9 +291,10 @@ class StoryTellerComponent(Component):
         Report what the new control group is and what the current misfit is.
         """
         self.markdown.add_header(header_style=4, text="Selection of New Control Group")
-        text = "The events which will continue on to the next iteration are "
-        text += "listed below."
-
+        text = (
+            "The events which will continue on to the next iteration are "
+            + "listed below."
+        )
         self.markdown.add_paragraph(text=text)
         self.markdown.add_list(items=self.comm.project.new_control_group)
 
@@ -304,9 +310,10 @@ class StoryTellerComponent(Component):
         """
         The control group needs to be enlarged. This is reported here.
         """
-        text = "Control group was not good enough, so we increase it with "
-        text += "one extra event."
-
+        text = (
+            "Control group was not good enough, so we increase it with "
+            + "one extra event."
+        )
         self.markdown.add_paragraph(text=text)
 
     def _report_number_of_used_events(self):
@@ -325,9 +332,10 @@ class StoryTellerComponent(Component):
         Write a quick paragraph reporting that we will now compute gradients
         for the accepted trial model.
         """
-        text = "Since model has been accepted, we will now compute "
-        text += "gradients for all batch events for the accepted model."
-
+        text = (
+            "Since model has been accepted, we will now compute "
+            + "gradients for all batch events for the accepted model."
+        )
         self.markdown.add_paragraph(text=text)
 
     def report_validation_misfit(
@@ -349,11 +357,11 @@ class StoryTellerComponent(Component):
             be reported, default False
         :type total_sum: bool, Optional
         """
-        if not os.path.exists(self.validation_toml):
-            validation_dict = {}
-        else:
-            validation_dict = toml.load(self.validation_toml)
-
+        validation_dict = (
+            toml.load(self.validation_toml)
+            if os.path.exists(self.validation_toml)
+            else {}
+        )
         if iteration not in validation_dict.keys():
             validation_dict[iteration] = {"events": {}, "total": 0.0}
 
@@ -391,7 +399,13 @@ class StoryTellerComponent(Component):
         :param verbose: Additional information regarding task, optional.
         :type verbose: str
         """
-        if task == "compute_misfit_and_gradient":
+        if task == "adam_documentation":
+            self._update_usage_of_events()
+            self._update_list_of_events()
+        elif task == "compute_gradient":
+            self._initiate_gradient_computation_task()
+
+        elif task == "compute_misfit_and_gradient":
             # The compute misfit and gradient task is always associated
             # with the first iteration
             # This is the absolute first iteration
@@ -406,19 +420,12 @@ class StoryTellerComponent(Component):
                 self._report_control_group()
                 self._update_event_quality()
 
-        if task == "compute_gradient":
-            self._initiate_gradient_computation_task()
-
-        if task == "finalize_iteration":
+        elif task == "finalize_iteration":
             if self.comm.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
                 self._update_list_of_events()
                 self._update_usage_of_events()
             self._backup_files()
-
-        if task == "adam_documentation":
-            self._update_usage_of_events()
-            self._update_list_of_events()
 
 
 class MarkDown(StoryTellerComponent):
@@ -463,7 +470,7 @@ class MarkDown(StoryTellerComponent):
             raise ValueError("Header style must be an integer between 1 and 6")
         self.stream = text
         self._transform_special_characters()
-        self.stream = "#" * int(header_style) + " " + self.stream
+        self.stream = "#" * header_style + " " + self.stream
         self._add_line_break()
         self._add_line_break()
 
@@ -517,9 +524,9 @@ class MarkDown(StoryTellerComponent):
 
         if textstyle != self.text_styles[0]:
             text = self.stream
-            text = "_" + text + "_"
+            text = f"_{text}_"
             if textstyle == self.text_styles[2]:
-                text = "_" + text + "_"
+                text = f"_{text}_"
             self.stream = text
 
         self._add_line_break()
@@ -543,7 +550,7 @@ class MarkDown(StoryTellerComponent):
         self._add_line_break()
         self._append_to_file()
 
-    def add_table(self, data: dict, headers=["Events", "Misfits"]):
+    def add_table(self, data: dict, headers=None):
         """
         Add a table to a markdown file. Currently only for 2 column
         based data.
@@ -553,13 +560,15 @@ class MarkDown(StoryTellerComponent):
         :param headers: Table headers, defaults to ["Events", "Misfits"]
         :type headers: list, optional
         """
+        if headers is None:
+            headers = ["Events", "Misfits"]
         self.stream = ""
         string = f"| {headers[0]} | {headers[1]} |\n"
         fixed_string = self._transform_special_characters(string)
         self.stream += fixed_string
         self.stream += "| --- | ---: | \n"
 
-        for key in data.keys():
+        for key in data:
             string = f"| {key} | {data[key]} |\n"
             fixed_string = self._transform_special_characters(string)
             self.stream += fixed_string
@@ -617,7 +626,7 @@ class PrettyPrinter(object):
 
     def add_emoji(self, emoji_alias: str, vertical_line=True):
         if not emoji_alias.startswith(":"):
-            emoji_alias = ":" + emoji_alias
+            emoji_alias = f":{emoji_alias}"
         if not emoji_alias.endswith(":"):
             emoji_alias += ":"
         self.stream += f"{emoji.emojize(emoji_alias, language='alias')}"
@@ -662,7 +671,7 @@ class PrettyPrinter(object):
         if emoji_alias is not None:
             if isinstance(emoji_alias, list):
                 for _i, emo in enumerate(emoji_alias):
-                    vertical_line = True if _i == len(emoji_alias) - 1 else False
+                    vertical_line = _i == len(emoji_alias) - 1
                     self.add_emoji(emo, vertical_line=vertical_line)
             else:
                 self.add_emoji(emoji_alias)

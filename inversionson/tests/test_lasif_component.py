@@ -21,8 +21,7 @@ def pro():
     dir_path = os.path.dirname(os.path.realpath(__file__))
     project_path = os.path.join(dir_path, "tmp")
     os.makedirs(project_path)
-    pro = DummyProject(project_path)
-    yield pro
+    yield DummyProject(project_path)
     # Here close everything down. Delete all folders.
     shutil.rmtree(project_path)
 

@@ -159,47 +159,55 @@ class RemoteJobListener(object):
             if s.name == "finished":
                 params.append(s)
                 finished += 1
-            else:
-                if s.name in ["pending", "running"]:
-                    if verbose:
-                        self.print(
-                            f"Status = {s.name}, event: {event} "
-                            f"for smoothing job {_i}/{len(status)}"
-                        )
-                    if s.name == "pending":
-                        pending += 1
-                    elif s.name == "running":
-                        running += 1
-                    continue
-                elif s.name in ("failed", "unknown"):
-                    if i == 0:
-                        self.print(f"Job {s.name}, will resubmit event {event}")
-                        self.to_repost.append(event)
-                        reposts += 1
-                        if reposts >= self.comm.project.max_reposts:
-                            print("No I've actually reposted this too often \n")
-                            print("There must be something wrong.")
-                            raise InversionsonError("Too many reposts")
-                        if event is None:
-                            self.comm.project.change_attribute(
-                                attribute=f'{self.job_type}_job["reposts"]',
-                                new_value=reposts,
-                            )
-                        else:
-                            self.comm.project.change_attribute(
-                                attribute=f'{self.job_type}_job["{event}"]["reposts"]',
-                                new_value=reposts,
-                            )
-                        i += 1
-
-                elif s.name == "cancelled":
-                    self.print(f"Job cancelled for event {event}")
-
-                else:
-                    warnings.warn(
-                        f"Inversionson does not recognise job status:  {status}",
-                        InversionsonWarning,
+            elif (
+                s.name != "pending"
+                and s.name != "running"
+                and s.name in ("failed", "unknown")
+                and i == 0
+            ):
+                self.print(f"Job {s.name}, will resubmit event {event}")
+                self.to_repost.append(event)
+                reposts += 1
+                if reposts >= self.comm.project.max_reposts:
+                    print("No I've actually reposted this too often \n")
+                    print("There must be something wrong.")
+                    raise InversionsonError("Too many reposts")
+                if event is None:
+                    self.comm.project.change_attribute(
+                        attribute=f'{self.job_type}_job["reposts"]',
+                        new_value=reposts,
                     )
+                else:
+                    self.comm.project.change_attribute(
+                        attribute=f'{self.job_type}_job["{event}"]["reposts"]',
+                        new_value=reposts,
+                    )
+                i += 1
+
+            elif (
+                s.name != "pending"
+                and s.name != "running"
+                and s.name in ("failed", "unknown")
+            ):
+                pass
+            elif s.name in ["pending", "running"]:
+                if verbose:
+                    self.print(
+                        f"Status = {s.name}, event: {event} "
+                        f"for smoothing job {_i}/{len(status)}"
+                    )
+                if s.name == "pending":
+                    pending += 1
+                elif s.name == "running":
+                    running += 1
+            elif s.name == "cancelled":
+                self.print(f"Job cancelled for event {event}")
+
+            else:
+                warnings.warn(
+                    f"Inversionson does not recognise job status:  {status}",
+                    InversionsonWarning,
+                )
         if verbose:
             if running > 0:
                 self.print(f"{running}/{len(status)} of jobs running: {event}")
@@ -233,8 +241,7 @@ class RemoteJobListener(object):
             f"Checking Jobs for {self.job_type}:", line_above=True, emoji_alias=":ear:"
         )
         for event in tqdm(
-            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True),
-                leave=False
+            events_left, desc=emoji.emojize(":ear: | ", use_aliases=True), leave=False
         ):
             if job_dict[event]["retrieved"]:
                 self.events_already_retrieved.append(event)
@@ -284,17 +291,7 @@ class RemoteJobListener(object):
 
         if events is None:
             events = self.events
-        if not smooth_individual:
-            if job_dict["retrieved"]:
-                self.events_already_retrieved = events
-                finished += 1
-            else:
-                reposts = job_dict["reposts"]
-                status = self.__check_status_of_job_array(None, reposts)
-                if status == "finished":
-                    self.events_retrieved_now = events
-                    finished += 1
-        else:
+        if smooth_individual:
             events_left = list(set(events) - set(self.events_already_retrieved))
             finished = len(self.events) - len(events_left)
             self.print(
@@ -316,3 +313,12 @@ class RemoteJobListener(object):
             self.comm.project.update_iteration_toml()
             self.print("\n\n ============= Report ================= \n\n")
             self.print(f"{finished}/{len(events)} jobs fully finished \n")
+        elif job_dict["retrieved"]:
+            self.events_already_retrieved = events
+            finished += 1
+        else:
+            reposts = job_dict["reposts"]
+            status = self.__check_status_of_job_array(None, reposts)
+            if status == "finished":
+                self.events_retrieved_now = events
+                finished += 1

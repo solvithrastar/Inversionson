@@ -29,6 +29,7 @@ from ..optimizers.optson import OptsonLink
 
 class ProjectComponent(Component):
     _optimizer = None  # Optimizer object
+
     def __init__(self, information_dict: dict):
         """
         Initiate everything to make it work correctly. Make sure that
@@ -48,7 +49,6 @@ class ProjectComponent(Component):
         self.simulation_time_step = False
         # Attempt to get the simulation timestep immediately if it exists.
         self.get_simulation_time_step()
-
 
     def print(
         self,
@@ -79,9 +79,8 @@ class ProjectComponent(Component):
         ) as fh:
             config_dict = toml.load(fh)
 
-        simulation_info = {}
         solver_settings = config_dict["simulation_settings"]
-        simulation_info["start_time"] = solver_settings["start_time_in_s"]
+        simulation_info = {"start_time": solver_settings["start_time_in_s"]}
         simulation_info["number_of_time_steps"] = int(
             round(
                 (solver_settings["end_time_in_s"] - simulation_info["start_time"])
@@ -123,7 +122,9 @@ class ProjectComponent(Component):
                 self._optimizer = OptsonLink(comm=self.comm)
 
             else:
-                raise InversionsonError(f"Optimization method {self.optimizer} not defined")
+                raise InversionsonError(
+                    f"Optimization method {self.optimizer} not defined"
+                )
         return self._optimizer
 
     def _validate_inversion_project(self):
@@ -303,26 +304,25 @@ class ProjectComponent(Component):
                 raise InversionsonError(
                     "We need information on whether you use topography " "in your mesh."
                 )
-            else:
-                if "use" not in self.info["Meshing"]["topography"].keys():
+            if "use" not in self.info["Meshing"]["topography"].keys():
+                raise InversionsonError(
+                    "We need a boolean value telling us if you use "
+                    "topography in your mesh. \n"
+                    "If True, we need file and variable name"
+                )
+            if self.info["Meshing"]["topography"]["use"]:
+                if len(self.info["Meshing"]["topography"]["file"]) == 0:
                     raise InversionsonError(
-                        "We need a boolean value telling us if you use "
-                        "topography in your mesh. \n"
-                        "If True, we need file and variable name"
+                        "Please specify path to your topography file.\n"
+                        "Key: Meshing.topography.file"
                     )
-                if self.info["Meshing"]["topography"]["use"]:
-                    if len(self.info["Meshing"]["topography"]["file"]) == 0:
-                        raise InversionsonError(
-                            "Please specify path to your topography file.\n"
-                            "Key: Meshing.topography.file"
-                        )
-                    if len(self.info["Meshing"]["topography"]["variable"]) == 0:
-                        raise InversionsonError(
-                            "Please specify path to your topography variable "
-                            "name. You can find it by opening the file in "
-                            "ParaView \n"
-                            "Key: Meshing.topography.variable"
-                        )
+                if len(self.info["Meshing"]["topography"]["variable"]) == 0:
+                    raise InversionsonError(
+                        "Please specify path to your topography variable "
+                        "name. You can find it by opening the file in "
+                        "ParaView \n"
+                        "Key: Meshing.topography.variable"
+                    )
         if "use" not in self.info["Meshing"]["ocean_loading"].keys():
             raise InversionsonError(
                 "We need a boolean value telling us if you use "
@@ -330,31 +330,33 @@ class ProjectComponent(Component):
                 "If True, we need file and variable name"
             )
         if self.info["Meshing"]["ocean_loading"]["use"]:
-            if len(self.info["Meshing"]["ocean_loading"]["file"]) == 0:
-                if self.info["meshes"] == "multi-mesh":
-                    raise InversionsonError(
-                        "Please specify path to your bathymetry file.\n"
-                        "Key: Meshing.ocean_loading.file"
-                    )
-            if len(self.info["Meshing"]["ocean_loading"]["variable"]) == 0:
-                if self.info["meshes"] == "multi-mesh":
-                    raise InversionsonError(
-                        "Please specify path to your bathymetry variable "
-                        "name. You can find it by opening the file in "
-                        "ParaView \n"
-                        "Key: Meshing.ocean_loading.variable"
-                    )
+            if (
+                len(self.info["Meshing"]["ocean_loading"]["file"]) == 0
+                and self.info["meshes"] == "multi-mesh"
+            ):
+                raise InversionsonError(
+                    "Please specify path to your bathymetry file.\n"
+                    "Key: Meshing.ocean_loading.file"
+                )
+            if (
+                len(self.info["Meshing"]["ocean_loading"]["variable"]) == 0
+                and self.info["meshes"] == "multi-mesh"
+            ):
+                raise InversionsonError(
+                    "Please specify path to your bathymetry variable "
+                    "name. You can find it by opening the file in "
+                    "ParaView \n"
+                    "Key: Meshing.ocean_loading.variable"
+                )
 
-        # Lasif
         if "lasif_root" not in self.info.keys():
             raise InversionsonError(
                 "Information on lasif_project is missing from information. "
                 "Key: lasif_root"
             )
-        else:
-            folder = pathlib.Path(self.info["lasif_root"])
-            if not (folder / "lasif_config.toml").exists():
-                raise InversionsonError("Lasif project not initialized")
+        folder = pathlib.Path(self.info["lasif_root"])
+        if not (folder / "lasif_config.toml").exists():
+            raise InversionsonError("Lasif project not initialized")
 
         # Simulation parameters:
         if "end_time" not in self.simulation_dict.keys():
@@ -379,12 +381,11 @@ class ProjectComponent(Component):
         if (
             self.info["inversion_monitoring"]["iterations_between_validation_checks"]
             != 0
-        ):
-            if len(self.info["inversion_monitoring"]["validation_dataset"]) == 0:
-                raise InversionsonError(
-                    "You need to specify a validation dataset if you want"
-                    " to check it regularly."
-                )
+        ) and len(self.info["inversion_monitoring"]["validation_dataset"]) == 0:
+            raise InversionsonError(
+                "You need to specify a validation dataset if you want"
+                " to check it regularly."
+            )
 
     def __setup_components(self):
         """
@@ -409,12 +410,12 @@ class ProjectComponent(Component):
         :param parameters: parameters to be arranged
         :type parameters: list
         """
-        case_tti_inv = set(["VSV", "VSH", "VPV", "VPH", "RHO"])
-        case_tti_mod = set(["VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"])
-        case_iso_mod = set(["QKAPPA", "QMU", "VP", "VS", "RHO"])
-        case_iso_inv = set(["VP", "VS"])
-        case_iso_inv_dens = set(["VP", "VS", "RHO"])
-        case_tti_inv_norho = set(["VSV", "VSH", "VPV", "VPH"])
+        case_tti_inv = {"VSV", "VSH", "VPV", "VPH", "RHO"}
+        case_tti_mod = {"VSV", "VSH", "VPV", "VPH", "RHO", "QKAPPA", "QMU", "ETA"}
+        case_iso_mod = {"QKAPPA", "QMU", "VP", "VS", "RHO"}
+        case_iso_inv = {"VP", "VS"}
+        case_iso_inv_dens = {"VP", "VS", "RHO"}
+        case_tti_inv_norho = {"VSV", "VSH", "VPV", "VPH"}
 
         if set(parameters) == case_tti_inv:
             parameters = ["VPV", "VPH", "VSV", "VSH", "RHO"]
@@ -466,7 +467,7 @@ class ProjectComponent(Component):
         self.lasif_root = pathlib.Path(self.info["lasif_root"])
         self.inversion_mode = "mini-batch"
         self.meshes = self.info["meshes"]
-        self.remote_interp = True if self.meshes == "multi-mesh" else False
+        self.remote_interp = self.meshes == "multi-mesh"
         self.optimizer = self.info["optimizer"].lower()
         self.elem_per_quarter = self.info["Meshing"]["elements_per_azimuthal_quarter"]
         self.elem_per_wavelength = self.info["Meshing"]["elements_per_wavelength"]
@@ -505,7 +506,9 @@ class ProjectComponent(Component):
         self.hpc_processing = self.info["HPC"]["processing"]["use"]
         self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
         self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
-        self.remote_conda_source_location = self.info["HPC"]["remote_conda_source_location"]
+        self.remote_conda_source_location = self.info["HPC"][
+            "remote_conda_source_location"
+        ]
         self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
         self.remote_windows_dir = self.remote_inversionson_dir / "WINDOWS"
         self.remote_misfits_dir = self.remote_inversionson_dir / "MISFITS"
@@ -514,7 +517,9 @@ class ProjectComponent(Component):
         self.val_it_interval = self.info["inversion_monitoring"][
             "iterations_between_validation_checks"
         ]
-        self.use_model_averaging = self.info["inversion_monitoring"]["use_model_averaging"]
+        self.use_model_averaging = self.info["inversion_monitoring"][
+            "use_model_averaging"
+        ]
         self.validation_dataset = self.info["inversion_monitoring"][
             "validation_dataset"
         ]
@@ -538,11 +543,9 @@ class ProjectComponent(Component):
         )
         self.smoothing_timestep = optimizer.smoothing_timestep
 
-        if self.meshes == "multi-mesh" or self.remote_data_processing:
-            self.prepare_forward = True
-        else:
-            self.prepare_forward = False
-
+        self.prepare_forward = bool(
+            self.meshes == "multi-mesh" or self.remote_data_processing
+        )
         if not first:
             self.current_iteration = optimizer.iteration_name
             self.print(
@@ -566,7 +569,7 @@ class ProjectComponent(Component):
         :type iteration: str
         """
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml"
+            self.paths["iteration_tomls"], f"{iteration}.toml"
         )
 
         if os.path.exists(iteration_toml):
@@ -606,7 +609,7 @@ class ProjectComponent(Component):
                 "job_info": jobs,
             }
             if not self.is_validation_event(event):
-                it_dict["events"][str(_i)]["misfit"] = float(0.0)
+                it_dict["events"][str(_i)]["misfit"] = 0.0
                 it_dict["events"][str(_i)]["usage_updated"] = False
 
         with open(iteration_toml, "w") as fh:
@@ -649,7 +652,7 @@ class ProjectComponent(Component):
             iteration = self.current_iteration
 
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml"
+            self.paths["iteration_tomls"], f"{iteration}.toml"
         )
         if not os.path.exists(iteration_toml):
             raise InversionsonError(
@@ -667,7 +670,7 @@ class ProjectComponent(Component):
                 jobs["prepare_forward"] = self.prepare_forward_job[event]
 
             if self.remote_interp and not self.is_validation_event(event):
-                    jobs["gradient_interp"] = self.gradient_interp_job[event]
+                jobs["gradient_interp"] = self.gradient_interp_job[event]
             if self.hpc_processing and not self.is_validation_event(event):
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
 
@@ -694,7 +697,7 @@ class ProjectComponent(Component):
             iteration = optimizer.iteration_name
 
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml"
+            self.paths["iteration_tomls"], f"{iteration}.toml"
         )
         if not os.path.exists(iteration_toml):
             raise InversionsonError(f"No toml file exists for iteration: {iteration}")
@@ -704,8 +707,9 @@ class ProjectComponent(Component):
         self.iteration_name = it_dict["name"]
         self.current_iteration = self.iteration_name
         self.events_in_iteration = self.comm.lasif.list_events(iteration=iteration)
-        self.non_val_events_in_iteration = list(set(self.events_in_iteration) -
-                                                 set(self.validation_dataset))
+        self.non_val_events_in_iteration = list(
+            set(self.events_in_iteration) - set(self.validation_dataset)
+        )
         self.adjoint_job = {}
         self.misfits = {}
         self.updated = {}
@@ -726,14 +730,13 @@ class ProjectComponent(Component):
                 ]
             self.forward_job[event] = it_dict["events"][str(_i)]["job_info"]["forward"]
             if self.prepare_forward:
-                self.prepare_forward_job[event] = it_dict["events"][str(_i)]["job_info"][
-                    "prepare_forward"
-                ]
-            if self.remote_interp:
-                if not self.is_validation_event(event):
-                    self.gradient_interp_job[event] = it_dict["events"][str(_i)][
-                        "job_info"
-                    ]["gradient_interp"]
+                self.prepare_forward_job[event] = it_dict["events"][str(_i)][
+                    "job_info"
+                ]["prepare_forward"]
+            if self.remote_interp and not self.is_validation_event(event):
+                self.gradient_interp_job[event] = it_dict["events"][str(_i)][
+                    "job_info"
+                ]["gradient_interp"]
             if self.hpc_processing and not self.is_validation_event(event):
                 self.hpc_processing_job[event] = it_dict["events"][str(_i)]["job_info"][
                     "hpc_processing"
@@ -749,7 +752,7 @@ class ProjectComponent(Component):
         :rtype: dict
         """
         iteration_toml = os.path.join(
-            self.paths["iteration_tomls"], iteration + ".toml"
+            self.paths["iteration_tomls"], f"{iteration}.toml"
         )
         if not os.path.exists(iteration_toml):
             raise InversionsonError(f"No toml file exists for iteration: {iteration}")
@@ -759,10 +762,7 @@ class ProjectComponent(Component):
         return it_dict
 
     def is_validation_event(self, event: str):
-        if event in self.validation_dataset:
-            return True
-        else:
-            return False
+        return event in self.validation_dataset
 
     def get_key_number_for_event(self, event: str, iteration: str = "current") -> str:
         """
@@ -790,8 +790,7 @@ class ProjectComponent(Component):
         from an stdout file.
         """
 
-        misc_folder = os.path.join(
-            self.comm.project.paths["documentation"], "MISC")
+        misc_folder = os.path.join(self.comm.project.paths["documentation"], "MISC")
         if not os.path.exists(misc_folder):
             os.mkdir(misc_folder)
 
@@ -799,7 +798,8 @@ class ProjectComponent(Component):
 
         if not os.path.exists(timestep_file) and event is not None:
             local_stdout = os.path.join(
-                self.comm.project.paths["documentation"], "stdout_for_timestep_test")
+                self.comm.project.paths["documentation"], "stdout_for_timestep_test"
+            )
             hpc_cluster = sapi.get_site(self.comm.project.site_name)
             forward_job = self.comm.salvus_flow.get_job(event=event, sim_type="forward")
             stdout = forward_job.path / "stdout"
@@ -822,16 +822,16 @@ class ProjectComponent(Component):
                             toml.dump(time_step_dict, fh)
                     self.simulation_time_step = time_step
                     simulation_dict_folder = (
-                            self.comm.lasif.lasif_comm.project.paths["salvus_files"]
-                            / f"SIMULATION_DICTS")
+                        self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                        / "SIMULATION_DICTS"
+                    )
                     # Clear cache of simulation dicts with the old checkpointing settings.
                     shutil.rmtree(simulation_dict_folder)
                 except Exception as e:
                     print(e)
                 self.simulation_time_step = False
+        elif os.path.exists(timestep_file):
+            time_dict = toml.load(timestep_file)
+            self.simulation_time_step = time_dict["time_step"]
         else:
-            if os.path.exists(timestep_file):
-                time_dict = toml.load(timestep_file)
-                self.simulation_time_step = time_dict["time_step"]
-            else:
-                self.simulation_time_step = False
+            self.simulation_time_step = False

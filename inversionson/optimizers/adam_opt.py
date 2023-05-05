@@ -36,7 +36,7 @@ class AdamOpt(Optimize):
             os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
         ),
         "file_templates",
-        "adam_opt_config.toml"
+        "adam_opt_config.toml",
     )
 
     def __init__(self, comm):
@@ -56,7 +56,7 @@ class AdamOpt(Optimize):
     def task_path(self):
         task_files = glob.glob(f"{self.task_dir}/task_*_*")
         if len(task_files) <= 1:
-            return self.task_dir / f"task_00000_00.toml"
+            return self.task_dir / "task_00000_00.toml"
         iteration_numbers = [int(Path(x).stem.split("_")[-2]) for x in task_files]
         task_nums = glob.glob(f"{self.task_dir}/task_{max(iteration_numbers):05d}_*")
         if len(task_nums) <= 1:
@@ -100,7 +100,9 @@ class AdamOpt(Optimize):
 
     @property
     def smooth_gradient_path(self):
-        return self.smoothed_grad_dir / f"smooth_gradient_{self.iteration_number:05d}.h5"
+        return (
+            self.smoothed_grad_dir / f"smooth_gradient_{self.iteration_number:05d}.h5"
+        )
 
     @property
     def relative_perturbation_path(self):
@@ -143,8 +145,7 @@ class AdamOpt(Optimize):
         ]
 
         if "reference_model_abs_smoothing" in config.keys():
-            self.reference_model_abs_smoothing = \
-                config["reference_model_abs_smoothing"]
+            self.reference_model_abs_smoothing = config["reference_model_abs_smoothing"]
         else:
             self.reference_model_abs_smoothing = None
 
@@ -421,7 +422,9 @@ class AdamOpt(Optimize):
             update_scaling_fac_peak = max_raw_update / max_upd
 
             update_scaling_fac = min(
-                update_scaling_fac_norm, update_scaling_fac_alpha, update_scaling_fac_peak
+                update_scaling_fac_norm,
+                update_scaling_fac_alpha,
+                update_scaling_fac_peak,
             )
             print(
                 "Update scaling factor norm:",
@@ -464,7 +467,9 @@ class AdamOpt(Optimize):
 
             # Define reference model as perturbations with respect to initial model.
             # Let's say this is 10% difference to initial
-            theta_damping_ref[theta_0 != 0] = theta_damping_ref[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+            theta_damping_ref[theta_0 != 0] = (
+                theta_damping_ref[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+            )
 
             # This becomes -0.1 (-10%)
             # Difference to damping reference in absolute terms, but in a relative sense
@@ -472,15 +477,15 @@ class AdamOpt(Optimize):
 
             # And subtracting that becomes the decay factor times -0.1, to increase velocities
             theta_new[theta_0 != 0] = (
-                    theta_prev[theta_0 != 0]
-                    - update[theta_0 != 0]
-                    - self.perturbation_decay * theta_damping_ref[theta_0 != 0]
+                theta_prev[theta_0 != 0]
+                - update[theta_0 != 0]
+                - self.perturbation_decay * theta_damping_ref[theta_0 != 0]
             )
         else:
             theta_new[theta_0 != 0] = (
-                    theta_prev[theta_0 != 0]
-                    - update[theta_0 != 0]
-                    - self.perturbation_decay * theta_prev[theta_0 != 0]
+                theta_prev[theta_0 != 0]
+                - update[theta_0 != 0]
+                - self.perturbation_decay * theta_prev[theta_0 != 0]
             )
 
         # Remove normalization from updated model and write physical model
@@ -489,10 +494,7 @@ class AdamOpt(Optimize):
             self.model_path,
             self.tmp_model_path,
         )
-        self.set_h5_data(
-            self.tmp_model_path,
-            theta_physical, create_xdmf=False
-        )
+        self.set_h5_data(self.tmp_model_path, theta_physical, create_xdmf=False)
 
     def _finalize_iteration(self):
         """
@@ -555,7 +557,7 @@ class AdamOpt(Optimize):
                 )
 
                 theta_prev[theta_0 != 0] = (
-                        theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
+                    theta_prev[theta_0 != 0] / theta_0[theta_0 != 0] - 1
                 )
                 self.set_h5_data(model_to_smooth, theta_prev)
 
@@ -593,16 +595,15 @@ class AdamOpt(Optimize):
                 "output_location": str(self.smooth_update_path),
             }
 
-        if len(tasks.keys()) > 0:
-            reg_helper = RegularizationHelper(
-                comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
-            )
-            reg_helper.monitor_tasks()
-        else:
+        if len(tasks.keys()) <= 0:
             raise InversionsonError(
                 "We require some sort of smoothing in Adam Optimization"
             )
-        
+
+        reg_helper = RegularizationHelper(
+            comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
+        )
+        reg_helper.monitor_tasks()
         # Write XDFMs
         if max(self.update_smoothing_length) > 0.0:
             write_xdmf(self.smooth_update_path)
@@ -622,7 +623,9 @@ class AdamOpt(Optimize):
         if max(self.update_smoothing_length) == 0.0:
             self.dispatch_model_smoothing()
 
-        it_listen = IterationListener(self.comm, events=self.comm.project.events_in_iteration)
+        it_listen = IterationListener(
+            self.comm, events=self.comm.project.events_in_iteration
+        )
         it_listen.listen()
 
         self.task_dict["forward_submitted"] = True
@@ -653,13 +656,14 @@ class AdamOpt(Optimize):
             self.print("Summing already done")
 
         if max(self.gradient_smoothing_length) > 0.0:
-            tasks = {}
-            tasks["smooth_raw_gradient"] = {
-                "reference_model": str(self.comm.lasif.get_master_model()),
-                "model_to_smooth": str(self.raw_gradient_path),
-                "smoothing_lengths": self.gradient_smoothing_length,
-                "smoothing_parameters": self.parameters,
-                "output_location": str(self.smooth_gradient_path),
+            tasks = {
+                "smooth_raw_gradient": {
+                    "reference_model": str(self.comm.lasif.get_master_model()),
+                    "model_to_smooth": str(self.raw_gradient_path),
+                    "smoothing_lengths": self.gradient_smoothing_length,
+                    "smoothing_parameters": self.parameters,
+                    "output_location": str(self.smooth_gradient_path),
+                }
             }
             reg_helper = RegularizationHelper(
                 comm=self.comm, iteration_name=self.iteration_name, tasks=tasks
@@ -705,17 +709,16 @@ class AdamOpt(Optimize):
         self.print(f"Current task is: {task_name}", line_above=True)
 
         if task_name == "prepare_iteration":
-            if not self.task_dict["finished"]:
-                if self.comm.lasif.has_iteration(self.iteration_name):
-                    self.print(
-                        f"Iteration {self.iteration_name} exists. Will load its attributes"
-                    )
-                    self.comm.project.get_iteration_attributes()
-                    self.finish_task()
-                else:
-                    self.prepare_iteration()
-            else:
+            if self.task_dict["finished"]:
                 self.print("Iteration already prepared")
+            elif self.comm.lasif.has_iteration(self.iteration_name):
+                self.print(
+                    f"Iteration {self.iteration_name} exists. Will load its attributes"
+                )
+                self.comm.project.get_iteration_attributes()
+                self.finish_task()
+            else:
+                self.prepare_iteration()
         elif task_name == "compute_gradient":
             if not self.task_dict["finished"]:
                 self.comm.project.get_iteration_attributes()
@@ -732,11 +735,10 @@ class AdamOpt(Optimize):
             raise InversionsonError(f"Task {task_name} is not recognized by AdamOpt")
 
     def get_new_task(self):
-        if self.task_dict["finished"]:
-            self._write_new_task()
-            self.print(f"New task is: {self.task_dict['task']}", line_above=True)
-        else:
+        if not self.task_dict["finished"]:
             raise InversionsonError(f"Task: {self.task_dict['task']} is not finished.")
+        self._write_new_task()
+        self.print(f"New task is: {self.task_dict['task']}", line_above=True)
 
     def finish_task(self):
         paths = ["raw_update_path", "model", "raw_gradient_path"]
@@ -758,23 +760,27 @@ class AdamOpt(Optimize):
             "validated:",
         ]
         for path in paths:
-            if path in self.task_dict.keys():
-                if not os.path.exists(self.task_dict[path]):
-                    raise InversionsonError(
-                        f"Trying to finish task but it can't find {self.task_dict[path]}"
-                    )
+            if path in self.task_dict.keys() and not os.path.exists(
+                self.task_dict[path]
+            ):
+                raise InversionsonError(
+                    f"Trying to finish task but it can't find {self.task_dict[path]}"
+                )
 
         for complete_check in complete_checks:
-            if complete_check in self.task_dict.keys():
-                if not self.task_dict[complete_check]:
-                    raise InversionsonError(
-                        f"Trying to finish task but {complete_check} is not completed"
-                    )
+            if (
+                complete_check in self.task_dict.keys()
+                and not self.task_dict[complete_check]
+            ):
+                raise InversionsonError(
+                    f"Trying to finish task but {complete_check} is not completed"
+                )
         self.task_dict["finished"] = True
         if self.task_dict["task"] == "update_model":
             self._update_task_file()
             target_location = self._get_path_for_iteration(
-                    self.iteration_number + 1, self.model_path)
+                self.iteration_number + 1, self.model_path
+            )
             # Moving the new model into its place, moves the iteration property to the next one.
             shutil.move(
                 self.tmp_model_path,

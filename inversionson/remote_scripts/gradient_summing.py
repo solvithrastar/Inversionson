@@ -6,8 +6,9 @@ import numpy as np
 import os
 
 
-def sum_gradient(gradients: list, output_gradient: str,
-                 parameters: list, batch_average=False) -> list:
+def sum_gradient(
+    gradients: list, output_gradient: str, parameters: list, batch_average=False
+) -> list:
     """
     Sum a list of gradients. This function is called on the remote cluster,
     and expects to be able to use h5py and Python.
@@ -36,33 +37,28 @@ def sum_gradient(gradients: list, output_gradient: str,
             # Get dimension indices of relevant parameters
             # These should be constant for all gradients, so this is only done
             # once.
-            dim_labels = (
-                summed_gradient_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-            )
-            if not type(dim_labels) == str:
+            dim_labels = summed_gradient_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+            if type(dim_labels) != str:
                 dim_labels = dim_labels.decode()
             dim_labels = dim_labels.replace(" ", "").split("|")
-            indices = []
-            for param in parameters:
-                indices.append(dim_labels.index(param))
-
-            sorted_indices = indices.copy()
-            sorted_indices.sort()
+            indices = [dim_labels.index(param) for param in parameters]
+            sorted_indices = sorted(indices)
             # go to next gradient
             first = False
             summed_gradient_data_copy = summed_gradient_data[:, :, :].copy()
             grad_dat = summed_gradient_data_copy[:, sorted_indices, :]
-            gradient_norms.append(np.sqrt(np.sum(grad_dat ** 2)))
+            gradient_norms.append(np.sqrt(np.sum(grad_dat**2)))
             continue
         # This assumes the indices remain the same.
         # open file, read_data, add to summed gradient and close.
         gradient = h5py.File(grad_file, "r+")
         data = gradient["MODEL/data"]
         grad_dat = data[:, sorted_indices, :].copy()
-        gradient_norms.append(np.sqrt(np.sum(grad_dat ** 2)))
+        gradient_norms.append(np.sqrt(np.sum(grad_dat**2)))
         for i in indices:
-            summed_gradient_data_copy[:, i, :] = \
+            summed_gradient_data_copy[:, i, :] = (
                 data[:, i, :] + summed_gradient_data_copy[:, i, :]
+            )
 
         gradient.close()
 
@@ -104,13 +100,17 @@ if __name__ == "__main__":
     if os.path.exists(info["output_gradient"]):
         os.remove(info["output_gradient"])
 
-    gradient_norms = sum_gradient(info["filenames"], info["output_gradient"],
-                                  info["parameters"], info["batch_average"])
+    gradient_norms = sum_gradient(
+        info["filenames"],
+        info["output_gradient"],
+        info["parameters"],
+        info["batch_average"],
+    )
 
-    gradient_norm_dict = {}
-    for i in range(len(info["events_list"])):
-        gradient_norm_dict[info["events_list"][i]] = gradient_norms[i]
-
+    gradient_norm_dict = {
+        info["events_list"][i]: gradient_norms[i]
+        for i in range(len(info["events_list"]))
+    }
     if info["gradient_norms_path"]:
         with open(info["gradient_norms_path"], "w") as fh:
             toml.dump(gradient_norm_dict, fh)

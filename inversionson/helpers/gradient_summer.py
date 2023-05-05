@@ -70,7 +70,7 @@ class GradientSummer(object):
         """
         gradient_paths = []
 
-        iteration = iteration if iteration else self.comm.project.current_iteration
+        iteration = iteration or self.comm.project.current_iteration
 
         for event in events:
             if self.comm.project.meshes == "multi-mesh":
@@ -115,7 +115,7 @@ class GradientSummer(object):
             batch_average=batch_average,
         )
 
-        toml_filename = f"gradient_sum.toml"
+        toml_filename = "gradient_sum.toml"
         with open(toml_filename, "w") as fh:
             toml.dump(info, fh)
 
@@ -136,11 +136,9 @@ class GradientSummer(object):
             all_norms_path = os.path.join(
                 self.optimizer.gradient_norm_dir, "all_norms.toml"
             )
-            if os.path.exists(all_norms_path):
-                norm_dict = toml.load(all_norms_path)
-            else:
-                norm_dict = {}
-
+            norm_dict = (
+                toml.load(all_norms_path) if os.path.exists(all_norms_path) else {}
+            )
             norm_iter_dict = toml.load(norm_dict_toml)
             for event, norm in norm_iter_dict.items():
                 norm_dict[event] = float(norm)
@@ -159,30 +157,30 @@ class GradientSummer(object):
 # to be doing this again, but keep it here in case we want to implement it
 # again.
 
-    # def sum_local_gradients(self):
-    #     from inversionson.utils import sum_gradients
-    #     events = self.comm.project.events_in_iteration
-    #     grad_mesh = self.comm.lasif.find_gradient(
-    #         iteration=self.comm.project.current_iteration,
-    #         event=None,
-    #         summed=True,
-    #         smooth=False,
-    #         just_give_path=True,
-    #     )
-    #     if os.path.exists(grad_mesh):
-    #         print("Gradient has already been summed. Moving on")
-    #         return
-    #
-    #     gradients = []
-    #     for event in events:
-    #         gradients.append(
-    #             self.comm.lasif.find_gradient(
-    #                 iteration=self.comm.project.current_iteration,
-    #                 event=event,
-    #                 summed=False,
-    #                 smooth=False,
-    #                 just_give_path=False,
-    #             )
-    #         )
-    #     shutil.copy(gradients[0], grad_mesh)
-    #     sum_gradients(mesh=grad_mesh, gradients=gradients)
+# def sum_local_gradients(self):
+#     from inversionson.utils import sum_gradients
+#     events = self.comm.project.events_in_iteration
+#     grad_mesh = self.comm.lasif.find_gradient(
+#         iteration=self.comm.project.current_iteration,
+#         event=None,
+#         summed=True,
+#         smooth=False,
+#         just_give_path=True,
+#     )
+#     if os.path.exists(grad_mesh):
+#         print("Gradient has already been summed. Moving on")
+#         return
+#
+#     gradients = []
+#     for event in events:
+#         gradients.append(
+#             self.comm.lasif.find_gradient(
+#                 iteration=self.comm.project.current_iteration,
+#                 event=event,
+#                 summed=False,
+#                 smooth=False,
+#                 just_give_path=False,
+#             )
+#         )
+#     shutil.copy(gradients[0], grad_mesh)
+#     sum_gradients(mesh=grad_mesh, gradients=gradients)

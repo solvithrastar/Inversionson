@@ -8,8 +8,7 @@ Cross correlation traveltime misfit.
 :license:
     BSD 3-Clause ("BSD New" or "BSD Simplified")
 """
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function, unicode_literals
 
 import numpy as np
 from obspy import Trace
@@ -48,26 +47,24 @@ def xcorr_shift(s, d, min_period):
     # the dt works if these are obspy traces, currently not sure
     shift = int(np.ceil(min_period / s.stats.delta))
     cc = crosscorr.correlate(s, d, shift=shift)
-    time_shift = (cc.argmax() - shift) * s.stats.delta
-    return time_shift
+    return (cc.argmax() - shift) * s.stats.delta
 
 
-def calculate_adjoint_source(observed, synthetic, window, min_period,
-                             max_period,
-                             adjoint_src, plot=False, taper=True,
-                             taper_ratio=0.15, taper_type="cosine",
-                             **kwargs):
+def calculate_adjoint_source(
+    observed,
+    synthetic,
+    window,
+    min_period,
+    max_period,
+    adjoint_src,
+    plot=False,
+    taper=True,
+    taper_ratio=0.15,
+    taper_type="cosine",
+    **kwargs
+):
 
-    ret_val = {}
-
-    if window:
-        if len(window) == 2:
-            weight = 1.0
-        else:
-            weight = window[2]
-    else:
-        weight = 1.0
-
+    weight = 1.0 if window and len(window) == 2 or not window else window[2]
     # Work on copies of the original data
     observed = observed.copy()
     synthetic = synthetic.copy()
@@ -79,9 +76,7 @@ def calculate_adjoint_source(observed, synthetic, window, min_period,
 
     misfit = 1 - CC / weight_2
 
-
-    ret_val["misfit"] = misfit
-
+    ret_val = {"misfit": misfit}
     # # Subsample accuracy time shift
     # time_shift = xcorr_shift(synthetic, observed, min_period)
     # if time_shift >= min_period / 2.0:
@@ -92,8 +87,9 @@ def calculate_adjoint_source(observed, synthetic, window, min_period,
     if adjoint_src:
         A = CC / ss
         adj = (observed.data - A * synthetic.data) / weight_2
-        adj_src = Trace(data=weight * adj *
-                        synthetic.stats.delta, header=observed.stats)
+        adj_src = Trace(
+            data=weight * adj * synthetic.stats.delta, header=observed.stats
+        )
         ret_val["adjoint_source"] = adj_src
 
     return ret_val

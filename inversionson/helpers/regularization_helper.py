@@ -32,10 +32,7 @@ class RegularizationHelper(object):
         self.comm = comm
         self.site_name = self.comm.project.smoothing_site_name
         self.iteration_name = iteration_name
-        if not optimizer:
-            self.optimizer = self.comm.project.get_optimizer()
-        else:
-            self.optimizer = optimizer
+        self.optimizer = optimizer or self.comm.project.get_optimizer()
         self.job_toml = (
             self.optimizer.regularization_dir / f"regularization_{iteration_name}.toml"
         )
@@ -69,14 +66,9 @@ class RegularizationHelper(object):
         """
         This function writes the tasks to file or updates the task file.
         """
-        if not os.path.exists(self.job_toml):
-            if tasks:
-                for task_dict in tasks.values():
-                    task_dict.update(self.base_dict)
-                with open(self.job_toml, "w") as fh:
-                    toml.dump(tasks, fh)
-
-        else:  # We add the tasks to the existing tasks if needed
+        if os.path.exists(
+            self.job_toml
+        ):  # We add the tasks to the existing tasks if needed
             existing_tasks = toml.load(self.job_toml)
             if tasks:
                 for task_name, task in tasks.items():
@@ -88,6 +80,12 @@ class RegularizationHelper(object):
                         existing_tasks[task_name].update(tasks[task_name])
                 with open(self.job_toml, "w") as fh:
                     toml.dump(existing_tasks, fh)
+
+        elif tasks:
+            for task_dict in tasks.values():
+                task_dict.update(self.base_dict)
+            with open(self.job_toml, "w") as fh:
+                toml.dump(tasks, fh)
 
     def dispatch_smoothing_tasks(self):
         dispatching_msg = True
@@ -132,7 +130,7 @@ class RegularizationHelper(object):
             )
             status = job.update_status(force_update=True)
             finished = True
-            for _i, s in enumerate(status):
+            for s in status:
                 if s.name != "finished":
                     finished = False
                 if s.name in ["unknown", "failed"]:
@@ -150,10 +148,7 @@ class RegularizationHelper(object):
                 self._write_tasks(self.tasks)
 
     def all_retrieved(self):
-        for task_dict in self.tasks.values():
-            if not task_dict["retrieved"]:
-                return False
-        return True
+        return all(task_dict["retrieved"] for task_dict in self.tasks.values())
 
     def monitor_tasks(self):
         if not self.tasks:

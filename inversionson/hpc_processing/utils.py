@@ -29,10 +29,10 @@ def elliptic_to_geocentric_latitude(
     -90.0
     """
     _f = (axis_a - axis_b) / axis_a
-    E_2 = 2 * _f - _f**2
     if abs(lat) < 1e-6 or abs(lat - 90) < 1e-6 or abs(lat + 90) < 1e-6:
         return lat
 
+    E_2 = 2 * _f - _f**2
     return math.degrees(math.atan((1 - E_2) * math.tan(math.radians(lat))))
 
 
@@ -58,26 +58,27 @@ def build_or_get_receiver_info(receiver_json_path, asdf_file_path):
             # build list of dicts
             all_recs = []
             for station in all_coords.keys():
-                rec = {}
                 net, sta = station.split(".")
                 lat = all_coords[station]["latitude"]
                 lon = all_coords[station]["longitude"]
 
-                rec["latitude"] = elliptic_to_geocentric_latitude(lat)
-                rec["longitude"] = lon
+                rec = {
+                    "latitude": elliptic_to_geocentric_latitude(lat),
+                    "longitude": lon,
+                }
                 rec["network-code"] = net
                 rec["station-code"] = sta
                 all_recs.append(rec)
 
         with open(receiver_json_path, "w") as outfile:
             json.dump(all_recs, outfile)
-        return all_recs
     else:
         # Opening JSON file
         with open(receiver_json_path, "r") as openfile:
             # Reading from json file
             all_recs = json.load(openfile)
-        return all_recs
+
+    return all_recs
 
 
 def select_component_from_stream(st: obspy.core.Stream, component: str):
@@ -96,9 +97,9 @@ def select_component_from_stream(st: obspy.core.Stream, component: str):
     component = component.upper()
     component = [tr for tr in st if tr.stats.channel[-1].upper() == component]
     if not component:
-        raise Exception("Component %s not found in Stream." % component)
+        raise Exception(f"Component {component} not found in Stream.")
     elif len(component) > 1:
         raise Exception(
-            "More than 1 Trace with component %s found " "in Stream." % component
+            f"More than 1 Trace with component {component} found in Stream."
         )
     return component[0]

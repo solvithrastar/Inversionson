@@ -197,7 +197,7 @@ class Optimize(object):
     def find_iteration_numbers(self):
         models = glob.glob(f"{self.model_dir}/*.h5")
         print(models)
-        if len(models) == 0:
+        if not models:
             return [0]
         iteration_numbers = []
         for model in models:
@@ -460,12 +460,10 @@ class Optimize(object):
             # These should be constant for all gradients, so this is only done
             # once.
             dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-            if not type(dim_labels) == str:
+            if type(dim_labels) != str:
                 dim_labels = dim_labels.decode()
             dim_labels = dim_labels.replace(" ", "").split("|")
-            indices = []
-            for param in parameters:
-                indices.append(dim_labels.index(param))
+            indices = [dim_labels.index(param) for param in parameters]
         return indices
 
     def get_h5_data(self, filename, parameters=None):
@@ -495,18 +493,16 @@ class Optimize(object):
         with h5py.File(filename, "r") as h5:
             layer = h5["MODEL/element_data"][:, layer_idx]
             layer_mask = np.where(layer < 1.1, False, True).squeeze()
-            points = h5["MODEL/coordinates"][:, :, :][layer_mask]
-            return points
+            return h5["MODEL/coordinates"][:, :, :][layer_mask]
 
     def get_flat_non_duplicated_data(
         self, parameters: list, filename: str, pt_idcs: np.array
     ):
-        flat_pars = []
         all_data = self.get_h5_data(filename, parameters=parameters)
-        for idx, param in enumerate(parameters):
-            # first flatten and then select unique values...
-            flat_pars.append(all_data[:, idx, :].flatten()[pt_idcs])
-        return flat_pars
+        return [
+            all_data[:, idx, :].flatten()[pt_idcs]
+            for idx, param in enumerate(parameters)
+        ]
 
     def set_h5_data(self, filename, data, create_xdmf=True, parameters=None):
         """Writes the data with shape [:, indices :]. Requires existing file."""
@@ -545,12 +541,10 @@ class Optimize(object):
         with h5py.File(filename, "r") as h5:
             h5_data = h5["MODEL/element_data"]
             dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-            if not type(dim_labels) == str:
+            if type(dim_labels) != str:
                 dim_labels = dim_labels.decode()
             dim_labels = dim_labels.replace(" ", "").split("|")
-            indices = []
-            for param in parameters:
-                indices.append(dim_labels.index(param))
+            indices = [dim_labels.index(param) for param in parameters]
         return indices
 
     def get_tensor_order(self, filename):

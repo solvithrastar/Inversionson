@@ -107,15 +107,12 @@ def generic_adjoint_source_plot(
     plt.legend(fancybox=True, framealpha=0.5)
 
     plt.subplot(212)
-    plt.plot(
-        time, adjoint_source, color="#2f8d5b", lw=2, label="Adjoint Source"
-    )
+    plt.plot(time, adjoint_source, color="#2f8d5b", lw=2, label="Adjoint Source")
     plt.grid()
     plt.legend(fancybox=True, framealpha=0.5)
 
     plt.suptitle(
-        "%s Adjoint Source with a Misfit of %.3g"
-        % (adjoint_source_name, misfit)
+        "%s Adjoint Source with a Misfit of %.3g" % (adjoint_source_name, misfit)
     )
 
 
@@ -180,7 +177,7 @@ def get_dispersed_wavetrain(
     t = matlab_range(t_min, t_max, dt)
 
     # Define the dispersion curves.
-    c = a - b * w - c * w ** 2
+    c = a - b * w - c * w**2
 
     # Time integration
     u = np.zeros(len(t))
@@ -212,8 +209,8 @@ def cross_correlation(f, g):
     N = len(cc)
     cc_new = np.zeros(N)
 
-    cc_new[0 : (N + 1) // 2] = cc[(N + 1) // 2 - 1 : N]
-    cc_new[(N + 1) // 2 : N] = cc[0 : (N + 1) // 2 - 1]
+    cc_new[: (N + 1) // 2] = cc[(N + 1) // 2 - 1 : N]
+    cc_new[(N + 1) // 2 : N] = cc[: (N + 1) // 2 - 1]
     return cc_new
 
 
@@ -226,8 +223,4 @@ def gaussian_window(y, width):
     :param width: float
     :param width: variance = (width ^ 2) / 2
     """
-    return (
-        1.0
-        / (np.pi * width ** 2) ** (0.25)
-        * np.exp(-0.5 * y ** 2 / width ** 2)
-    )
+    return 1.0 / (np.pi * width**2) ** (0.25) * np.exp(-0.5 * y**2 / width**2)

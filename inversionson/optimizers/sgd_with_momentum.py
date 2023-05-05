@@ -47,7 +47,7 @@ class SGDM(Optimize):
     def task_path(self):
         task_files = glob.glob(f"{self.task_dir}/task_*_*")
         if len(task_files) <= 1:
-            return self.task_dir / f"task_00000_00.toml"
+            return self.task_dir / "task_00000_00.toml"
         iteration_numbers = [int(Path(x).stem.split("_")[-2]) for x in task_files]
         task_nums = glob.glob(f"{self.task_dir}/task_{max(iteration_numbers):05d}_*")
         if len(task_nums) <= 1:
@@ -533,17 +533,16 @@ class SGDM(Optimize):
         self.print(f"Current task is: {task_name}", line_above=True)
 
         if task_name == "prepare_iteration":
-            if not self.task_dict["finished"]:
-                if self.comm.lasif.has_iteration(self.iteration_name):
-                    self.print(
-                        f"Iteration {self.iteration_name} exists. Will load its attributes"
-                    )
-                    self.comm.project.get_iteration_attributes()
-                    self.finish_task()
-                else:
-                    self.prepare_iteration()
-            else:
+            if self.task_dict["finished"]:
                 self.print("Iteration already prepared")
+            elif self.comm.lasif.has_iteration(self.iteration_name):
+                self.print(
+                    f"Iteration {self.iteration_name} exists. Will load its attributes"
+                )
+                self.comm.project.get_iteration_attributes()
+                self.finish_task()
+            else:
+                self.prepare_iteration()
         elif task_name == "compute_gradient":
             if not self.task_dict["finished"]:
                 self.comm.project.get_iteration_attributes()
@@ -560,11 +559,10 @@ class SGDM(Optimize):
             raise InversionsonError(f"Task {task_name} is not recognized by SGDM")
 
     def get_new_task(self):
-        if self.task_dict["finished"]:
-            self._write_new_task()
-            self.print(f"New task is: {self.task_dict['task']}", line_above=True)
-        else:
+        if not self.task_dict["finished"]:
             raise InversionsonError(f"Task: {self.task_dict['task']} is not finished.")
+        self._write_new_task()
+        self.print(f"New task is: {self.task_dict['task']}", line_above=True)
 
     def finish_task(self):
         paths = ["raw_update_path", "model", "smooth_update_path", "raw_gradient_path"]
@@ -580,18 +578,21 @@ class SGDM(Optimize):
             "validated:",
         ]
         for path in paths:
-            if path in self.task_dict.keys():
-                if not os.path.exists(self.task_dict[path]):
-                    raise InversionsonError(
-                        f"Trying to finish task but it can't find {self.task_dict[path]}"
-                    )
+            if path in self.task_dict.keys() and not os.path.exists(
+                self.task_dict[path]
+            ):
+                raise InversionsonError(
+                    f"Trying to finish task but it can't find {self.task_dict[path]}"
+                )
 
         for complete_check in complete_checks:
-            if complete_check in self.task_dict.keys():
-                if not self.task_dict[complete_check]:
-                    raise InversionsonError(
-                        f"Trying to finish task but {complete_check} is not completed"
-                    )
+            if (
+                complete_check in self.task_dict.keys()
+                and not self.task_dict[complete_check]
+            ):
+                raise InversionsonError(
+                    f"Trying to finish task but {complete_check} is not completed"
+                )
         self.task_dict["finished"] = True
         if self.task_dict["task"] == "update_model":
             self._update_task_file()

@@ -42,10 +42,10 @@ def write_xdmf(filename):
         dimension = h5["MODEL"]["coordinates"].shape[2]
         total_points = num_big_elements * nodes_per_element
         tensor_order = round(nodes_per_element ** (1 / dimension) - 1)
-        num_sub_elements = h5["TOPOLOGY"]["cells"].shape[0] * tensor_order ** 3
+        num_sub_elements = h5["TOPOLOGY"]["cells"].shape[0] * tensor_order**3
 
         dim_labels = h5["MODEL/data"].attrs.get("DIMENSION_LABELS")[1][1:-1]
-        if not type(dim_labels) == str:
+        if type(dim_labels) != str:
             dim_labels = dim_labels.decode()
         dim_labels = dim_labels.replace(" ", "").split("|")
 
@@ -54,26 +54,26 @@ def write_xdmf(filename):
         attribute_string = fh.read()
     all_attributes = ""
 
-    i = 0
     final_filename = filename.name
-    for attribute in dim_labels:
-        if not i == 0:
+    for i, attribute in enumerate(dim_labels):
+        if i != 0:
             all_attributes += "\n"
-        all_attributes += attribute_string.format(num_points=total_points,
-                                                  parameter=attribute,
-                                                  parameter_idx=i,
-                                                  num_elements=num_big_elements,
-                                                  nodes_per_element=nodes_per_element,
-                                                  num_parameters=len(dim_labels),
-                                                  filename=final_filename,
-                                                  )
-        i += 1
-
+        all_attributes += attribute_string.format(
+            num_points=total_points,
+            parameter=attribute,
+            parameter_idx=i,
+            num_elements=num_big_elements,
+            nodes_per_element=nodes_per_element,
+            num_parameters=len(dim_labels),
+            filename=final_filename,
+        )
     with open(BASE_XDMF_PATH, "r") as fh:
-        base_string = fh.read().format(number_of_sub_elements=num_sub_elements,
-                                       filename=final_filename,
-                                       num_points=total_points,
-                                       attributes=all_attributes)
+        base_string = fh.read().format(
+            number_of_sub_elements=num_sub_elements,
+            filename=final_filename,
+            num_points=total_points,
+            attributes=all_attributes,
+        )
 
     xdmf_filename = ".".join(final_filename.split(".")[:-1]) + ".xdmf"
     complete_xdmf_filename = filename.parent / xdmf_filename
@@ -105,14 +105,13 @@ def sleep_or_process(comm, color=None, emoji_alias=None):
     or sleeps if all are processed.
     """
     if (
-        not comm.project.remote_data_processing and
-        comm.project.random_event_processing
+        not comm.project.remote_data_processing
+        and comm.project.random_event_processing
         and comm.lasif.process_random_unprocessed_event()
     ):
         _print(
             comm,
-            f"Seems like there is nothing to do now "
-            f"I might as well process some random event.",
+            "Seems like there is nothing to do now I might as well process some random event.",
             emoji_alias=None,
         )
     else:
@@ -166,8 +165,7 @@ def find_parameters_in_dataset(dataset) -> list:
     :rtype: list
     """
     dims = dataset.attrs.get("DIMENSION_LABELS")[1].decode()
-    params = dims[2:-2].split("|").replace(" ", "")
-    return params
+    return dims[2:-2].split("|").replace(" ", "")
 
 
 def add_dimension_labels(mesh, parameters: list):
@@ -309,9 +307,7 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     dim_labels = (
         data.attrs.get("DIMENSION_LABELS")[1].decode()[1:-1].replace(" ", "").split("|")
     )
-    indices = []
-    for param in parameters:
-        indices.append(dim_labels.index(param))
+    indices = [dim_labels.index(param) for param in parameters]
     clipped_data = data[:, :, :].copy()
 
     for i in indices:
@@ -332,12 +328,10 @@ def get_h5_parameter_indices(filename, parameters):
         # These should be constant for all gradients, so this is only done
         # once.
         dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-        if not type(dim_labels) == str:
+        if type(dim_labels) != str:
             dim_labels = dim_labels.decode()
         dim_labels = dim_labels.replace(" ", "").split("|")
-        indices = []
-        for param in parameters:
-            indices.append(dim_labels.index(param))
+        indices = [dim_labels.index(param) for param in parameters]
     return indices
 
 

@@ -64,12 +64,11 @@ class StochasticFWI(StochasticBaseProblem):
     @staticmethod
     def get_set_flag(x: Vector, it_num: int, control_group: bool):
         if not control_group:
-            set_flag = "mb"
+            return "mb"
         elif it_num < x.iteration:
-            set_flag = "cg_prev"
+            return "cg_prev"
         else:
-            set_flag = "cg"
-        return set_flag
+            return "cg"
 
     def get_task_name(self, x: Vector, it_num: int, job_type: str, control_group: bool):
         set_flag = self.get_set_flag(x, it_num, control_group)
@@ -156,9 +155,8 @@ class StochasticFWI(StochasticBaseProblem):
         self.optlink.prepare_iteration(iteration_name=x.descriptor, events=events)
         if x.iteration not in self.model_names:
             self.model_names[str(x.iteration)] = [x.descriptor]
-        else:
-            if x.descriptor not in self.model_names[str(x.iteration)]:
-                self.model_names[str(x.iteration)].append(x.descriptor)
+        elif x.descriptor not in self.model_names[str(x.iteration)]:
+            self.model_names[str(x.iteration)].append(x.descriptor)
         self.mini_batch_dict[str(x.iteration)] = self.comm.project.events_in_iteration
         self.update_status_json()
 
@@ -205,14 +203,13 @@ class StochasticFWI(StochasticBaseProblem):
                 for event in self.comm.project.events_in_iteration:
                     if self.comm.comm.project.is_validation_event(event):
                         continue
-                    else:
-                        try:
-                            job = self.comm.salvus_flow.get_job(
-                                event=event, im_type="adjoint", iteration=iter_name
-                            )
-                            job.cancel()
-                        except (KeyError, InversionsonError):
-                            continue
+                    try:
+                        job = self.comm.salvus_flow.get_job(
+                            event=event, im_type="adjoint", iteration=iter_name
+                        )
+                        job.cancel()
+                    except (KeyError, InversionsonError):
+                        continue
 
         blocked_data = set(
             self.comm.project.validation_dataset + self.comm.project.test_dataset
@@ -278,8 +275,6 @@ class StochasticFWI(StochasticBaseProblem):
         # For gradient we only track the mb_task!
         task_name = self.get_task_name(x, it_num, "gradient", control_group)
 
-        sum_grads = True if self.optlink.isotropic_vp else False
-
         if task_name not in self.performed_tasks:
             # now we need to figure out how to sum the proper gradients.
             # for this we need the events
@@ -297,7 +292,9 @@ class StochasticFWI(StochasticBaseProblem):
             gradient_events = set(events) - blocked_data
 
             grad_summer = GradientSummer(comm=self.comm)
-            store_norms = False if self.gradient_test else True
+            store_norms = not self.gradient_test
+            sum_grads = bool(self.optlink.isotropic_vp)
+
             grad_summer.sum_gradients(
                 events=gradient_events,
                 output_location=raw_grad_file,

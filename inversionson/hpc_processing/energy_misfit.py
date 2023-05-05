@@ -103,12 +103,15 @@ def calculate_adjoint_source(
     # sampling rate, be sampled at the same points in time and a couple
     # other things.
     scaling = 1e5
-    ret_val = {}
-    ret_val["misfit"] = scaling * np.sum((synthetic.data * synthetic.data)) * synthetic.stats.delta
-
+    ret_val = {
+        "misfit": scaling
+        * np.sum((synthetic.data * synthetic.data))
+        * synthetic.stats.delta
+    }
     if adjoint_src is True:
         adj_src = Trace(
-            data=-scaling*synthetic.stats.delta * synthetic.data, header=synthetic.stats
+            data=-scaling * synthetic.stats.delta * synthetic.data,
+            header=synthetic.stats,
         )
 
         ret_val["adjoint_source"] = adj_src

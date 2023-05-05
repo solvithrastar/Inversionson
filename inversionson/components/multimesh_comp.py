@@ -78,32 +78,31 @@ class MultiMeshComponent(Component):
             defaults to False
         :type gradient: bool, optional
         """
-        iteration = self.comm.project.current_iteration
         if gradient:
             raise InversionsonError("Not yet implemented")
-        else:
-            model = self.find_model_file(iteration)
-            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
-                from_mesh=self.comm.project.domain_file,
-                to_mesh=model,
-                field_name="layer",
-                elemental=True,
-                overwrite=False,
-            )
-            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
-                from_mesh=self.comm.project.domain_file,
-                to_mesh=model,
-                field_name="fluid",
-                elemental=True,
-                overwrite=False,
-            )
-            self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
-                from_mesh=self.comm.project.domain_file,
-                to_mesh=model,
-                field_name="moho_idx",
-                global_string=True,
-                overwrite=False,
-            )
+        iteration = self.comm.project.current_iteration
+        model = self.find_model_file(iteration)
+        self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+            from_mesh=self.comm.project.domain_file,
+            to_mesh=model,
+            field_name="layer",
+            elemental=True,
+            overwrite=False,
+        )
+        self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+            from_mesh=self.comm.project.domain_file,
+            to_mesh=model,
+            field_name="fluid",
+            elemental=True,
+            overwrite=False,
+        )
+        self.comm.salvus_mesher.add_field_from_one_mesh_to_another(
+            from_mesh=self.comm.project.domain_file,
+            to_mesh=model,
+            field_name="moho_idx",
+            global_string=True,
+            overwrite=False,
+        )
 
     def prepare_forward(
         self,
@@ -134,7 +133,6 @@ class MultiMeshComponent(Component):
                 emoji_alias=":white_check_mark:",
             )
 
-
     def interpolate_gradient_to_model(
         self, event: str, smooth=True, interp_folder=None
     ):
@@ -152,7 +150,6 @@ class MultiMeshComponent(Component):
         interpolation to be saved and then it can be used later on. Also
         pass this if the directory exists and you want to use the matrices
         """
-        iteration = self.comm.project.current_iteration
         mode = self.comm.project.interpolation_mode
         if mode == "remote":
             job = self.construct_remote_interpolation_job(
@@ -174,6 +171,7 @@ class MultiMeshComponent(Component):
             )
             self.comm.project.update_iteration_toml()
         else:
+            iteration = self.comm.project.current_iteration
             gradient = self.comm.lasif.find_gradient(iteration, event, smooth=smooth)
             simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=event)
 
@@ -234,8 +232,7 @@ class MultiMeshComponent(Component):
         :type gradient: bool, optional
         """
 
-        description = "Interpolation of "
-        description += "gradient " if gradient else "model "
+        description = "Interpolation of " + ("gradient " if gradient else "model ")
         description += f"for event {event}"
 
         wall_time = 0.0
@@ -256,15 +253,16 @@ class MultiMeshComponent(Component):
 
             # ALso add a check if the forward_dict exists here
             forward_simulation_dict = (
-                    self.comm.lasif.lasif_comm.project.paths["salvus_files"]
-                    / f"SIMULATION_DICTS"
-                    / event
-                    / "simulation_dict.toml"
+                self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                / "SIMULATION_DICTS"
+                / event
+                / "simulation_dict.toml"
             )
             # Submit a job either if the local dict is missing or
             # if the processed data is missing on the remote
-            if not hpc_cluster.remote_exists(remote_proc_path) \
-                    or not os.path.exists(forward_simulation_dict):
+            if not hpc_cluster.remote_exists(remote_proc_path) or not os.path.exists(
+                forward_simulation_dict
+            ):
                 wall_time += self.comm.project.remote_data_proc_wall_time
             elif self.comm.project.meshes != "multi-mesh":
                 self.comm.project.change_attribute(
@@ -280,7 +278,7 @@ class MultiMeshComponent(Component):
         if gradient:
             wall_time = self.comm.project.grad_interp_wall_time
 
-        int_job = job.Job(
+        return job.Job(
             site=sapi.get_site(self.comm.project.interpolation_site),
             commands=self.get_interp_commands(event=event, gradient=gradient),
             job_type="interpolation",
@@ -289,7 +287,6 @@ class MultiMeshComponent(Component):
             wall_time_in_seconds=wall_time,
             no_db=False,
         )
-        return int_job
 
     def prepare_interpolation_toml(self, gradient, event, hpc_cluster=None):
         toml_name = "gradient_interp.toml" if gradient else "prepare_forward.toml"
@@ -307,12 +304,7 @@ class MultiMeshComponent(Component):
             event,
         )
 
-        if os.path.exists(
-            toml_filename
-        ):  # if exists, we can update the important parameters. and skip the rest.
-            information = toml.load(toml_filename)
-        else:
-            information = {}
+        information = toml.load(toml_filename) if os.path.exists(toml_filename) else {}
         information["gradient"] = gradient
         information["mesh_info"] = {
             "event_name": event,
@@ -323,16 +315,10 @@ class MultiMeshComponent(Component):
             "interpolation_weights": remote_weights_path,
             "elems_per_wavelength": self.comm.project.elem_per_wavelength,
         }
-        if not gradient and self.comm.project.remote_data_processing:
-            information["data_processing"] = True
-        else:
-            information["data_processing"] = False
-
-        if self.comm.project.meshes == "multi-mesh":
-            information["multi-mesh"] = True
-        else:
-            information["multi-mesh"] = False
-
+        information["data_processing"] = bool(
+            not gradient and self.comm.project.remote_data_processing
+        )
+        information["multi-mesh"] = self.comm.project.meshes == "multi-mesh"
         # Provide information for cut and clipping
         if gradient:
             information["cutout_radius_in_km"] = self.comm.project.cut_source_radius
@@ -379,14 +365,15 @@ class MultiMeshComponent(Component):
             # remote mesh files and also we don't need to create the simulation
             # dict again in the interpolation job.
             local_simulation_dict = (
-                self.comm.lasif.lasif_comm.project.paths["salvus_files"]
-                / f"SIMULATION_DICTS"
+                (
+                    self.comm.lasif.lasif_comm.project.paths["salvus_files"]
+                    / "SIMULATION_DICTS"
+                )
                 / event
-                / "simulation_dict.toml"
-            )
+            ) / "simulation_dict.toml"
             # Only create simulation dict when we don't have it yet.
-            information["create_simulation_dict"] = (
-                False if os.path.exists(local_simulation_dict) else True
+            information["create_simulation_dict"] = not os.path.exists(
+                local_simulation_dict
             )
 
             if not gradient:
@@ -406,7 +393,7 @@ class MultiMeshComponent(Component):
                 source_info["side_set"] = (
                     "r1_ol"
                     if self.comm.project.ocean_loading["use"]
-                    and not self.comm.project.meshes == "multi-mesh"
+                    and self.comm.project.meshes != "multi-mesh"
                     else "r1"
                 )
                 source_info["stf"] = str(
@@ -495,25 +482,23 @@ class MultiMeshComponent(Component):
 
         # TODO Add average model option here
 
-
         # This might be a validation model
-        if self.comm.project.is_validation_event(event) \
-            and self.comm.project.use_model_averaging \
-            and "00000" not in self.comm.project.current_iteration:
-            average_model = True
-        else:
-            average_model = False
+        average_model = bool(
+            self.comm.project.is_validation_event(event)
+            and self.comm.project.use_model_averaging
+            and "00000" not in self.comm.project.current_iteration
+        )
         optimizer = self.comm.project.get_optimizer()
-        if not gradient:
-            mesh_to_interpolate_from = optimizer.get_remote_model_path(
-                model_average=average_model)
-        else:
-            mesh_to_interpolate_from = self.comm.lasif.find_remote_mesh(
+        mesh_to_interpolate_from = (
+            self.comm.lasif.find_remote_mesh(
                 event=event,
                 gradient=True,
                 interpolate_to=False,
                 validation=False,
             )
+            if gradient
+            else optimizer.get_remote_model_path(model_average=average_model)
+        )
         interpolation_script = self.find_interpolation_script()
         hpc_cluster = sapi.get_site(self.comm.project.interpolation_site)
         interpolation_toml = self.prepare_interpolation_toml(
@@ -580,7 +565,7 @@ class MultiMeshComponent(Component):
                 source_command = [
                     remote_io_site.site_utils.RemoteCommand(
                         command=f"source {self.comm.project.remote_conda_source_location}",
-                        execute_with_mpi=False
+                        execute_with_mpi=False,
                     )
                 ]
                 commands = source_command + commands
@@ -592,13 +577,11 @@ class MultiMeshComponent(Component):
         Check to see if remote interpolation script is available.
         If not, create one and put it there
         """
-        remote_script_path = os.path.join(
+        return os.path.join(
             self.comm.project.remote_inversionson_dir,
             "SCRIPTS",
             "interpolation.py",
         )
-
-        return remote_script_path
 
     def get_remote_field_moving_script_path(self):
         site = get_site(self.comm.project.interpolation_site)

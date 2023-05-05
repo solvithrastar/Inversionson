@@ -95,14 +95,7 @@ def calculate_adjoint_source(
 
     ret_dict = {}
 
-    if window:
-        if len(window) == 2:
-            window_weight = 1.0
-        else:
-            window_weight = window[2]
-    else:
-        window_weight = 1.0
-
+    window_weight = 1.0 if window and len(window) == 2 or not window else window[2]
     # Work on copies of the original data
     observed = observed.copy()
     synthetic = synthetic.copy()
@@ -186,13 +179,9 @@ def calculate_adjoint_source(
     width = 2.0 * min_period
 
     # Compute time-frequency representation of the cross-correlation
-    _, _, tf_cc = time_frequency.time_frequency_cc_difference(
-        t, data, synthetic, width
-    )
+    _, _, tf_cc = time_frequency.time_frequency_cc_difference(t, data, synthetic, width)
     # Compute the time-frequency representation of the synthetic
-    tau, nu, tf_synth = time_frequency.time_frequency_transform(
-        t, synthetic, width
-    )
+    tau, nu, tf_synth = time_frequency.time_frequency_transform(t, synthetic, width)
 
     # -------------------------------------------------------------------------
     # compute tf window and weighting function
@@ -214,10 +203,7 @@ def calculate_adjoint_source(
     thres = nu_t <= 1.0 / min_period
     nu_t_large[np.invert(thres)] = 1.0
     nu_t_small[thres] = 1.0
-    weight *= (
-        np.exp(-10.0 * np.abs(nu_t * min_period - 1.0)) * nu_t_large
-        + nu_t_small
-    )
+    weight *= np.exp(-10.0 * np.abs(nu_t * min_period - 1.0)) * nu_t_large + nu_t_small
 
     # normalisation
     weight /= weight.max()
@@ -260,20 +246,16 @@ def calculate_adjoint_source(
         warnings.warn(warning)
         messages.append(warning)
 
-        ret_dict = {
+        return {
             "adjoint_source": obspy.Trace(
                 data=np.zeros_like(observed.data), header=observed.stats
             ),
             "misfit": phase_misfit * 2.0,
             "details": {"messages": messages},
         }
-
-        return ret_dict
     if adjoint_src:
         # Make kernel for the inverse tf transform
-        idp = ne.evaluate(
-            "weight ** 2 * DP * tf_synth / (m + abs(tf_synth) ** 2)"
-        )
+        idp = ne.evaluate("weight ** 2 * DP * tf_synth / (m + abs(tf_synth) ** 2)")
 
         # Invert tf transform and make adjoint source
         ad_src, it, I = time_frequency.itfa(tau, idp, width)
@@ -302,9 +284,7 @@ def calculate_adjoint_source(
         # ad_src = ad_src[::-1]
 
         # Calculate actual adjoint source. Not time reversed
-        adj_src = obspy.Trace(
-            data=ad_src * window_weight, header=observed.stats
-        )
+        adj_src = obspy.Trace(data=ad_src * window_weight, header=observed.stats)
         if window:
             adj_src = utils.window_trace(
                 trace=adj_src,
@@ -315,10 +295,8 @@ def calculate_adjoint_source(
                 **kwargs
             )
 
-    ret_dict = {
+    return {
         "adjoint_source": adj_src,
         "misfit": phase_misfit,
         "details": {"messages": messages},
     }
-
-    return ret_dict

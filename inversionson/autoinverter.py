@@ -96,7 +96,10 @@ class AutoInverter(object):
                     self.comm.project.remote_inversionson_dir / directory
                 )
 
-        if self.comm.project.ocean_loading["use"] and self.comm.project.meshes == "multi-mesh":
+        if (
+            self.comm.project.ocean_loading["use"]
+            and self.comm.project.meshes == "multi-mesh"
+        ):
             if hpc_cluster.remote_exists(
                 self.comm.project.ocean_loading["remote_path"]
             ):
@@ -146,7 +149,7 @@ class AutoInverter(object):
         self.move_files_to_cluster()
         n_tasks = taskmanager.get_n_tasks()
         n_tasks *= n_iterations
-        for i in range(n_tasks):
+        for _ in range(n_tasks):
             taskmanager.perform_task(verbose=verbose)
             taskmanager.get_new_task()
 
@@ -162,9 +165,7 @@ def read_info_toml(root):
     info_toml = "inversion_info.toml"
     root = Path(root).resolve() if root else Path.cwd()
     if not root.is_dir():
-        raise NotADirectoryError(
-            "Specified project root {} is not a directory".format(root)
-        )
+        raise NotADirectoryError(f"Specified project root {root} is not a directory")
     info_toml_path = root / info_toml
     if not info_toml_path.is_file():
         with open(INVERSION_INFO_template, "r") as fh:
@@ -172,11 +173,11 @@ def read_info_toml(root):
         toml_string = toml_string.format(INVERSION_PATH=str(root))
         with open(info_toml_path, "w") as fh:
             fh.write(toml_string)
-        print("I created a dummy configuration file " + str(info_toml_path))
+        print(f"I created a dummy configuration file {str(info_toml_path)}")
         print("Please edit this file as needed and run me again.")
         sys.exit()
     else:
-        print("Using configuration file " + str(info_toml_path))
+        print(f"Using configuration file {str(info_toml_path)}")
     return toml.load(info_toml_path)
 
 

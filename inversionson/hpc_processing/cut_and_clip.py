@@ -4,17 +4,11 @@ import numpy as np
 
 def get_sorted_indices(gradient: h5py.File, parameters):
     data = gradient["MODEL/data"]
-    dim_labels = (
-        data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-        .replace(" ", "")
-        .split("|")
-    )
-    indices = []
-    for param in parameters:
-        indices.append(dim_labels.index(param))
+    dim_labels = data.attrs.get("DIMENSION_LABELS")[1][1:-1].replace(" ", "").split("|")
+    indices = [dim_labels.index(param) for param in parameters]
     indices.sort()
     return indices
-        
+
 
 def clip_gradient(mesh: str, percentile: float, parameters: list):
     """
@@ -46,9 +40,7 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     gradient.close()
 
 
-def latlondepth_to_cartesian(
-    lat: float, lon: float, depth_in_km=0.0
-) -> np.ndarray:
+def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates
 
@@ -112,4 +104,3 @@ def cut_source_region_from_gradient(
         data[:, i, :] = np.where(dist < radius_to_cut * 1000, 0, data[:, i, :])
 
     gradient.close()
-

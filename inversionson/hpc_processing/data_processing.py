@@ -37,9 +37,7 @@ def preprocessing_function_asdf(processing_info):
         ws = freqmax / (trace.stats.sampling_rate * 0.5)  # stop band frequency
         wp = ws  # pass band frequency
 
-        while True:
-            if order <= 12:
-                break
+        while True and order > 12:
             wp *= 0.99
             order, wn = signal.cheb2ord(wp, ws, rp, rs, analog=0)
 
@@ -52,9 +50,7 @@ def preprocessing_function_asdf(processing_info):
     # Read ASDF file
     # =========================================================================
 
-    ds = ASDFDataSet(
-        processing_info["asdf_input_filename"], compression=None, mode="r"
-    )
+    ds = ASDFDataSet(processing_info["asdf_input_filename"], compression=None, mode="r")
     event = ds.events[0]
 
     # Get processing_info
@@ -126,12 +122,8 @@ def preprocessing_function_asdf(processing_info):
                         st._rotate_to_zne(inv)
                         break
                     except Exception as e:
-                        net = inv.get_contents()["channels"][0].split(".", 2)[
-                            0
-                        ]
-                        sta = inv.get_contents()["channels"][0].split(".", 2)[
-                            1
-                        ]
+                        net = inv.get_contents()["channels"][0].split(".", 2)[0]
+                        sta = inv.get_contents()["channels"][0].split(".", 2)[1]
                         inf = processing_info["asdf_input_filename"]
 
                         msg = (
@@ -180,10 +172,10 @@ def preprocessing_function_asdf(processing_info):
     tag_map = {"raw_recording": tag_name}
 
     output_filename = processing_info["asdf_output_filename"]
-    tmp_output = output_filename + "_tmp"
+    tmp_output = f"{output_filename}_tmp"
     if os.path.exists(tmp_output):
         os.remove(tmp_output)
     ds.process(process_function, tmp_output, tag_map=tag_map)
-    
+
     del ds
     shutil.move(tmp_output, output_filename)

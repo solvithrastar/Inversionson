@@ -58,14 +58,15 @@ class SalvusSmoothComponent(Component):
             hpc_cluster.remote_mkdir(remote_diff_dir)
 
         if "REMOTE:" not in model_to_smooth:
-            print(f"Uploading initial values from: {model_to_smooth} "
-                  f"for smoothing.")
+            print(
+                f"Uploading initial values from: {model_to_smooth} " f"for smoothing."
+            )
             file_name = model_to_smooth.split("/")[-1]
             remote_file_path = os.path.join(remote_diff_dir, file_name)
-            tmp_remote_file_path = remote_file_path + "_tmp"
+            tmp_remote_file_path = f"{remote_file_path}_tmp"
             hpc_cluster.remote_put(model_to_smooth, tmp_remote_file_path)
             hpc_cluster.run_ssh_command(f"mv {tmp_remote_file_path} {remote_file_path}")
-            model_to_smooth = "REMOTE:" + remote_file_path
+            model_to_smooth = f"REMOTE:{remote_file_path}"
 
         sims = []
         for param in smoothing_parameters:
@@ -78,8 +79,9 @@ class SalvusSmoothComponent(Component):
                 elif "VP" in self.comm.project.inversion_params:
                     reference_velocity = "VP"
                 else:
-                    raise NotImplementedError("Inversionson always expects"
-                                              "to get models with at least VP")
+                    raise NotImplementedError(
+                        "Inversionson always expects" "to get models with at least VP"
+                    )
 
             unique_id = (
                 "_".join([str(i).replace(".", "") for i in smoothing_lengths])
@@ -87,7 +89,7 @@ class SalvusSmoothComponent(Component):
                 + str(self.comm.project.min_period)
             )
 
-            diff_model_file = unique_id + f"diff_model_{ref_model_name}_{param}.h5"
+            diff_model_file = f"{unique_id}diff_model_{ref_model_name}_{param}.h5"
             remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
             diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
 
@@ -102,9 +104,11 @@ class SalvusSmoothComponent(Component):
                 diff_model.write_h5(diff_model_file)
 
             if not hpc_cluster.remote_exists(remote_diff_model):
-                tmp_remote_diff_model = remote_diff_model + "_tmp"
+                tmp_remote_diff_model = f"{remote_diff_model}_tmp"
                 hpc_cluster.remote_put(diff_model_file, tmp_remote_diff_model)
-                hpc_cluster.run_ssh_command(f"mv {tmp_remote_diff_model} {remote_diff_model}")
+                hpc_cluster.run_ssh_command(
+                    f"mv {tmp_remote_diff_model} {remote_diff_model}"
+                )
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
@@ -112,22 +116,20 @@ class SalvusSmoothComponent(Component):
 
             sim.domain.polynomial_order = tensor_order
 
-            if not self.comm.project.smoothing_timestep == "auto":
+            if self.comm.project.smoothing_timestep != "auto":
                 sim.physics.diffusion_equation.time_step_in_seconds = (
                     self.comm.project.smoothing_timestep
                 )
             sim.physics.diffusion_equation.courant_number = 0.06
 
-            sim.physics.diffusion_equation.initial_values.filename = (
-                model_to_smooth
-            )
+            sim.physics.diffusion_equation.initial_values.filename = model_to_smooth
             sim.physics.diffusion_equation.initial_values.format = "hdf5"
             sim.physics.diffusion_equation.initial_values.field = f"{param}"
             sim.physics.diffusion_equation.final_values.filename = f"{param}.h5"
 
-            sim.domain.mesh.filename = "REMOTE:" + remote_diff_model
-            sim.domain.model.filename = "REMOTE:" + remote_diff_model
-            sim.domain.geometry.filename = "REMOTE:" + remote_diff_model
+            sim.domain.mesh.filename = f"REMOTE:{remote_diff_model}"
+            sim.domain.model.filename = f"REMOTE:{remote_diff_model}"
+            sim.domain.geometry.filename = f"REMOTE:{remote_diff_model}"
             sim.validate()
 
             # append sim to array

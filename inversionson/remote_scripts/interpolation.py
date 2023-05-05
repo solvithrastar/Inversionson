@@ -35,8 +35,10 @@ def cut_and_clip(
     """
 
     cut_source_region_from_gradient(
-        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km,
-        parameters=parameters
+        gradient_filename,
+        source_location,
+        radius_to_cut=radius_to_cut_in_km,
+        parameters=parameters,
     )
 
     print("Source cut completed successfully.")
@@ -130,7 +132,7 @@ def interpolate_fields(from_mesh, to_mesh, layers, parameters, stored_array=None
         parameters=parameters,
         layers="nocore",
         stored_array=stored_array,
-        make_spherical=True
+        make_spherical=True,
     )
 
 
@@ -231,13 +233,11 @@ def create_simulation_object(
     if simulation_info["simulation_time_step"]:
         # Compute wavefield subsampling factor.
         samples_per_min_period = (
-                simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
+            simulation_info["minimum_period"] / simulation_info["simulation_time_step"]
         )
         min_samples_per_min_period = 40.0
-        reduction_factor = int(
-            samples_per_min_period / min_samples_per_min_period)
-        reduction_factor_syn = int(
-            samples_per_min_period / 40.0)
+        reduction_factor = int(samples_per_min_period / min_samples_per_min_period)
+        reduction_factor_syn = int(samples_per_min_period / 40.0)
         # if reduction_factor_syn >= 2:
         #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
         if reduction_factor >= 2:
@@ -245,7 +245,7 @@ def create_simulation_object(
         else:
             checkpointing_flag = "auto-for-checkpointing"
     else:
-       checkpointing_flag = "auto-for-checkpointing_5"
+        checkpointing_flag = "auto-for-checkpointing_5"
 
     w.output.volume_data.format = "hdf5"
     w.output.volume_data.filename = "output.h5"
@@ -273,8 +273,6 @@ if __name__ == "__main__":
             process_data(processing_info)
 
     if not info["gradient"]:
-        source_info = info["source_info"]
-
         if info["data_processing"]:
             asdf_file_path = processing_info["asdf_output_filename"]
             receiver_json_file = info["receiver_json_path"]
@@ -285,13 +283,13 @@ if __name__ == "__main__":
             receiver_info = info["receiver_info"]
 
         simulation_info = info["simulation_info"]
+        source_info = info["source_info"]
         if info["multi-mesh"]:
             create_mesh(mesh_info=mesh_info, source_info=source_info)
             print("Mesh created or already existed")
-    else:
-        if info["multi-mesh"]:
-            get_standard_gradient(mesh_info=mesh_info)
-            move_nodal_field_to_gradient(mesh_info=mesh_info, field="z_node_1D")
+    elif info["multi-mesh"]:
+        get_standard_gradient(mesh_info=mesh_info)
+        move_nodal_field_to_gradient(mesh_info=mesh_info, field="z_node_1D")
 
     if not os.path.exists(mesh_info["interpolation_weights"]):
         os.makedirs(mesh_info["interpolation_weights"])

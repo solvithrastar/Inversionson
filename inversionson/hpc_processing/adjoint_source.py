@@ -1,4 +1,3 @@
-
 import numpy as np
 import obspy
 import warnings
@@ -6,6 +5,7 @@ import warnings
 import obspy.signal.filter
 from inversionson.hpc_processing.adjoint_utils import window_trace
 from obspy.core.utcdatetime import UTCDateTime
+
 
 def calculate_adjoint_source(
     adj_src_type,
@@ -42,13 +42,19 @@ def calculate_adjoint_source(
         window = [window]
     adj_src_type = "tf_phase_misfit"
     if adj_src_type == "tf_phase_misfit":
-        from inversionson.hpc_processing.tf_phase_misfit import calculate_adjoint_source as fct
+        from inversionson.hpc_processing.tf_phase_misfit import (
+            calculate_adjoint_source as fct,
+        )
     elif adj_src_type == "ccc":
         from inversionson.hpc_processing.ccc import calculate_adjoint_source as fct
     elif adj_src_type == "waveform_difference":
-        from inversionson.hpc_processing.waveform_misfit import calculate_adjoint_source as fct
+        from inversionson.hpc_processing.waveform_misfit import (
+            calculate_adjoint_source as fct,
+        )
     elif adj_src_type == "energy_misfit":
-        from inversionson.hpc_processing.energy_misfit import calculate_adjoint_source as fct
+        from inversionson.hpc_processing.energy_misfit import (
+            calculate_adjoint_source as fct,
+        )
     else:
         raise Exception("Not implemented error")
 
@@ -58,8 +64,11 @@ def calculate_adjoint_source(
     original_observed = observed.copy()
     original_synthetic = synthetic.copy()
 
-    if adj_src_type == "envelope_misfit" or "envelope_scaling" in kwargs \
-            and kwargs["envelope_scaling"]:
+    if (
+        adj_src_type == "envelope_misfit"
+        or "envelope_scaling" in kwargs
+        and kwargs["envelope_scaling"]
+    ):
         # scale data to same amplitude range and to 1
         # such that weak earthquakes count equally much
         scaling_factor_syn = 1.0 / original_synthetic.data.ptp()
@@ -77,8 +86,7 @@ def calculate_adjoint_source(
 
     for win_tuple in window:
         # Convert to UTCDateTime
-        win = [UTCDateTime(win_tuple[0]),
-               UTCDateTime(win_tuple[1]), win_tuple[2]]
+        win = [UTCDateTime(win_tuple[0]), UTCDateTime(win_tuple[1]), win_tuple[2]]
         taper_ratio = 0.5 * (min_period / (win[1] - win[0]))
         observed = original_observed.copy()
         synthetic = original_synthetic.copy()
@@ -118,7 +126,7 @@ def calculate_adjoint_source(
             taper_ratio=taper_ratio,
             taper_type=taper_type,
         )
-        if win_tuple == window[0]: # only for the first window
+        if win_tuple == window[0]:  # only for the first window
             full_ad_src = adjoint["adjoint_source"]
             # print(max(full_ad_src.data))
         else:
@@ -127,11 +135,15 @@ def calculate_adjoint_source(
         trace_misfit += adjoint["misfit"]
 
     # adjoint source requires an additional factor due to chain rule
-    if adj_src_type == "envelope_misfit" or "envelope_scaling" in kwargs \
-            and kwargs["envelope_scaling"]:
-        full_ad_src.data *= (scaling_factor_syn * env_weighting)
+    if (
+        adj_src_type == "envelope_misfit"
+        or "envelope_scaling" in kwargs
+        and kwargs["envelope_scaling"]
+    ):
+        full_ad_src.data *= scaling_factor_syn * env_weighting
 
     return trace_misfit, full_ad_src
+
 
 def _sanity_checks(observed, synthetic):
     """
@@ -154,8 +166,7 @@ def _sanity_checks(observed, synthetic):
             observed = observed[0]
         else:
             raise Exception(
-                "Observed data must be an ObsPy Trace object., not {}"
-                "".format(observed)
+                f"Observed data must be an ObsPy Trace object., not {observed}"
             )
     if not isinstance(synthetic, obspy.Trace):
         if isinstance(synthetic, obspy.Stream) and len(synthetic) == 1:
@@ -165,8 +176,7 @@ def _sanity_checks(observed, synthetic):
 
     if observed.stats.npts != synthetic.stats.npts:
         raise Exception(
-            "Observed and synthetic data must have the "
-            "same number of samples."
+            "Observed and synthetic data must have the " "same number of samples."
         )
 
     sr1 = observed.stats.sampling_rate
@@ -182,42 +192,32 @@ def _sanity_checks(observed, synthetic):
         abs(observed.stats.starttime - synthetic.stats.starttime)
         > observed.stats.delta * 0.5
     ):
-        raise Exception(
-            "Observed and synthetic data must have the " "same starttime."
-        )
+        raise Exception("Observed and synthetic data must have the " "same starttime.")
 
     ptp = sorted([observed.data.ptp(), synthetic.data.ptp()])
     if ptp[1] / ptp[0] >= 5:
         warnings.warn(
-            "The amplitude difference between data and "
-            "synthetic is fairly large.",
+            "The amplitude difference between data and " "synthetic is fairly large.",
         )
 
     # Also check the components of the data to avoid silly mistakes of
     # users.
     if (
         len(
-            set(
-                [
-                    observed.stats.channel[-1].upper(),
-                    synthetic.stats.channel[-1].upper(),
-                ]
-            )
+            {
+                observed.stats.channel[-1].upper(),
+                synthetic.stats.channel[-1].upper(),
+            }
         )
         != 1
     ):
         warnings.warn(
-            "The orientation code of synthetic and observed "
-            "data is not equal."
+            "The orientation code of synthetic and observed " "data is not equal."
         )
 
     observed = observed.copy()
     synthetic = synthetic.copy()
-    observed.data = np.require(
-        observed.data, dtype=np.float64, requirements=["C"]
-    )
-    synthetic.data = np.require(
-        synthetic.data, dtype=np.float64, requirements=["C"]
-    )
+    observed.data = np.require(observed.data, dtype=np.float64, requirements=["C"])
+    synthetic.data = np.require(synthetic.data, dtype=np.float64, requirements=["C"])
 
     return observed, synthetic

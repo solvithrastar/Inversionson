@@ -27,10 +27,12 @@ class HandyMan(object):
         self,
         message: str,
         color: str = "yellow",
-        emoji_alias: Union[str, List[str]] = [":axe:", ":hatched_chick:", ":toolbox:"],
+        emoji_alias: Union[str, List[str]] = None,
         line_above=False,
         line_below=False,
     ):
+        if emoji_alias is None:
+            emoji_alias = [":axe:", ":hatched_chick:", ":toolbox:"]
         self.comm.storyteller.printer.print(
             message=message,
             color=color,
@@ -132,14 +134,8 @@ class HandyMan(object):
                     f"This means that I will move to the beginning of iteration number {self.optimizer.iteration_number}",
                     line_below=True,
                 )
-        if self.task_number == 0:
-            delete_iteration = True
-        else:
-            delete_iteration = False
-        if not verbose:
-            reply = "y"
-        else:
-            reply = input("Are you sure? (y/n) ")
+        delete_iteration = self.task_number == 0
+        reply = input("Are you sure? (y/n) ") if verbose else "y"
         if reply.lower() == "y":
             if verbose:
                 self._print(
@@ -172,9 +168,8 @@ class HandyMan(object):
                 line_above=True,
             )
             self._print(
-                f"I don't really want to do that to be honest. Maybe some other time",
+                "I don't really want to do that to be honest. Maybe some other time"
             )
-        pass
 
     def go_back_to_iteration(self, iteration: str):
         self._print(
@@ -184,7 +179,7 @@ class HandyMan(object):
         )
         if not self.comm.lasif.has_iteration(it_name=iteration):
             self._print(
-                f"The iteration needs to exist! Be careful! This could have deleted your entire project. You're lucky I'm good at my job!",
+                "The iteration needs to exist! Be careful! This could have deleted your entire project. You're lucky I'm good at my job!",
                 line_above=True,
                 line_below=True,
             )
@@ -192,7 +187,7 @@ class HandyMan(object):
         reply = input("Are you sure? (y/n) ")
         if reply.lower() == "y":
             self._print(
-                f"Ok, that's quite the job. But nothing I can't handle. Can you bring me a doughnut please?",
+                "Ok, that's quite the job. But nothing I can't handle. Can you bring me a doughnut please?",
                 line_above=True,
                 line_below=True,
             )
@@ -242,19 +237,13 @@ class HandyMan(object):
         """
         toml_path = self.comm.project.paths["iteration_tomls"] / f"{iteration}.toml"
         info = toml.load(toml_path)
-        loop_through_events = True if event_name is None else False
-        loop_through_job_types = True if job_type is None else False
+        loop_through_events = event_name is None
+        loop_through_job_types = job_type is None
 
         # Informing
-        if loop_through_events and loop_through_events:
+        if loop_through_events:
             self._print(
                 f"I'll change {entry} to {new_value} for all events and job types.",
-                line_above=True,
-                line_below=True,
-            )
-        elif loop_through_events:
-            self._print(
-                f"I'll change {entry} to {new_value} for {job_type} for all events.",
                 line_above=True,
                 line_below=True,
             )
@@ -309,42 +298,49 @@ class HandyMan(object):
             line_above=True,
             line_below=True,
         )
-        
-    def create_reference_model_for_abs_smoothing(self,
-            cut_off_radius_in_km: float,
-            path_to_model: str,
-            buffer_zone_above_cmb: float =  100.,
-        ):
+
+    def create_reference_model_for_abs_smoothing(
+        self,
+        cut_off_radius_in_km: float,
+        path_to_model: str,
+        buffer_zone_above_cmb: float = 100.0,
+    ):
         import h5py
         from inversionson.utils import write_xdmf
         import shutil
+
         theta_prev = self.optimizer.get_h5_data(self.comm.lasif.get_master_model())
-        indices = self.optimizer.get_parameter_indices(self.comm.lasif.get_master_model())
+        indices = self.optimizer.get_parameter_indices(
+            self.comm.lasif.get_master_model()
+        )
         with h5py.File(self.comm.lasif.get_master_model(), "r") as h5:
             h5_data = h5["MODEL/data"]
             dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-            if not type(dim_labels) == str:
+            if type(dim_labels) != str:
                 dim_labels = dim_labels.decode()
             dim_labels = dim_labels.replace(" ", "").split("|")
-            radius = h5_data[:,dim_labels.index('z_node_1D'),:] * 6371.0
+            radius = h5_data[:, dim_labels.index("z_node_1D"), :] * 6371.0
 
-        #radius = theta_prev[:,indices.index('z_node_1D'),:] * 6371.
+        # radius = theta_prev[:,indices.index('z_node_1D'),:] * 6371.
         decay_function = np.ones_like(radius)
         # Radius of CMB at 3482. We set diffusion to zero 100 kms above this.
         cmb_radius = 3482.0 + buffer_zone_above_cmb
         decay_function[radius < cut_off_radius_in_km] = (
-            1. /(cut_off_radius_in_km - cmb_radius) * radius[radius < cut_off_radius_in_km] + 1. - (cut_off_radius_in_km /(cut_off_radius_in_km - cmb_radius))
-         )
+            1.0
+            / (cut_off_radius_in_km - cmb_radius)
+            * radius[radius < cut_off_radius_in_km]
+            + 1.0
+            - (cut_off_radius_in_km / (cut_off_radius_in_km - cmb_radius))
+        )
         decay_function[radius < cmb_radius] = 0.0
 
         for i in range(theta_prev.shape[1]):
-            theta_prev[:,i,:] *= decay_function
+            theta_prev[:, i, :] *= decay_function
 
         shutil.copy(self.comm.lasif.get_master_model(), path_to_model)
         write_xdmf(path_to_model)
 
         self.optimizer.set_h5_data(path_to_model, theta_prev)
-
 
     def plot_validation_misfit_curve(self, normalized=True, save_path=None):
         import matplotlib.pyplot as plt

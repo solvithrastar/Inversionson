@@ -4,17 +4,10 @@ import toml
 import numpy as np
 
 
-
 def get_sorted_indices(gradient: h5py.File, parameters):
     data = gradient["MODEL/data"]
-    dim_labels = (
-        data.attrs.get("DIMENSION_LABELS")[1][1:-1]
-            .replace(" ", "")
-            .split("|")
-    )
-    indices = []
-    for param in parameters:
-        indices.append(dim_labels.index(param))
+    dim_labels = data.attrs.get("DIMENSION_LABELS")[1][1:-1].replace(" ", "").split("|")
+    indices = [dim_labels.index(param) for param in parameters]
     indices.sort()
     return indices
 
@@ -50,9 +43,7 @@ def clip_gradient(mesh: str, percentile: float, parameters: list):
     gradient.close()
 
 
-def latlondepth_to_cartesian(
-    lat: float, lon: float, depth_in_km=0.0
-) -> np.ndarray:
+def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
     """
     Go from lat, lon, depth to cartesian coordinates
 
@@ -131,12 +122,13 @@ if __name__ == "__main__":
     parameters = info["parameters"]
 
     cut_source_region_from_gradient(
-        gradient_filename, source_location, radius_to_cut=radius_to_cut_in_km,
-        parameters=parameters
+        gradient_filename,
+        source_location,
+        radius_to_cut=radius_to_cut_in_km,
+        parameters=parameters,
     )
 
     print("Remote source cut completed successfully")
-
 
     print("Clipping now.")
     if clipping_percentile < 1.0:

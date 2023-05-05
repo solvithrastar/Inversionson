@@ -110,38 +110,24 @@ class SalvusMeshComponent(Component):
         with h5py.File(check_mesh, mode="r") as mesh:
             if global_string:
                 global_strings = list(mesh["MODEL"].attrs.keys())
-                if field_name in global_strings:
-                    return True
-                else:
-                    return False
+                return field_name in global_strings
             if elemental:
-                if "element_data" in mesh["MODEL"].keys():
-                    elemental_fields = mesh["MODEL/element_data"].attrs.get(
-                        "DIMENSION_LABELS"
-                    )[1]
-                    elemental_fields = elemental_fields[2:-2]
-                    if not type(elemental_fields) == str:
-                        elemental_fields = elemental_fields.decode()
-                    elemental_fields = elemental_fields.replace(" ", "").split("|")
-                    if field_name in elemental_fields:
-                        return True
-                    else:
-                        return False
-                else:
+                if "element_data" not in mesh["MODEL"].keys():
                     return False
+                elemental_fields = mesh["MODEL/element_data"].attrs.get(
+                    "DIMENSION_LABELS"
+                )[1]
+                elemental_fields = elemental_fields[2:-2]
+                if type(elemental_fields) != str:
+                    elemental_fields = elemental_fields.decode()
+                elemental_fields = elemental_fields.replace(" ", "").split("|")
+                return field_name in elemental_fields
             if side_sets:
-                if "SIDE_SETS" in mesh.keys():
-                    return True
-                else:
-                    return False
-            else:
-                # Here we assume it's an element_nodal_field
-                nodal_fields = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
-                nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
-                if field_name in nodal_fields:
-                    return True
-                else:
-                    return False
+                return "SIDE_SETS" in mesh.keys()
+            # Here we assume it's an element_nodal_field
+            nodal_fields = mesh["MODEL/data"].attrs.get("DIMENSION_LABELS")[1]
+            nodal_fields = nodal_fields[2:-2].replace(" ", "").split("|")
+            return field_name in nodal_fields
 
     def add_field_from_one_mesh_to_another(
         self,
@@ -196,10 +182,8 @@ class SalvusMeshComponent(Component):
         if not os.path.exists(to_mesh):
             self.print(f"Mesh {to_mesh} does not exist. Will create new one.")
             shutil.copy(from_mesh, to_mesh)
-            tm = UnstructuredMesh.from_h5(to_mesh)
             # tm.element_nodal_fields = {}
-        else:
-            tm = UnstructuredMesh.from_h5(to_mesh)
+        tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
         if global_string:
             # if field_name in tm.global_strings.keys():
@@ -315,9 +299,7 @@ class SalvusMeshComponent(Component):
 
         m = UnstructuredMesh.from_h5(full_path)
         fields = m.element_nodal_fields
-        new_fields = {}
-        for field in fields.keys():
-            new_fields[field] = np.zeros_like(fields[field])
+        new_fields = {field: np.zeros_like(fields[field]) for field in fields.keys()}
         # m.element_nodal_fields = {}
         optimizer = self.comm.project.get_optimizer()
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
@@ -405,12 +387,11 @@ class SalvusMeshComponent(Component):
                 f"Only available fields are: {available_fields}"
             )
 
-        if delete_old_fields:
-            if newname is not None:
-                raise InversionsonError(
-                    "If you want to delete old fields you need to write the "
-                    "summed one into a new field"
-                )
+        if delete_old_fields and newname is not None:
+            raise InversionsonError(
+                "If you want to delete old fields you need to write the "
+                "summed one into a new field"
+            )
 
         summed_field = np.copy(m.element_nodal_fields[fieldname_1])
         summed_field += m.element_nodal_fields[fieldname_2]
