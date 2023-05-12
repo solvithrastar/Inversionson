@@ -1,4 +1,5 @@
 import os
+from typing import List, Optional
 import numpy as np
 import json
 
@@ -6,18 +7,18 @@ from inversionson.helpers.autoinverter_helpers import IterationListener
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.utils import write_xdmf
-from optson.base_classes.base_problem import StochasticBaseProblem
+from optson.problem import AbstractStochasticProblem
 from lasif.components.communicator import Communicator
 from inversionson import InversionsonError
 from inversionson.optimizers.optson import OptsonLink
-from optson.base_classes.vector import Vector
+from optson.vector import OptsonVec
 from numpy.typing import ArrayLike
 
-from optson.base_classes.preconditioner import AbstractPreconditioner
+from optson.preconditioner import AbstractPreconditioner
 
 
 class InnerProductPrecondtioner(AbstractPreconditioner):
-    def __init__(self, optlink, misfit_scaling_fac=1):
+    def __init__(self, optlink, misfit_scaling_fac: float = 1):
         self.optlink = optlink
         self.misfit_scaling_fac = misfit_scaling_fac
 
@@ -30,7 +31,58 @@ class InnerProductPrecondtioner(AbstractPreconditioner):
         )
 
 
-class StochasticFWI(StochasticBaseProblem):
+def get_set_flag(x: OptsonVec, it_num: int, control_group: bool):
+    if not control_group:
+        set_flag = "mb"
+    elif it_num < x.iteration:
+        set_flag = "cg_prev"
+    else:
+        set_flag = "cg"
+    return set_flag
+
+
+# class AbstractProblem(metaclass=OptsonMeta):
+#     """
+#     Abstract baseproblem for regular problems.
+#     """
+#
+#     def __init__(
+#         self,
+#         H: InstanceOrType[AbstractHessian] = LBFGSHessian,
+#         preconditioner: InstanceOrType[AbstractPreconditioner] = IdentityPreconditioner,
+#     ):
+#         self.H = get_instance(H)
+#         self.preconditioner = get_instance(preconditioner)
+#         self.call_counters: Dict[str, int] = {}
+#
+#     @abstractmethod
+#     @CallCounter
+#     def f(self, x: OptsonVec) -> float:
+#         raise NotImplementedError
+#
+#     @abstractmethod
+#     @CallCounter
+#     def g(self, x: OptsonVec) -> OptsonVec:
+#         raise NotImplementedError
+#
+#     @CallCounter
+#     def f_cg(self, x: OptsonVec) -> float:
+#         raise NotImplementedError
+#
+#     @CallCounter
+#     def g_cg(self, x: OptsonVec) -> OptsonVec:
+#         raise NotImplementedError
+#
+#     @CallCounter
+#     def f_cg_previous(self, x: OptsonVec) -> float:
+#         raise NotImplementedError
+#
+#     @CallCounter
+#     def g_cg_previous(self, x: OptsonVec) -> OptsonVec:
+#         raise NotImplementedError
+
+
+class StochasticFWI(AbstractStochasticProblem):
     def __init__(
         self,
         comm: Communicator,
@@ -40,7 +92,7 @@ class StochasticFWI(StochasticBaseProblem):
         status_file="optson_status_tracker.json",
         task_file="optson_task_tracker.json",
     ):
-        super().__init__(batchManager=self)  # Hacky solution for now
+        super().__init__(batchManager=self)  # Simply point tre batchManager to self
         self.comm = comm
         self.optlink = optlink
         self.gradient_test = gradient_test
@@ -60,19 +112,8 @@ class StochasticFWI(StochasticBaseProblem):
         self.deleted_iterations = []
         self.performed_tasks = []
         self.read_status_json()
-
-    @staticmethod
-    def get_set_flag(x: Vector, it_num: int, control_group: bool):
-        if not control_group:
-            return "mb"
-        elif it_num < x.iteration:
-            return "cg_prev"
-        else:
-            return "cg"
-
-    def get_task_name(self, x: Vector, it_num: int, job_type: str, control_group: bool):
-        set_flag = self.get_set_flag(x, it_num, control_group)
-        return f"{x.descriptor}_{it_num}_{job_type}_{set_flag}_completed"
+        self.speculative_adjoints = True
+        self.speculative_forwards = True
 
     def read_status_json(self):
         if os.path.exists(self.task_file):
@@ -131,10 +172,11 @@ class StochasticFWI(StochasticBaseProblem):
         with open(self.status_file, "w") as fh:
             json.dump(status_dict, fh)
 
-    def create_iteration_if_needed(self, x: Vector):
+    def create_iteration_if_needed(self, x: OptsonVec):
         """
-        Here, we create the iteration if needed. This also requires us
-        to select the mini_batch already, but that is no problem.
+        Here, we create the iteration.
+        A mini-batch is selected after which an iteration in LASIF
+        is created and iteration_info is written to dik.
         """
         previous_control_group = []
         events = []
@@ -144,8 +186,10 @@ class StochasticFWI(StochasticBaseProblem):
             self.optlink.vector_to_mesh_new(self.optlink.model_path, x)
         # self.optlink.vector_to_mesh_new(self.optlink.model_path, m)
         if not self.comm.lasif.has_iteration(x.descriptor):
-            if x.iteration > 0:
-                previous_control_group = self.control_group_dict[str(x.iteration - 1)]
+            if x.md.iteration > 0:
+                previous_control_group = self.control_group_dict[
+                    str(x.md.iteration - 1)
+                ]
             events = self.optlink.pick_data_for_iteration(
                 batch_size=self.batch_size, prev_control_group=previous_control_group
             )
@@ -153,122 +197,86 @@ class StochasticFWI(StochasticBaseProblem):
         # the below line will set the proper parameters in the project
         # component
         self.optlink.prepare_iteration(iteration_name=x.descriptor, events=events)
-        if x.iteration not in self.model_names:
-            self.model_names[str(x.iteration)] = [x.descriptor]
-        elif x.descriptor not in self.model_names[str(x.iteration)]:
-            self.model_names[str(x.iteration)].append(x.descriptor)
-        self.mini_batch_dict[str(x.iteration)] = self.comm.project.events_in_iteration
+        if x.md.iteration not in self.model_names:
+            self.model_names[str(x.md.iteration)] = [x.descriptor]
+        elif x.descriptor not in self.model_names[str(x.md.iteration)]:
+            self.model_names[str(x.md.iteration)].append(x.descriptor)
+        self.mini_batch_dict[
+            str(x.md.iteration)
+        ] = self.comm.project.events_in_iteration
         self.update_status_json()
 
-    def select_batch(self, x: Vector):
+    def select_batch(self, x: OptsonVec):
         self.create_iteration_if_needed(x=x)
 
-    def _misfit(
+    def _cancel_useless_adjoint_runs_if_needed(self, x: OptsonVec):
+        if len(self.model_names[str(x.iteration)]) > 1:
+            iter_name = self.model_names[str(x.iteration)][-2]
+            # There was a failed iteration. Try cancelling jobs here
+            for event in self.comm.project.events_in_iteration:
+                if self.comm.comm.project.is_validation_event(event):
+                    continue
+                try:
+                    job = self.comm.salvus_flow.get_job(
+                        event=event, im_type="adjoint", iteration=iter_name
+                    )
+                    job.cancel()
+                except (KeyError, InversionsonError):
+                    continue
+
+    def _f(
         self,
-        x: Vector,
-        it_num: int,
-        control_group: bool = False,
-        misfit_only=True,
+        x: OptsonVec,
+        events: List[str],
+        control_group_events: Optional[List[str]] = None,
+        previous_control_group_events: Optional[List[str]] = None,
+        previous_iteration: Optional[str] = None,
+        compute_misfit_only: bool = True,
     ) -> float:
         self.create_iteration_if_needed(x=x)
-        prev_control_group = []
-        control_group_events = []
-        misfit_only = misfit_only
-        previous_iteration = None
 
-        job_type = "misfit" if misfit_only else "gradient"
-        task_name = self.get_task_name(x, it_num, job_type, control_group)
-        mb_task_name = self.get_task_name(x, x.iteration, job_type, control_group=False)
+        if self.speculative_adjoints:
+            self._cancel_useless_adjoint_runs_if_needed(x)
 
-        submit_adjoint = mb_task_name == task_name
-        mb_completed = mb_task_name in self.performed_tasks
-        events = (
-            self.control_group_dict[str(it_num)]
-            if control_group
-            else self.comm.project.events_in_iteration
+        submit_adjoint = not compute_misfit_only or self.speculative_adjoints
+        submission_events = (
+            self.comm.project.events_in_iteration
+            if self.speculative_forwards
+            else events
         )
 
-        # With the below option, we always just submit all events
-        if self.optlink.speculative_forwards:
-            submission_events = self.comm.project.events_in_iteration
-        else:
-            submission_events = events
+        it_listen = IterationListener(
+            comm=self.comm,
+            events=submission_events,
+            control_group_events=control_group_events,
+            prev_control_group_events=previous_control_group_events,
+            misfit_only=compute_misfit_only,
+            prev_iteration=previous_iteration,
+            submit_adjoint=submit_adjoint,
+        )
+        it_listen.listen()
+        # Get iteration attributes just in case.
+        self.comm.project.get_iteration_attributes(x.descriptor)
 
-        speculative_adjoints = True
-        if speculative_adjoints and control_group and self.optlink.speculative_forwards:
-            submit_adjoint = True
-            if len(self.model_names[str(x.iteration)]) > 1:
-                iter_name = self.model_names[str(x.iteration)][-2]
-                # There was a failed iteration. Try cancelling jobs here
-                for event in self.comm.project.events_in_iteration:
-                    if self.comm.comm.project.is_validation_event(event):
-                        continue
-                    try:
-                        job = self.comm.salvus_flow.get_job(
-                            event=event, im_type="adjoint", iteration=iter_name
-                        )
-                        job.cancel()
-                    except (KeyError, InversionsonError):
-                        continue
-
+        # Compute mmisfit for relevant events
         blocked_data = set(
             self.comm.project.validation_dataset + self.comm.project.test_dataset
         )
         misfit_events = set(events) - blocked_data
-
-        if task_name not in self.performed_tasks and not mb_completed:
-            if x.iteration > 0 and x.iteration > it_num:
-                # if it not the first model,
-                # we need to consider the previous control group
-                prev_control_group = self.control_group_dict[str(it_num)]
-                previous_iteration = self.model_names[str(it_num)][-1]
-
-            # Else we just take everything and immediately also compute the
-            # gradient
-            it_listen = IterationListener(
-                comm=self.comm,
-                events=submission_events,
-                control_group_events=control_group_events,
-                prev_control_group_events=prev_control_group,
-                misfit_only=misfit_only,
-                prev_iteration=previous_iteration,
-                submit_adjoint=submit_adjoint,
-            )
-            it_listen.listen()
-            if job_type == "misfit":
-                self.performed_tasks.append(
-                    task_name
-                )  # only do this after summing for gradients
-
-        # Now we need a way to actually collect the misfit for the events.
-        # this involves the proper name for the mdoel and the set of events.
-        self.comm.project.get_iteration_attributes(x.descriptor)
         total_misfit = 0.0
         for event in misfit_events:
             total_misfit += self.comm.project.misfits[event]
         self.update_status_json()
         return total_misfit / len(misfit_events)
 
-    def misfit(self, x: Vector) -> float:
-        return self._misfit(x=x, it_num=x.iteration, control_group=False)
+    def f(self, x: OptsonVec) -> float:
+        return self._f(x=x, control_group=False)
 
-    def misfit_cg(self, x: Vector) -> float:
-        return self._misfit(
-            x=x, it_num=x.iteration, control_group=True, misfit_only=True
-        )
-
-    def misfit_cg_previous(self, x: Vector) -> float:
-        return self._misfit(
-            x=x, it_num=x.iteration - 1, control_group=True, misfit_only=True
-        )
-
-    def _gradient(
-        self, x: Vector, it_num: int, control_group: bool = False
-    ) -> np.array:
+    def _g(self, x: OptsonVec, control_group: bool = False) -> np.array:
         self.clean_files()
 
         # Simply call the misfit function, but ensure we also compute the gradients.
-        self._misfit(x=x, it_num=it_num, control_group=control_group, misfit_only=False)
+        self._f(x=x, control_group=control_group, compute_misfit_only=False)
 
         set_flag = self.get_set_flag(x, it_num, control_group)
         raw_grad_file = self.optlink.get_raw_gradient_path(x.descriptor, set_flag)
@@ -308,17 +316,17 @@ class StochasticFWI(StochasticBaseProblem):
             self.optlink.perform_smoothing(x, set_flag, raw_grad_file)
             self.update_status_json()
 
-    def gradient(self, x: Vector) -> Vector:
+    def gradient(self, x: OptsonVec) -> OptsonVec:
         return self.get_gradient(x=x, it_num=x.iteration)
 
-    def gradient_cg(self, x: Vector) -> Vector:
+    def gradient_cg(self, x: OptsonVec) -> OptsonVec:
         self.select_control_group(x=x)
         return self.get_gradient(x=x, it_num=x.iteration, control_group=True)
 
-    def gradient_cg_previous(self, x: Vector) -> Vector:
+    def gradient_cg_previous(self, x: OptsonVec) -> OptsonVec:
         return self.get_gradient(x=x, it_num=x.iteration - 1, control_group=True)
 
-    def document_iteration(self, x: Vector):
+    def document_iteration(self, x: OptsonVec):
         # We need to figure out the accepted iteration
         accepted_iteration_name = self.model_names[str(x.iteration - 1)][-1]
         # We need to load the correct iteration attributes (with the correct iteration name)
@@ -335,7 +343,7 @@ class StochasticFWI(StochasticBaseProblem):
         self.comm.storyteller.document_task(task="adam_documentation")
 
     def get_gradient(
-        self, x: Vector, it_num: int, control_group: bool = False
+        self, x: OptsonVec, it_num: int, control_group: bool = False
     ) -> np.array:
         if control_group and it_num < x.iteration:
             # CG prev triggers MB, CG and CG prev

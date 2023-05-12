@@ -1,7 +1,11 @@
-from __future__ import absolute_import
+from __future__ import annotations
 import shutil
 
-from lasif.components.component import Component
+from .component import Component
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from inversionson.project import Project
 import lasif.api as lapi
 from lasif.utils import write_custom_stf
 import os
@@ -15,15 +19,16 @@ from typing import List, Dict, Union
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
 
 
-class LasifComponent(Component):
+class Lasif(Component):
     """
     Communication with Lasif
     """
 
-    def __init__(self, communicator, component_name):
-        super(LasifComponent, self).__init__(communicator, component_name)
-        self.lasif_root = self.comm.project.lasif_root
+    def __init__(self, project: Project):
+        super().__init__(project=project)
+        self.lasif_root = self.project.lasif_root
         self.lasif_comm = self._find_project_comm()
+
         # Store if some event might not processing
         self.everything_processed = False
         self.validation_data_processed = False
@@ -37,7 +42,7 @@ class LasifComponent(Component):
         line_below: bool = False,
         emoji_alias: Union[str, List[str]] = None,
     ):
-        self.comm.storyteller.printer.print(
+        self.project.storyteller.printer.print(
             message=message,
             color=color,
             line_above=line_above,
@@ -103,7 +108,7 @@ class LasifComponent(Component):
         """
 
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.interpolation_site)
+            hpc_cluster = get_site(self.project.interpolation_site)
         mesh = self.find_remote_mesh(
             event=event,
             hpc_cluster=hpc_cluster,
@@ -150,28 +155,28 @@ class LasifComponent(Component):
         :rtype: pathlib.Path
         """
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.interpolation_site)
-        remote_mesh_dir = pathlib.Path(self.comm.project.remote_mesh_dir)
-        fast_dir = pathlib.Path(self.comm.project.remote_inversionson_dir)
+            hpc_cluster = get_site(self.project.interpolation_site)
+        remote_mesh_dir = pathlib.Path(self.project.remote_mesh_dir)
+        fast_dir = pathlib.Path(self.project.remote_inversionson_dir)
         if iteration is None:
-            iteration = self.comm.project.current_iteration
+            iteration = self.project.current_iteration
 
         if gradient:
             if interpolate_to:
                 mesh = (
-                    self.comm.project.remote_inversionson_dir
+                    self.project.remote_inversionson_dir
                     / "MESHES"
                     / "standard_gradient"
                     / "mesh.h5"
                 )
                 # mesh = remote_mesh_dir / "standard_gradient" / "mesh.h5"
             else:
-                output = self.comm.salvus_flow.get_job_file_paths(
+                output = self.project.salvus_flow.get_job_file_paths(
                     event=event, sim_type="adjoint"
                 )
                 mesh = output[0][("adjoint", "gradient", "output_filename")]
         elif already_interpolated:
-            job = self.comm.salvus_flow.get_job(
+            job = self.project.salvus_flow.get_job(
                 event=event,
                 sim_type="prepare_forward",
                 iteration=iteration,
@@ -202,14 +207,7 @@ class LasifComponent(Component):
         :return: Answer whether mesh exists
         :rtype: bool
         """
-        # If interpolations are remote, we check for mesh remotely too
-        if self.comm.project.interpolation_mode == "remote":
-            has, _ = self.has_remote_mesh(
-                event, gradient=False, hpc_cluster=hpc_cluster
-            )
-        else:
-            has, _ = lapi.find_event_mesh(self.lasif_comm, event)
-
+        has, _ = self.has_remote_mesh(event, gradient=False, hpc_cluster=hpc_cluster)
         return has
 
     def find_event_mesh(self, event: str) -> pathlib.Path:
@@ -221,7 +219,7 @@ class LasifComponent(Component):
         :return: Path to where the mesh is stored.
         :rtype: Pathlib.Path
         """
-        if self.comm.project.meshes == "mono-mesh":
+        if self.project.meshes == "mono-mesh":
             return self.lasif_comm.project.lasif_config["domain_settings"][
                 "domain_file"
             ]
@@ -230,7 +228,9 @@ class LasifComponent(Component):
             raise InversionsonError(f"Mesh for event: {event} can not be found.")
         return pathlib.Path(mesh)
 
-    def _move_mesh_to_cluster(self, event: str, gradient=False, hpc_cluster=None):
+    def _move_mesh_to_cluster(
+        self, event: str, gradient: bool = False, hpc_cluster=None
+    ):
         """
         Move the mesh to the cluster for interpolation
 
@@ -254,7 +254,7 @@ class LasifComponent(Component):
             raise InversionsonError(f"Mesh for event {event} does not exist.")
         # Get remote connection
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.interpolation_site)
+            hpc_cluster = get_site(self.project.interpolation_site)
 
         path_to_mesh = self.find_remote_mesh(
             event=event,
@@ -287,14 +287,14 @@ class LasifComponent(Component):
         :type overwrite: bool, optional
         """
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.interpolation_site)
+            hpc_cluster = get_site(self.project.interpolation_site)
 
-        optimizer = self.comm.project.get_optimizer()
+        optimizer = self.project.get_optimizer()
         iteration = optimizer.iteration_name
         if validation:
             print("It's validation!")
             iteration = f"validation_{iteration}"
-            local_model = self.comm.multi_mesh.find_model_file(iteration)
+            local_model = self.project.multi_mesh.find_model_file(iteration)
         else:
             local_model = optimizer.model_path
         has, path_to_mesh = self.has_remote_mesh(
@@ -331,7 +331,7 @@ class LasifComponent(Component):
         :type hpc_cluster: salvus.flow.Site, optional
         """
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.interpolation_site)
+            hpc_cluster = get_site(self.project.interpolation_site)
 
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
@@ -353,7 +353,7 @@ class LasifComponent(Component):
             os.makedirs(local_grad.parent)
         inversion_grid = self.get_master_model()
         shutil.copy(inversion_grid, local_grad)
-        self.comm.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
+        self.project.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
 
         if not hpc_cluster.remote_exists(path_to_mesh.parent):
             hpc_cluster.remote_mkdir(path_to_mesh.parent)
@@ -368,21 +368,18 @@ class LasifComponent(Component):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        import shutil
-
-        # If we use mono-mesh we copy the salvus opt mesh here.
-        if self.comm.project.meshes == "mono-mesh":
-            optimizer = self.comm.project.get_optimizer()
+        # If we use mono-mesh we copy the mesh here.
+        if self.project.meshes == "mono-mesh":
+            optimizer = self.project.get_optimizer()
             model = optimizer.model_path
             # copy to lasif project and also move to cluster
-            simulation_mesh = self.comm.lasif.get_simulation_mesh(event_name=None)
+            simulation_mesh = self.project.lasif.get_simulation_mesh(event_name=None)
             shutil.copy(model, simulation_mesh)
             self._move_model_to_cluster(
                 hpc_cluster=hpc_cluster, overwrite=False, validation=validation
             )
-
             return
-        if self.comm.project.interpolation_mode == "remote":
+        else:  # multi-mesh case
             if event is None:
                 self._move_model_to_cluster(
                     hpc_cluster=hpc_cluster,
@@ -391,36 +388,8 @@ class LasifComponent(Component):
                 )
             else:
                 self._move_mesh_to_cluster(event=event, hpc_cluster=hpc_cluster)
-            return
 
-        has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
-
-        if not has:
-            raise ValueError(f"{event_mesh} does not exist")
-        event_iteration_mesh = lapi.get_simulation_mesh(
-            self.lasif_comm, event, iteration
-        )
-        if not os.path.exists(event_iteration_mesh):
-            if not os.path.exists(os.path.dirname(event_iteration_mesh)):
-                os.makedirs(os.path.dirname(event_iteration_mesh))
-            shutil.copy(event_mesh, event_iteration_mesh)
-            event_xdmf = f"{event_mesh[:-2]}xdmf"
-            event_iteration_xdmf = f"{event_iteration_mesh[:-2]}xdmf"
-            shutil.copy(event_xdmf, event_iteration_xdmf)
-            self.print(
-                f"Mesh for event: {event} has been moved to correct path for "
-                f"iteration: {iteration} and is ready for interpolation.",
-                emoji_alias=":package:",
-            )
-        else:
-            self.print(
-                f"Mesh for event: {event} already exists in the "
-                f"correct path for iteration {iteration}. "
-                f"Will not move new one.",
-                emoji_alias=":white_check_mark",
-            )
-
-    def set_up_iteration(self, name: str, events=None):
+    def set_up_iteration(self, name: str, events: Optional[List[str]] = None):
         """
         Create a new iteration in the lasif project
 
@@ -434,7 +403,7 @@ class LasifComponent(Component):
         iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
         if isinstance(iterations, list) and name in iterations:
             warnings.warn(f"Iteration {name} already exists", InversionsonWarning)
-        event_specific = self.comm.project.meshes == "multi-mesh"
+        event_specific = self.project.meshes == "multi-mesh"
         lapi.set_up_iteration(
             self.lasif_root,
             iteration=name,
@@ -442,7 +411,7 @@ class LasifComponent(Component):
             event_specific=event_specific,
         )
 
-    def list_events(self, iteration=None):
+    def list_events(self, iteration: Optional[str] = None) -> List[str]:
         """
         Make lasif list events, supposed to be used when all events
         are used per iteration. IF only for an iteration, pass
@@ -466,7 +435,7 @@ class LasifComponent(Component):
         stfs = pathlib.Path(self.lasif_comm.project.paths["salvus_files"])
         return str(stfs / long_iter / "stf.h5")
 
-    def upload_stf(self, iteration: str, hpc_cluster=None):
+    def upload_stf(self, iteration: str, hpc_cluster=None) -> None:
         """
         Upload the source time function to the remote machine
 
@@ -478,27 +447,25 @@ class LasifComponent(Component):
             write_custom_stf(stf_path=local_stf, comm=self.lasif_comm)
 
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.comm.project.site_name)
+            hpc_cluster = get_site(self.project.site_name)
 
         if not hpc_cluster.remote_exists(
-            self.comm.project.remote_inversionson_dir
-            / "SOURCE_TIME_FUNCTIONS"
-            / iteration
+            self.project.remote_inversionson_dir / "SOURCE_TIME_FUNCTIONS" / iteration
         ):
             hpc_cluster.remote_mkdir(
-                self.comm.project.remote_inversionson_dir
+                self.project.remote_inversionson_dir
                 / "SOURCE_TIME_FUNCTIONS"
                 / iteration
             )
         if not hpc_cluster.remote_exists(
-            self.comm.project.remote_inversionson_dir
+            self.project.remote_inversionson_dir
             / "SOURCE_TIME_FUNCTIONS"
             / iteration
             / "stf.h5"
         ):
             hpc_cluster.remote_put(
                 local_stf,
-                self.comm.project.remote_inversionson_dir
+                self.project.remote_inversionson_dir
                 / "SOURCE_TIME_FUNCTIONS"
                 / iteration
                 / "stf.h5",
@@ -542,7 +509,7 @@ class LasifComponent(Component):
         :rtype: dict
         """
         return lapi.get_source(
-            self.lasif_comm, event_name, self.comm.project.current_iteration
+            self.lasif_comm, event_name, self.project.current_iteration
         )
 
     def get_receivers(self, event_name: str) -> List[Dict]:
@@ -569,8 +536,8 @@ class LasifComponent(Component):
         :rtype: str
         """
         if iteration == "current":
-            iteration = self.comm.project.current_iteration
-        if self.comm.project.meshes == "multi-mesh":
+            iteration = self.project.current_iteration
+        if self.project.meshes == "multi-mesh":
             return (
                 str(
                     self.find_remote_mesh(
@@ -579,25 +546,25 @@ class LasifComponent(Component):
                         already_interpolated=True,
                     )
                 )
-                if self.comm.project.interpolation_mode == "remote"
+                if self.project.interpolation_mode == "remote"
                 else lapi.get_simulation_mesh(
                     self.lasif_comm,
                     event_name,
                     iteration,
                 )
             )
-        optimizer = self.comm.project.get_optimizer()
+        optimizer = self.project.get_optimizer()
         return (
             optimizer.get_average_model_name()
             if (
-                self.comm.project.is_validation_event(event_name)
-                and self.comm.project.use_model_averaging
-                and "00000" not in self.comm.project.current_iteration
+                self.project.is_validation_event(event_name)
+                and self.project.use_model_averaging
+                and "00000" not in self.project.current_iteration
             )
             else optimizer.model_path
         )
 
-    def calculate_station_weights(self, event: str):
+    def calculate_station_weights(self, event: str) -> None:
         """
         Calculate station weights to reduce the effect of data coverage
 
@@ -618,7 +585,9 @@ class LasifComponent(Component):
             self.lasif_comm, weight_set=weight_set_name, events=[weight_set_name]
         )
 
-    def misfit_quantification(self, event: str, validation=False, window_set=None):
+    def misfit_quantification(
+        self, event: str, validation: bool = False, window_set: Optional[str] = None
+    ):
         """
         Quantify misfit and calculate adjoint sources.
 
@@ -633,9 +602,9 @@ class LasifComponent(Component):
         :type window: str, optional
         """
 
-        iteration = self.comm.project.current_iteration
+        iteration = self.project.current_iteration
         if window_set is None:
-            if self.comm.project.inversion_mode == "mini-batch":
+            if self.project.inversion_mode == "mini-batch":
                 window_set = f"{iteration}_{event}"
             else:
                 window_set = event
@@ -687,7 +656,7 @@ class LasifComponent(Component):
                 toml.dump(misfits, fh)
             return 1.1
         # See if misfit has already been written into iteration toml
-        if self.comm.project.misfits[event] == 0.0:
+        if self.project.misfits[event] == 0.0:
             misfit_toml_path = (
                 self.lasif_comm.project.paths["iterations"]
                 / f"ITERATION_{iteration}"
@@ -695,7 +664,7 @@ class LasifComponent(Component):
             )
             misfit = toml.load(misfit_toml_path)[event]["event_misfit"]
         else:
-            misfit = self.comm.project.misfits[event]
+            misfit = self.project.misfits[event]
             self.print(
                 f"Misfit for {event} has already been computed.",
                 emoji_alias=":white_check_mark:",
@@ -727,8 +696,8 @@ class LasifComponent(Component):
         :return: True/False regarding the alreadyness of the processed data.
         :rtype: bool
         """
-        high_period = self.comm.project.max_period
-        low_period = self.comm.project.min_period
+        high_period = self.project.max_period
+        low_period = self.project.min_period
         processed_filename = (
             f"preprocessed_{int(low_period)}s_to_{int(high_period)}s.h5"
         )
@@ -748,12 +717,12 @@ class LasifComponent(Component):
         if self._already_processed(event):
             return
 
-        if self.comm.project.remote_data_processing:
+        if self.project.remote_data_processing:
             # Get local proc filename
-            lasif_root = self.comm.project.lasif_root
+            lasif_root = self.project.lasif_root
             proc_filename = (
-                f"preprocessed_{int(self.comm.project.min_period)}s_"
-                f"to_{int(self.comm.project.max_period)}s.h5"
+                f"preprocessed_{int(self.project.min_period)}s_"
+                f"to_{int(self.project.max_period)}s.h5"
             )
             local_proc_folder = os.path.join(
                 lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event
@@ -764,10 +733,10 @@ class LasifComponent(Component):
                 os.mkdir(local_proc_folder)
 
             remote_proc_file_name = f"{event}_{proc_filename}"
-            hpc_cluster = get_site(self.comm.project.site_name)
+            hpc_cluster = get_site(self.project.site_name)
 
             remote_processed_dir = os.path.join(
-                self.comm.project.remote_inversionson_dir, "PROCESSED_DATA"
+                self.project.remote_inversionson_dir, "PROCESSED_DATA"
             )
 
             remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
@@ -795,9 +764,9 @@ class LasifComponent(Component):
         :rtype: bool
         """
 
-        events_in_iteration = self.comm.project.events_in_iteration
-        events = self.comm.lasif.list_events()
-        validation_events = self.comm.project.validation_dataset
+        events_in_iteration = self.project.events_in_iteration
+        events = self.project.lasif.list_events()
+        validation_events = self.project.validation_dataset
         if not self.everything_processed:
             self.everything_processed = True
             msg = "Seems like there is nothing to do now. I might as well process some random event."
@@ -858,7 +827,7 @@ class LasifComponent(Component):
 
         lapi.select_windows_multiprocessing(
             self.lasif_comm,
-            iteration=self.comm.project.current_iteration,
+            iteration=self.project.current_iteration,
             window_set=window_set_name,
             events=[event],
             num_processes=8,

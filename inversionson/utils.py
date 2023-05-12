@@ -6,26 +6,17 @@ Maybe one day some of these will be moved to a handyman component
 or something like that.
 """
 
+from typing import Optional, Union, Tuple
 import numpy as np
 import pathlib
-import inspect
-import os, sys
+import os
 import h5py
 import time
 
-
-FILE_TEMPLATES_DIR = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "inversionson",
-    "file_templates",
-)
-BASE_XDMF_PATH = os.path.join(FILE_TEMPLATES_DIR, "base_xdmf.xdmf")
-XDMF_ATTRIBUTE_PATH = os.path.join(FILE_TEMPLATES_DIR, "attribute.xdmf")
+__FILE_TEMPLATES_DIR = (pathlib.Path(__file__) / ".." / "file_templates").resolve()
 
 
-def write_xdmf(filename):
+def write_xdmf(filename: Union[pathlib.Path, str]):
     """
     Takes a path to an h5 file and writes the accompanying xdmf file.
 
@@ -34,6 +25,9 @@ def write_xdmf(filename):
     """
     if type(filename) == str:
         filename = pathlib.Path(filename)
+
+    xdmf_attribute_path = __FILE_TEMPLATES_DIR / "attribute.xdmf"
+    base_xdmf_path = __FILE_TEMPLATES_DIR / "base_xdmf.xdmf"
 
     # Get relevant info from h5 file
     with h5py.File(filename, "r") as h5:
@@ -50,7 +44,7 @@ def write_xdmf(filename):
         dim_labels = dim_labels.replace(" ", "").split("|")
 
     # Write all atrributes
-    with open(XDMF_ATTRIBUTE_PATH, "r") as fh:
+    with open(xdmf_attribute_path, "r") as fh:
         attribute_string = fh.read()
     all_attributes = ""
 
@@ -67,7 +61,7 @@ def write_xdmf(filename):
             num_parameters=len(dim_labels),
             filename=final_filename,
         )
-    with open(BASE_XDMF_PATH, "r") as fh:
+    with open(base_xdmf_path, "r") as fh:
         base_string = fh.read().format(
             number_of_sub_elements=num_sub_elements,
             filename=final_filename,
@@ -99,7 +93,9 @@ def _print(
     )
 
 
-def sleep_or_process(comm, color=None, emoji_alias=None):
+def sleep_or_process(
+    comm, color: Optional[str] = None, emoji_alias: Optional[str] = None
+):
     """
     This functions tries to process a random unprocessed event
     or sleeps if all are processed.
@@ -124,15 +120,17 @@ def sleep_or_process(comm, color=None, emoji_alias=None):
         time.sleep(comm.project.sleep_time_in_s)
 
 
-def get_window_filename(event, iteration):
+def get_window_filename(event: str, iteration: str) -> str:
     return f"{event}_{iteration}_windows.json"
 
 
-def get_misfits_filename(event, iteration):
+def get_misfits_filename(event: str, iteration: str) -> str:
     return f"{event}_{iteration}_misfits.json"
 
 
-def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndarray:
+def latlondepth_to_cartesian(
+    lat: float, lon: float, depth_in_km: float = 0.0
+) -> Tuple[float, float, float]:
     """
     Go from lat, lon, depth to cartesian coordinates
 
@@ -153,34 +151,6 @@ def latlondepth_to_cartesian(lat: float, lon: float, depth_in_km=0.0) -> np.ndar
     z = R * np.sin(lat)
 
     return x, y, z
-
-
-def find_parameters_in_dataset(dataset) -> list:
-    """
-    Figure out which parameter is in dataset and where
-
-    :param dataset: hdf5 dataset with a dimension labels
-    :type dataset: hdf5 dataset
-    :return: parameters
-    :rtype: list
-    """
-    dims = dataset.attrs.get("DIMENSION_LABELS")[1].decode()
-    return dims[2:-2].split("|").replace(" ", "")
-
-
-def add_dimension_labels(mesh, parameters: list):
-    """
-    Label the dimensions in a newly created dataset
-
-    :param dataset: Loaded mesh as an hdf5 file
-    :type dataset: hdf5 file
-    :param parameters: list of parameters
-    :type parameters: list
-    """
-    dimstr = "[ " + " | ".join(parameters) + " ]"
-    mesh["MODEL/data"].dims[0].label = "element"
-    mesh["MODEL/data"].dims[1].label = dimstr
-    mesh["MODEL/data"].dims[2].label = "point"
 
 
 def cut_source_region_from_gradient(
@@ -232,94 +202,6 @@ def cut_source_region_from_gradient(
     gradient.close()
 
 
-def cut_receiver_regions_from_gradient(
-    mesh: str, receivers: dict, radius_to_cut: float
-):
-    """
-    Remove regions around receivers from gradients. Receivers often have an
-    imprint on a model and this aims to fight that effect.
-
-    :param mesh: Path to a mesh with a gradient
-    :type mesh: str
-    :param receivers: key: receivers{'lat': , 'lon':}
-    :type receivers: dict
-    :param radius_to_cut: Radius to cut gradient in km
-    :type radius_to_cut: float
-    """
-
-    gradient = h5py.File(mesh, "r+")
-    coordinates = gradient["MODEL/coordinates"]
-    data = gradient["MODEL/data"]
-    # TODO: Maybe I should implement this in a way that it uses predefined
-    # params. Then I only need to find out where they are
-
-    for _i, rec in enumerate(receivers):
-        x_r, y_r, z_r = latlondepth_to_cartesian(
-            lat=rec["latitude"], lon=rec["longitude"]
-        )
-        dist = np.sqrt(
-            (coordinates[:, :, 0] - x_r) ** 2
-            + (coordinates[:, :, 1] - y_r) ** 2
-            + (coordinates[:, :, 2] - z_r) ** 2
-        ).ravel()
-        if _i == 0:
-            close_by = np.where(dist < radius_to_cut * 1000.0)[0]
-        else:
-            tmp_close = np.where(dist < radius_to_cut * 1000.0)
-            if tmp_close[0].shape[0] == 0:
-                continue
-            if close_by.shape[0] == 0:
-                close_by = tmp_close[0]
-                continue
-            close_by = np.concatenate((close_by, tmp_close[0]))
-
-    close_by = np.unique(close_by)
-
-    for i in range(data.shape[1]):
-        parameter = data[:, i, :].ravel()
-        parameter[close_by] = 0.0
-        parameter = np.reshape(parameter, (data.shape[0], 1, data.shape[2]))
-        if i == 0:
-            cut_data = parameter.copy()
-        else:
-            cut_data = np.concatenate((cut_data, parameter), axis=1)
-    data[:, :, :] = cut_data
-
-    gradient.close()
-
-
-def clip_gradient(mesh: str, percentile: float, parameters: list):
-    """
-    Clip the gradient to remove abnormally high/low values from it.
-    Discrete gradients sometimes have the problem of unphysically high
-    values, especially at source/receiver locations so this should be
-    taken care of by cutting out a region around these.
-
-    :param mesh: Path to mesh containing gradient
-    :type mesh: str
-    :param percentile: The percentile at which you want to clip the gradient
-    :type percentile: float
-    :param parameters: Parameters to clip
-    :type parameters: list
-    """
-    gradient = h5py.File(mesh, "r+")
-    data = gradient["MODEL/data"]
-    dim_labels = (
-        data.attrs.get("DIMENSION_LABELS")[1].decode()[1:-1].replace(" ", "").split("|")
-    )
-    indices = [dim_labels.index(param) for param in parameters]
-    clipped_data = data[:, :, :].copy()
-
-    for i in indices:
-        clipped_data[:, i, :] = np.clip(
-            data[:, i, :],
-            a_min=np.quantile(data[:, i, :], 1.0 - percentile),
-            a_max=np.quantile(data[:, i, :], percentile),
-        )
-    data[:, :, :] = clipped_data
-    gradient.close()
-
-
 def get_h5_parameter_indices(filename, parameters):
     """Get indices in h5 file for parameters in filename"""
     with h5py.File(filename, "r") as h5:
@@ -335,16 +217,16 @@ def get_h5_parameter_indices(filename, parameters):
     return indices
 
 
-def sum_two_parameters_h5(filename, parameters):
+def sum_two_parameters_h5(filename: Union[str, pathlib.Path], parameters):
     """sum two parameters in h5 file. Mostly used for summing VPV and VPH"""
     if not os.path.exists(filename):
-        raise Exception("only works on existing files.")
+        raise FileNotFoundError("only works on existing files.")
 
     indices = get_h5_parameter_indices(filename, parameters)
     indices.sort()
 
     if len(indices) != 2:
-        raise Exception("Only implemented for 2 fields.")
+        raise ValueError("Only implemented for 2 fields.")
 
     with h5py.File(filename, "r+") as h5:
         dat = h5["MODEL/data"]
@@ -356,53 +238,10 @@ def sum_two_parameters_h5(filename, parameters):
         dat[:, indices, :] = data_copy[:, indices, :]
 
 
-def sum_gradients(mesh: str, gradients: list):
-    """
-    Sum the parameters on gradients for a list of events in an iteration
+if __name__ == "__main__":
+    from pathlib import Path
 
-    :param mesh: Path to a mesh to be used to store the summed gradients on
-    make sure it exists and is of the same dimensions as the others.
-    :type mesh: str
-    :param gradients: List of paths to gradients to be summed
-    :type gradients: list
-    """
-    # Read in the fields for these gradients and sum them accordingly
-    # store on a single mesh.
-    from salvus.mesh.unstructured_mesh import UnstructuredMesh
+    # Get the filepath of the current script
+    current_file_path = (Path(__file__) / ".." / "file_templates").resolve()
 
-    m = UnstructuredMesh.from_h5(mesh)
-    fields = UnstructuredMesh.from_h5(gradients[0]).element_nodal_fields.keys()
-
-    for _i, gradient in enumerate(gradients):
-        print(f"Adding gradient {_i+1} of {len(gradients)}")
-        grad = UnstructuredMesh.from_h5(gradient)
-        for field in fields:
-            if _i == 0:
-                m.attach_field(field, np.zeros_like(grad.element_nodal_fields[field]))
-            m.element_nodal_fields[field] += grad.element_nodal_fields[field]
-
-    m.write_h5(mesh)
-
-
-def double_fork():
-    print("\n \n Attempting to DoubleFork \n \n")
-    try:
-        pid = os.fork()
-        if pid > 0:
-            print("I am in parent process and I will exit")
-            sys.exit(0)
-    except OSError:
-        print("Fork failed")
-        sys.exit(1)
-
-    os.chdir("/")
-    os.setsid()
-    os.umask(0)
-
-    # second fork
-    try:
-        pid = os.fork()
-        if pid > 0:
-            sys.exit(0)
-    except OSError:
-        print("Fork 2 failed")
+    print("File path:", current_file_path, type(current_file_path))

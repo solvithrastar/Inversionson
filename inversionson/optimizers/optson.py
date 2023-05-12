@@ -9,32 +9,17 @@ import inspect
 
 from lasif.tools.query_gcmt_catalog import get_random_mitchell_subset
 
-from inversionson import InversionsonError
-from optson.base_classes.vector import Vector
+from optson.vector import OptsonVec
 from inversionson.helpers.regularization_helper import RegularizationHelper
-from inversionson.optimizers.optimizer import Optimize
+
+# from inversionson.optimizers.optimizer import Optimize
 from inversionson.utils import write_xdmf
-from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
 
-class OptsonLink(Optimize):
+class OptsonLink(object):
     """
     A class that acts as a bridge to Optson.
 
-    #TODO: Add smoothing
-    #TODO: Clean up old iterations
-    #TODO optimize calls to control group misfit/gradient.
-
-    # Simply perform the mini-batch job first, and then call control group.
-    # in this way adjoint jobs will be submitted already, so the next call will
-    # be quick.
-    #TODO: Add flag to iteration listerener that does misfit only, but still submits the adjoint jobs
-
-    # Become smarter about the jobs. For example when gx_cg_prev is called, we know
-    the model is accepted. we can run the iteration listener with all_events.
-    # then we can for cg_prev, also already immediately smooth the mini-batch gradient,
-    the new control group gradient and the previous gradient.
-    #
     """
 
     optimizer_name = "Optson"
@@ -410,7 +395,14 @@ class OptsonLink(Optimize):
     def _finalize_iteration(self, verbose: bool):
         pass
 
-    def pick_data_for_iteration(self, batch_size, prev_control_group=None, current_batch=None, select_new_control_group=False, control_group_size: int = None):
+    def pick_data_for_iteration(
+        self,
+        batch_size,
+        prev_control_group=None,
+        current_batch=None,
+        select_new_control_group=False,
+        control_group_size: int = None,
+    ):
         if prev_control_group is None:
             prev_control_group = []
         if current_batch is None:

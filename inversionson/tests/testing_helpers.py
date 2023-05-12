@@ -1,7 +1,7 @@
 import os
 
 from inversionson.create_dummy_info_file import create_info
-from inversionson.components import project
+from inversionson import project
 
 import lasif.api
 

@@ -1,3 +1,4 @@
+from typing import List
 import h5py
 import sys
 import toml
@@ -7,7 +8,10 @@ import os
 
 
 def sum_gradient(
-    gradients: list, output_gradient: str, parameters: list, batch_average=False
+    gradients: List[str],
+    output_gradient: str,
+    parameters: List[str],
+    batch_average: bool = False,
 ) -> list:
     """
     Sum a list of gradients. This function is called on the remote cluster,

@@ -7,9 +7,11 @@ import numpy as np
 import h5py
 from obspy.geodetics import locations2degrees
 from inversionson.hpc_processing.window_selection import select_windows
-from inversionson.hpc_processing.source_time_function import \
-    source_time_function
-from inversionson.hpc_processing.utils import select_component_from_stream, build_or_get_receiver_info
+from inversionson.hpc_processing.source_time_function import source_time_function
+from inversionson.hpc_processing.utils import (
+    select_component_from_stream,
+    build_or_get_receiver_info,
+)
 from inversionson.hpc_processing.adjoint_source import calculate_adjoint_source
 from tqdm import tqdm
 from salvus.flow.simple_config import simulation, source, stf, receiver
@@ -34,8 +36,7 @@ def calculate_station_weight(lat_1: float, lon_1: float, locations: np.ndarray):
     """
 
     distance = 1.0 / (
-            1.0
-            + locations2degrees(lat_1, lon_1, locations[0, :], locations[1, :])
+        1.0 + locations2degrees(lat_1, lon_1, locations[0, :], locations[1, :])
     )
     factor = np.sum(distance) - 1.0
     weight = 1.0 / factor
@@ -43,9 +44,14 @@ def calculate_station_weight(lat_1: float, lon_1: float, locations: np.ndarray):
     return weight
 
 
-def get_adjoint_source_object(event_name, adjoint_filename,
-                              receiver_json_path, proc_filename,
-                              misfits, forward_meta_json_filename) -> object:
+def get_adjoint_source_object(
+    event_name,
+    adjoint_filename,
+    receiver_json_path,
+    proc_filename,
+    misfits,
+    forward_meta_json_filename,
+) -> object:
     """
     Generate the adjoint source object for the respective event
 
@@ -73,16 +79,13 @@ def get_adjoint_source_object(event_name, adjoint_filename,
     meta_info_dict = {}
     for rec in meta_recs:
         if (
-                rec["network_code"] + "_" + rec["station_code"] in adjoint_recs
-                or rec["network_code"] + "." + rec[
-            "station_code"] in adjoint_recs
+            rec["network_code"] + "_" + rec["station_code"] in adjoint_recs
+            or rec["network_code"] + "." + rec["station_code"] in adjoint_recs
         ):
             rec_name = rec["network_code"] + "_" + rec["station_code"]
             meta_info_dict[rec_name] = {
                 "rotation_on_input": {
-                    "matrix": np.array(
-                        rec["rotation_on_output"]["matrix"]
-                    ).T.tolist()
+                    "matrix": np.array(rec["rotation_on_output"]["matrix"]).T.tolist()
                 }
             }
             meta_info_dict[rec_name]["location"] = rec["location"]
@@ -103,10 +106,7 @@ def get_adjoint_source_object(event_name, adjoint_filename,
             fz=1.0,
             source_time_function=stf.Custom(
                 filename=adjoint_filename,
-                dataset_name="/"
-                + rec["network-code"]
-                + "_"
-                + rec["station-code"],
+                dataset_name="/" + rec["network-code"] + "_" + rec["station-code"],
             ),
             rotation_on_input=meta_info_dict[
                 rec["network-code"] + "_" + rec["station-code"]
@@ -116,9 +116,9 @@ def get_adjoint_source_object(event_name, adjoint_filename,
     ]
 
 
-def construct_adjoint_simulation(parameterization,
-                                 forward_meta_json_filename,
-                                 adj_src: object):
+def construct_adjoint_simulation(
+    parameterization, forward_meta_json_filename, adj_src: object
+):
     """
     Create the adjoint simulation object that salvus flow needs
     """
@@ -138,8 +138,7 @@ def construct_adjoint_simulation(parameterization,
         toml.dump(w.get_dictionary(), fh)
 
 
-def get_station_weights(list_of_stations, processed_data,
-                        receiver_json_path):
+def get_station_weights(list_of_stations, processed_data, receiver_json_path):
     """
     The plan here is to compute the station weights based
     on a list of stations, that are in turn based on the selected windwos.
@@ -155,8 +154,10 @@ def get_station_weights(list_of_stations, processed_data,
     coordinates = {}
     for rec in list_of_recs:
         station_name = rec["network-code"] + "." + rec["station-code"]
-        coordinates[station_name] = {"latitude": rec["latitude"],
-                                     "longitude": rec["longitude"]}
+        coordinates[station_name] = {
+            "latitude": rec["latitude"],
+            "longitude": rec["longitude"],
+        }
 
     stations = {
         station: {
@@ -184,9 +185,7 @@ def get_station_weights(list_of_stations, processed_data,
         weight_set[station]["station_weight"] = weight
 
     for station in stations:
-        weight_set[station]["station_weight"] *= (
-                len(stations) / sum_value
-        )
+        weight_set[station]["station_weight"] *= len(stations) / sum_value
 
     print("Station weights computed")
     return weight_set
@@ -246,7 +245,7 @@ def run(info):
     else:
         scale_data_to_synthetics = True
 
-    scale_data_to_synthetics = False #Used for testing
+    scale_data_to_synthetics = False  # Used for testing
 
     if not os.path.exists(processed_filename):
         raise Exception(f"File {processed_filename} does not exists.")
@@ -268,9 +267,7 @@ def run(info):
 
     def _window_select(station):
         ds = pyasdf.ASDFDataSet(processed_filename, mode="r", mpi=False)
-        ds_synth = pyasdf.ASDFDataSet(
-            synthetic_filename, mode="r", mpi=False
-        )
+        ds_synth = pyasdf.ASDFDataSet(synthetic_filename, mode="r", mpi=False)
         observed_station = ds.waveforms[station]
         synthetic_station = ds_synth.waveforms[station]
 
@@ -279,13 +276,17 @@ def run(info):
 
         try:
             # Make sure both have length 1.
-            assert len(obs_tag) == 1, (
-                    "Station: %s - Requires 1 observed waveform tag. Has %i."
-                    % (observed_station._station_name, len(obs_tag))
+            assert (
+                len(obs_tag) == 1
+            ), "Station: %s - Requires 1 observed waveform tag. Has %i." % (
+                observed_station._station_name,
+                len(obs_tag),
             )
-            assert len(syn_tag) == 1, (
-                    "Station: %s - Requires 1 synthetic waveform tag. Has %i."
-                    % (observed_station._station_name, len(syn_tag))
+            assert (
+                len(syn_tag) == 1
+            ), "Station: %s - Requires 1 synthetic waveform tag. Has %i." % (
+                observed_station._station_name,
+                len(syn_tag),
             )
         except AssertionError:
             return {station: None}
@@ -306,8 +307,7 @@ def run(info):
 
         all_windows = {}
         for tr in st_syn:
-            tr.stats.starttime = (
-                    org.time.timestamp + start_time_in_s)
+            tr.stats.starttime = org.time.timestamp + start_time_in_s
         for component in ["E", "N", "Z"]:
             try:
                 data_tr = select_component_from_stream(st_obs, component)
@@ -315,14 +315,13 @@ def run(info):
 
                 # I THINK I SHOULD SAMPLE at the period of the data
                 # make sure traces match in length and sampling rate.
-                data_tr.interpolate(sampling_rate=synth_tr.stats.sampling_rate,
-                                     method="linear")
+                data_tr.interpolate(
+                    sampling_rate=synth_tr.stats.sampling_rate, method="linear"
+                )
                 data_tr.trim(endtime=synth_tr.stats.endtime)
                 synth_tr.trim(endtime=data_tr.stats.endtime)
                 if scale_data_to_synthetics:
-                    scaling_factor = (
-                            synth_tr.data.ptp() / data_tr.data.ptp()
-                    )
+                    scaling_factor = synth_tr.data.ptp() / data_tr.data.ptp()
                     # Store and apply the scaling.
                     data_tr.stats.scaling_factor = scaling_factor
                     data_tr.data *= scaling_factor
@@ -368,9 +367,7 @@ def run(info):
         with multiprocessing.Pool(number_processes) as pool:
             all_windows = {}
             with tqdm(total=len(task_list)) as pbar:
-                for i, r in enumerate(
-                        pool.imap_unordered(_window_select, task_list)
-                ):
+                for i, r in enumerate(pool.imap_unordered(_window_select, task_list)):
                     pbar.update()
                     k, v = r.popitem()
                     all_windows[k] = v
@@ -383,11 +380,11 @@ def run(info):
             shutil.copy(window_path, info["window_path"])
     else:
         if not info["window_path"]:
-            raise Exception("I need at least a path to windows "
-                            "if we don't select them.")
+            raise Exception(
+                "I need at least a path to windows " "if we don't select them."
+            )
         with open(info["window_path"]) as json_file:
             all_windows = json.load(json_file)
-
 
     # Write files with a single worker
     print("Finished window selection", flush=True)
@@ -398,10 +395,11 @@ def run(info):
         f"{len(task_list)} stations."
     )
 
-    station_weights = get_station_weights(sta_with_windows, processed_filename,
-                                          info["receiver_json_path"])
+    station_weights = get_station_weights(
+        sta_with_windows, processed_filename, info["receiver_json_path"]
+    )
 
-    #TODO: windows are now in timestamp format. For use with obspy we need to convert to UTCDatetime
+    # TODO: windows are now in timestamp format. For use with obspy we need to convert to UTCDatetime
 
     ###########################################################################
     # ADJOINT SOURCE CALCULATIONS
@@ -419,8 +417,7 @@ def run(info):
 
     def _process(station):
         ds = pyasdf.ASDFDataSet(processed_filename, mode="r", mpi=False)
-        ds_synth = pyasdf.ASDFDataSet(synthetic_filename, mode="r",
-                                      mpi=False)
+        ds_synth = pyasdf.ASDFDataSet(synthetic_filename, mode="r", mpi=False)
         observed_station = ds.waveforms[station]
         synthetic_station = ds_synth.waveforms[station]
 
@@ -430,13 +427,17 @@ def run(info):
         adjoint_sources = {}
         try:
             # Make sure both have length 1.
-            assert len(obs_tag) == 1, (
-                    "Station: %s - Requires 1 observed waveform tag. Has %i."
-                    % (observed_station._station_name, len(obs_tag))
+            assert (
+                len(obs_tag) == 1
+            ), "Station: %s - Requires 1 observed waveform tag. Has %i." % (
+                observed_station._station_name,
+                len(obs_tag),
             )
-            assert len(syn_tag) == 1, (
-                    "Station: %s - Requires 1 synthetic waveform tag. Has %i."
-                    % (observed_station._station_name, len(syn_tag))
+            assert (
+                len(syn_tag) == 1
+            ), "Station: %s - Requires 1 synthetic waveform tag. Has %i." % (
+                observed_station._station_name,
+                len(syn_tag),
             )
         except AssertionError:
             return {station: adjoint_sources}
@@ -451,8 +452,7 @@ def run(info):
         # Set the same starttime, this is important for the window_trace function
         st_syn = copy.deepcopy(st_syn)
         for tr in st_syn:
-            tr.stats.starttime = (
-                    org.time.timestamp + start_time_in_s)
+            tr.stats.starttime = org.time.timestamp + start_time_in_s
         for component in ["E", "N", "Z"]:
             try:
                 data_tr = select_component_from_stream(st_obs, component)
@@ -461,8 +461,9 @@ def run(info):
                 # Make sure synthetics is sampled at the same
                 # rate and data matches the synthetics in terms of endtime
                 # start time should happen automatically.
-                data_tr.interpolate(sampling_rate=synth_tr.stats.sampling_rate,
-                                    method="linear")
+                data_tr.interpolate(
+                    sampling_rate=synth_tr.stats.sampling_rate, method="linear"
+                )
                 data_tr.trim(endtime=synth_tr.stats.endtime)
                 synth_tr.trim(endtime=data_tr.stats.endtime)
 
@@ -470,9 +471,7 @@ def run(info):
                 continue
 
             if scale_data_to_synthetics:
-                scaling_factor = (
-                        synth_tr.data.ptp() / data_tr.data.ptp()
-                )
+                scaling_factor = synth_tr.data.ptp() / data_tr.data.ptp()
                 # Store and apply the scaling.
                 data_tr.stats.scaling_factor = scaling_factor
                 data_tr.data *= scaling_factor
@@ -521,8 +520,7 @@ def run(info):
     number_processes = min(num_processes, len(task_list))
 
     if not task_list:
-        raise Exception("At least one window is needed to compute"
-                        "an adjoint source.")
+        raise Exception("At least one window is needed to compute" "an adjoint source.")
 
     print("Starting adjoint source calculation")
     with multiprocessing.Pool(number_processes) as pool:
@@ -541,11 +539,12 @@ def run(info):
     num_sta_with_sources = len(sta_with_sources)
 
     if num_sta_with_sources < 1:
-        raise Exception("No adjoint sources calculated, Please consider "
-                        "what to do.")
+        raise Exception("No adjoint sources calculated, Please consider " "what to do.")
 
-    print(f"Calculated adjoint sources for {num_sta_with_sources} out of "
-          f"{len(task_list)} stations with windows.")
+    print(
+        f"Calculated adjoint sources for {num_sta_with_sources} out of "
+        f"{len(task_list)} stations with windows."
+    )
 
     print("Writing adjoint sources")
     adjoint_source_file_name = os.path.join(output_folder, "stf.h5")
@@ -556,11 +555,14 @@ def run(info):
 
         if all_sta_channels:
             e_comp = np.zeros_like(
-                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
+                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data
+            )
             n_comp = np.zeros_like(
-                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
+                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data
+            )
             z_comp = np.zeros_like(
-                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data)
+                all_adj_srcs[station][all_sta_channels[0]]["adj_source"].data
+            )
 
             for channel in all_sta_channels:
                 # check channel and set component
@@ -571,8 +573,10 @@ def run(info):
                 elif channel[-1] == "Z":
                     z_comp = all_adj_srcs[station][channel]["adj_source"].data
 
-            zne = np.array((z_comp, n_comp, e_comp)) * \
-                  station_weights[station]["station_weight"]
+            zne = (
+                np.array((z_comp, n_comp, e_comp))
+                * station_weights[station]["station_weight"]
+            )
             # zne = np.array((z_comp, n_comp, e_comp))
             # replace name to match the forward output run from salvus
             new_station_name = station.replace(".", "_")
@@ -592,8 +596,10 @@ def run(info):
             continue
         misfit_dict[station] = {}
         for trace in all_adj_srcs[station].keys():
-            station_tr_misfit = all_adj_srcs[station][trace]["misfit"] * \
-                station_weights[station]["station_weight"]
+            station_tr_misfit = (
+                all_adj_srcs[station][trace]["misfit"]
+                * station_weights[station]["station_weight"]
+            )
             # station_tr_misfit = all_adj_srcs[station][trace]["misfit"]
             # misfit_dict[station][trace] = station_tr_misfit # also write all trace misfits.
             total_misfit += station_tr_misfit
@@ -608,18 +614,20 @@ def run(info):
             json.dump(total_misfit_dict, outfile)
         shutil.copy(misfit_json_filename, info["misfit_json_filename"])
 
-
     # now create adjoint source simulation object
     adjoint_filename = f"REMOTE:{os.path.abspath(adjoint_source_file_name)}"
-    adj_src = get_adjoint_source_object(event_name,
-                                        adjoint_filename,
-                                        info["receiver_json_path"],
-                                        processed_filename,
-                                        event_misfit_dict,
-                                        info["forward_meta_json_filename"])
+    adj_src = get_adjoint_source_object(
+        event_name,
+        adjoint_filename,
+        info["receiver_json_path"],
+        processed_filename,
+        event_misfit_dict,
+        info["forward_meta_json_filename"],
+    )
 
-    construct_adjoint_simulation(info["parameterization"],
-                                 info["forward_meta_json_filename"], adj_src)
+    construct_adjoint_simulation(
+        info["parameterization"], info["forward_meta_json_filename"], adj_src
+    )
 
 
 if __name__ == "__main__":

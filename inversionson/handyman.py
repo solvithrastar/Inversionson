@@ -5,7 +5,7 @@ from pathlib import Path
 import lasif
 import numpy as np
 
-from inversionson.autoinverter import _find_project_comm, read_info_toml
+from inversionson.autoinverter import get_project, read_info_toml
 
 
 class HandyMan(object):
@@ -18,7 +18,7 @@ class HandyMan(object):
 
     def __init__(self, root=None):
         info = read_info_toml(root=root)
-        self.comm = _find_project_comm(info)
+        self.project = get_project(info)
         self.lasif_comm = self.comm.lasif.lasif_comm
         self.optimizer = self.comm.project.get_optimizer()
         self._print("Inversionson HandyMan... How can I help you?")
@@ -33,7 +33,7 @@ class HandyMan(object):
     ):
         if emoji_alias is None:
             emoji_alias = [":axe:", ":hatched_chick:", ":toolbox:"]
-        self.comm.storyteller.printer.print(
+        self.project.storyteller.printer.print(
             message=message,
             color=color,
             emoji_alias=emoji_alias,
@@ -57,9 +57,7 @@ class HandyMan(object):
                 remove_dirs=True,
             )
         iteration_toml = (
-            self.comm.project.paths["documentation"]
-            / "ITERATIONS"
-            / f"{self.optimizer.iteration_name}.toml"
+            self.project.paths.iteration_tomls / f"{self.optimizer.iteration_name}.toml"
         )
         if os.path.exists(iteration_toml):
             os.remove(iteration_toml)
@@ -359,7 +357,7 @@ class HandyMan(object):
             misfits /= misfits.max()
 
         it_numbers = [int(x.split("_")[-1]) for x in iterations]
-        fig = plt.figure(figsize=(10, 8))
+        plt.figure(figsize=(10, 8))
         plt.plot(it_numbers, misfits)
         plt.xlabel("Iterations")
         plt.ylabel("Misfits")

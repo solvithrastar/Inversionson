@@ -1,21 +1,26 @@
+from __future__ import annotations
 import os
-from lasif.components.component import Component
+from typing import List, TYPE_CHECKING
+from .component import Component
+
+if TYPE_CHECKING:
+    from inversionson.project import Project
 
 
-class SalvusSmoothComponent(Component):
+class Smoother(Component):
     """
     A class which handles all dealings with the salvus smoother.
     """
 
-    def __init__(self, communicator, component_name):
-        super(SalvusSmoothComponent, self).__init__(communicator, component_name)
+    def __init__(self, project: Project):
+        super().__init__(project)
 
     def get_sims_for_smoothing_task(
         self,
-        reference_model,
-        model_to_smooth,
-        smoothing_lengths,
-        smoothing_parameters,
+        reference_model: str,
+        model_to_smooth: str,
+        smoothing_lengths: List[float],
+        smoothing_parameters: List[str],
     ):
         """
         Writes diffusion models based on a reference model and smoothing
@@ -45,10 +50,10 @@ class SalvusSmoothComponent(Component):
         from salvus.flow.api import get_site
 
         ref_model_name = ".".join(reference_model.split("/")[-1].split(".")[:-1])
-        freq = 1.0 / self.comm.project.min_period
+        freq = 1.0 / self.project.min_period
 
-        hpc_cluster = get_site(self.comm.project.site_name)
-        remote_diff_dir = self.comm.project.remote_diff_model_dir
+        hpc_cluster = get_site(self.project.site_name)
+        remote_diff_dir = self.project.remote_diff_model_dir
         local_diff_model_dir = "DIFFUSION_MODELS"
 
         if not os.path.exists(local_diff_model_dir):
@@ -56,7 +61,6 @@ class SalvusSmoothComponent(Component):
 
         if not hpc_cluster.remote_exists(remote_diff_dir):
             hpc_cluster.remote_mkdir(remote_diff_dir)
-
         if "REMOTE:" not in model_to_smooth:
             print(
                 f"Uploading initial values from: {model_to_smooth} " f"for smoothing."
@@ -74,9 +78,9 @@ class SalvusSmoothComponent(Component):
                 reference_velocity = param
             # If it is not some velocity, use P velocities
             elif not param.startswith("V"):
-                if "VPV" in self.comm.project.inversion_params:
+                if "VPV" in self.project.inversion_params:
                     reference_velocity = "VPV"
-                elif "VP" in self.comm.project.inversion_params:
+                elif "VP" in self.project.inversion_params:
                     reference_velocity = "VP"
                 else:
                     raise NotImplementedError(
@@ -86,7 +90,7 @@ class SalvusSmoothComponent(Component):
             unique_id = (
                 "_".join([str(i).replace(".", "") for i in smoothing_lengths])
                 + "_"
-                + str(self.comm.project.min_period)
+                + str(self.project.min_period)
             )
 
             diff_model_file = f"{unique_id}diff_model_{ref_model_name}_{param}.h5"
@@ -112,13 +116,13 @@ class SalvusSmoothComponent(Component):
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
-            tensor_order = self.comm.project.smoothing_tensor_order
+            tensor_order = self.project.smoothing_tensor_order
 
             sim.domain.polynomial_order = tensor_order
 
-            if self.comm.project.smoothing_timestep != "auto":
+            if self.project.smoothing_timestep != "auto":
                 sim.physics.diffusion_equation.time_step_in_seconds = (
-                    self.comm.project.smoothing_timestep
+                    self.project.smoothing_timestep
                 )
             sim.physics.diffusion_equation.courant_number = 0.06
 

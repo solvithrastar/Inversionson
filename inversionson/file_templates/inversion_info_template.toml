@@ -2,11 +2,9 @@ inversion_path = "{INVERSION_PATH}"
 lasif_root = "{INVERSION_PATH}/LASIF_PROJECT"
 # Pick between 'multi-mesh' or 'mono-mesh'
 meshes = "mono-mesh"
-# Choose between 'Adam' or 'SGDM'.
-optimizer = "Adam"
 inversion_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO",]
 modelling_parameters = [ "VPV", "VPH", "VSV", "VSH", "RHO", "QKAPPA", "QMU", "ETA",]
-batch_size = 3
+batch_size = 4
 cut_source_region_from_gradient_in_km = 100.0
 # Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be clipped.
 clip_gradient = 1.0
@@ -44,8 +42,6 @@ test_dataset = []
 [HPC]
 # Fast directory where inversionson can keep files that need to be used often. Same place as where your jobs are run.
 inversionson_fast_dir = "scratch/snx3000/username/INVERSIONSON"
-# It's possible to upload meshes to this directory and then they will always be used rather than creating one.
-remote_mesh_directory = "path_to_directory_containing_meshes_and_models"
 # This conda environment will be activated before running the interpolation and hpc processing jobs.
 # Leave the environment empty if you don't want to set it.
 remote_conda_environment = "salvus"
@@ -61,14 +57,10 @@ site_name = "daint"
 wall_time = 3600
 ranks = 12
 
-# It is possible to process the data on the HPC. In this case, you have to provide the path to the data folder
-# and ensure that the events that are available locally are also on the remote. Inversionson
-# expects the same structure as in lasif_project/DATA/EARTHQUAKES. One event per file.
-# Currently, this is only be supported for the multi-mesh workflow.
+# Preprocess the raw data on the HPC. Please provide a wall time and the path to the remote directory
 # The walltime is added to the model interpolation job if Inversionson detects that the processed data does not exist
 # on the remote yet.
 [HPC.remote_data_processing]
-use = false
 remote_raw_data_directory = "path_to_remote_data_directory"
 wall_time = 600
 
@@ -80,9 +72,7 @@ ranks = 12
 model_wall_time = 300
 gradient_wall_time = 900
 
-# Setting the below value to true makes inversionson select windows, compute station weights
-# and compute adjoint sources on the HPC. This is required when using inversionson in combination with
-# a remote raw data storage. It currently uses tf-phase misfits and the default LASIF settings for window selection.
+# Wall time for inversionson to select windows, compute station weights
+# and compute adjoint sources on the HPC. It currently uses tf-phase misfits and the default LASIF settings for window selection.
 [HPC.processing]
-use = true
 wall_time = 1000

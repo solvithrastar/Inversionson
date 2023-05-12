@@ -1,45 +1,33 @@
-from lasif.components.component import Component
+from __future__ import annotations
+from .component import Component
 import os
 import shutil
 import toml
 import emoji
-from colorama import init
-from colorama import Fore
-from typing import List, Union
+from colorama import init, Fore
 
 init()
+from typing import List, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from inversionson.project import Project
 from inversionson import InversionsonError
 
 
-class StoryTellerComponent(Component):
+class StoryTeller(Component):
     """
     A class in charge of documentation of inversion.
 
     Monitors a file which tells the actual story of the inversion
 
-    Keeps track of a few things:
-    - For each iteration:
-    -- Which events are used
-    -- What was the control group
-    -- What was the misfit
-    -- Type of adjoint source.
-
-    - During inversion
-    -- How often each event has been used
-    -- How influential the event was on the inversion
-    -- It allows for the addition of new data by regularly
-        querying Lasif project to look for new data and then
-        updates list of how often events have been used.
-
-    Preferably this should be done in a way that it should be
-    easy to work with data afterwards. Currently using toml files
-    but would be nice to have a better option.
+    TODO:
+    I probably will ditch this for simplicity
     """
 
-    def __init__(self, communicator, component_name):
-        super(StoryTellerComponent, self).__init__(communicator, component_name)
+    def __init__(self, project: Project):
+        super().__init__(project=project)
         self.root, self.backup = self._create_root_folder()
-        self.iteration_tomls = self.comm.project.paths["iteration_tomls"]
+        self.iteration_tomls = self.project.paths["iteration_tomls"]
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
@@ -59,7 +47,7 @@ class StoryTellerComponent(Component):
         """
         Initiate the folder structure if needed
         """
-        root = self.comm.project.paths["documentation"]
+        root = self.project.paths["documentation"]
         backup = os.path.join(root, "BACKUP")
         if not os.path.exists(root):
             os.mkdir(root)
@@ -98,11 +86,11 @@ class StoryTellerComponent(Component):
                 f" Will stop here so that it does not get"
                 f" overwritten."
             )
-        header = self.comm.project.inversion_id
+        header = self.project.inversion_id
         self.markdown.add_header(header_style=1, text=header, new=True)
 
         text = "Welcome to the automatic documentation of the inversion"
-        text += f" project {self.comm.project.inversion_id}. Here the "
+        text += f" project {self.project.inversion_id}. Here the "
         text += "inversion is documented iteration by iteration. \n"
         text += "This is currently just a test but hopefully it will "
         text += "work out beautifully."
@@ -113,7 +101,7 @@ class StoryTellerComponent(Component):
         """
         Write out a list of all events included in lasif project
         """
-        all_events = self.comm.lasif.list_events()
+        all_events = self.project.lasif.list_events()
         with open(self.all_events, "w+") as fh:
             fh.writelines(f"{event}\n" for event in all_events)
 
@@ -121,7 +109,7 @@ class StoryTellerComponent(Component):
         """
         Initialize the toml files which keeps track of usage of events
         """
-        all_events = self.comm.lasif.list_events()
+        all_events = self.project.lasif.list_events()
         self.events_used = {}
         for event in all_events:
             self.events_used[event] = 0
@@ -135,7 +123,10 @@ class StoryTellerComponent(Component):
         """
         all_events = self.comm.lasif.list_events()
         already_in_list = list(self.events_used.keys())
-        if new := [x for x in all_events if x not in already_in_list]:
+        new = [x for x in all_events if x not in already_in_list]
+        if len(new) == 0:
+            return
+        else:
             for event in new:
                 self.events_used[event] = 0
             with open(self.events_used_toml, "w") as fh:
@@ -143,24 +134,21 @@ class StoryTellerComponent(Component):
             with open(self.all_events, "a") as fh:
                 fh.writelines(f"{event}\n" for event in new)
 
-        else:
-            return
-
     def _update_usage_of_events(self):
         """
         To keep track of how often events are used.
         """
-        for event in self.comm.project.non_val_events_in_iteration:
-            if not self.comm.project.updated[event]:
+        for event in self.project.non_val_events_in_iteration:
+            if not self.project.updated[event]:
                 if event not in self.events_used.keys():
                     self.events_used[event] = 0
                 if isinstance(self.events_used[event], str):
                     raise InversionsonError("Events used are strings")
                 self.events_used[event] += 1
-                self.comm.project.change_attribute(
+                self.project.change_attribute(
                     attribute=f'updated["{event}"]', new_value=True
                 )
-        self.comm.project.update_iteration_toml()
+        self.project.update_iteration_toml()
         with open(self.events_used_toml, "w") as fh:
             toml.dump(self.events_used, fh)
 
@@ -168,12 +156,12 @@ class StoryTellerComponent(Component):
         """
         Start a new section in the story file
         """
-        iteration = self.comm.project.current_iteration
+        iteration = self.project.current_iteration
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
             iteration_number = int(
-                self.comm.project.current_iteration.split("_")[-1].lstrip("0")
+                self.project.current_iteration.split("_")[-1].lstrip("0")
             )
         self.markdown.add_header(header_style=2, text=f"Iteration: {iteration_number}")
         text = "Here you can read all about what happened in iteration "
@@ -186,7 +174,7 @@ class StoryTellerComponent(Component):
         When model gets accepted and we compute additional misfits,
         we report it to story file.
         """
-        iteration = self.comm.project.current_iteration
+        iteration = self.project.current_iteration
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
@@ -202,7 +190,7 @@ class StoryTellerComponent(Component):
         When model gets accepted and we compute additional misfits,
         we report it to story file.
         """
-        iteration = self.comm.project.current_iteration
+        iteration = self.project.current_iteration
         if iteration.startswith("it0000_model"):
             iteration_number = 0
         else:
@@ -239,15 +227,15 @@ class StoryTellerComponent(Component):
                     + "the iteration. These are displayed below."
                 )
         self.markdown.add_paragraph(text=text)
-        # iteration = self.comm.project.current_iteration
-        self.comm.project.get_iteration_attributes()
+        # iteration = self.project.current_iteration
+        self.project.get_iteration_attributes()
         self.markdown.add_table(
-            data=self.comm.project.misfits, headers=["Events", "Misfits"]
+            data=self.project.misfits, headers=["Events", "Misfits"]
         )
         if task == "compute_misfit_and_gradient":
             total_misfit = 0.0
-            for key in self.comm.project.misfits.keys():
-                total_misfit += float(self.comm.project.misfits[key])
+            for key in self.project.misfits.keys():
+                total_misfit += float(self.project.misfits[key])
             text = f"Total misfit for iteration: {total_misfit:.3f} \n"
             self.markdown.add_paragraph(text=text)
             return
@@ -255,9 +243,9 @@ class StoryTellerComponent(Component):
         if verbose and "additional" in verbose:
             total_misfit = 0.0
             old_control_group_misfit = 0.0
-            for key, value in self.comm.project.misfits.items():
+            for key, value in self.project.misfits.items():
                 total_misfit += float(value)
-                if key in self.comm.project.old_control_group:
+                if key in self.project.old_control_group:
                     old_control_group_misfit += float(value)
 
             _, cg_red = self._get_misfit_reduction()
@@ -270,8 +258,8 @@ class StoryTellerComponent(Component):
 
         if verbose and "additional" not in verbose:
             old_control_group_misfit = 0.0
-            for key, value in self.comm.project.misfits.items():
-                if key in self.comm.project.old_control_group:
+            for key, value in self.project.misfits.items():
+                if key in self.project.old_control_group:
                     old_control_group_misfit += float(value)
 
             _, cg_red = self._get_misfit_reduction()
@@ -296,11 +284,11 @@ class StoryTellerComponent(Component):
             + "listed below."
         )
         self.markdown.add_paragraph(text=text)
-        self.markdown.add_list(items=self.comm.project.new_control_group)
+        self.markdown.add_list(items=self.project.new_control_group)
 
         cg_misfit = 0.0
-        for key, value in self.comm.project.misfits.items():
-            if key in self.comm.project.new_control_group:
+        for key, value in self.project.misfits.items():
+            if key in self.project.new_control_group:
                 cg_misfit += float(value)
 
         text = f"The current misfit for the control group is {cg_misfit:.3f}"
@@ -372,7 +360,7 @@ class StoryTellerComponent(Component):
             validation_dict[iteration]["total"] = total
         else:
             misfits_toml = os.path.join(
-                self.comm.lasif.lasif_root,
+                self.project.lasif.lasif_root,
                 "ITERATIONS",
                 f"ITERATION_{iteration}",
                 "misfits.toml",
@@ -412,23 +400,23 @@ class StoryTellerComponent(Component):
             # We need to create all necessary files
             self._create_story_file()
             self._start_entry_for_iteration()
-            if self.comm.project.inversion_mode == "mini-batch":
+            if self.project.inversion_mode == "mini-batch":
                 self._write_list_of_all_events()
 
             self._add_table_of_events_and_misfits(task=task)
-            if self.comm.project.inversion_mode == "mini-batch":
+            if self.project.inversion_mode == "mini-batch":
                 self._report_control_group()
                 self._update_event_quality()
 
         elif task == "finalize_iteration":
-            if self.comm.project.inversion_mode == "mini-batch":
+            if self.project.inversion_mode == "mini-batch":
                 self._report_number_of_used_events()
                 self._update_list_of_events()
                 self._update_usage_of_events()
             self._backup_files()
 
 
-class MarkDown(StoryTellerComponent):
+class MarkDown(StoryTeller):
     """
     A little class designed to contain a few helper functions
     to write text in Markdown style

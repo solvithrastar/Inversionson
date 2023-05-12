@@ -1,10 +1,14 @@
+from __future__ import annotations
 import os
 import toml
-from typing import Union, List
+from typing import Dict, Union, List, TYPE_CHECKING
 
 from salvus.flow import api as sapi
 from salvus.opt.smoothing import get_smooth_model
 from inversionson.utils import sleep_or_process
+
+if TYPE_CHECKING:
+    from inversionson.project import Project
 
 
 class RegularizationHelper(object):
@@ -13,7 +17,13 @@ class RegularizationHelper(object):
     It can then dispatch the jobs, monitor and retrieve them.
     """
 
-    def __init__(self, comm, iteration_name, tasks, optimizer=None):
+    def __init__(
+        self,
+        project: Project,
+        iteration_name: str,
+        tasks: Union[Dict, bool],
+        optimizer=None,
+    ):
         """
         Each tasks is a dict that has a reference model, a model that contains the fields
         that require smoothing, the smoothing lengths, the parameters that require
@@ -29,8 +39,8 @@ class RegularizationHelper(object):
         :param iteration_name: Name of the iteration.
         :type iteration_name: str
         """
-        self.comm = comm
-        self.site_name = self.comm.project.smoothing_site_name
+        self.project = project
+        self.site_name = self.project.smoothing_site_name
         self.iteration_name = iteration_name
         self.optimizer = optimizer or self.comm.project.get_optimizer()
         self.job_toml = (
@@ -50,7 +60,7 @@ class RegularizationHelper(object):
         line_below: bool = False,
         emoji_alias: Union[str, List[str]] = ":cop:",
     ):
-        self.comm.storyteller.printer.print(
+        self.project.storyteller.printer.print(
             message=message,
             color=color,
             line_above=line_above,
@@ -71,7 +81,7 @@ class RegularizationHelper(object):
         ):  # We add the tasks to the existing tasks if needed
             existing_tasks = toml.load(self.job_toml)
             if tasks:
-                for task_name, task in tasks.items():
+                for task_name in tasks:
                     # Add the empty task if it does not exist
                     if task_name not in existing_tasks.keys():
                         existing_tasks[task_name] = tasks[task_name]
@@ -115,7 +125,7 @@ class RegularizationHelper(object):
                 self.tasks[task_name]["job_name"] = job.job_array_name
                 self._write_tasks(self.tasks)
             elif task_dict["reposts"] >= self.comm.project.max_reposts:
-                raise Exception(
+                raise ValueError(
                     "Too many reposts in smoothing, "
                     "please check the time steps and the inputs."
                     "and reset the number of reposts in the toml file."

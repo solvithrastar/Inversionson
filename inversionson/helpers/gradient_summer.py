@@ -1,7 +1,7 @@
 import inspect
 import os
 import toml
-from typing import Union, List
+from typing import Optional, Union, List
 
 from salvus.flow.api import get_site
 from inversionson.utils import sum_two_parameters_h5
@@ -46,12 +46,12 @@ class GradientSummer(object):
 
     def sum_gradients(
         self,
-        events,
-        output_location,
-        batch_average=True,
-        sum_vpv_vph=True,
-        store_norms=True,
-        iteration=None,
+        events: List[str],
+        output_location: str,
+        batch_average: bool = True,
+        sum_vpv_vph: bool = True,
+        store_norms: bool = True,
+        iteration: Optional[str] = None,
     ):
         """
         Sum gradients on the HPC.
@@ -130,27 +130,28 @@ class GradientSummer(object):
         self.print("Remote summing completed...")
 
         if store_norms:
-            norm_dict_toml = self.optimizer.gradient_norm_path
-
-            hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
-            all_norms_path = os.path.join(
-                self.optimizer.gradient_norm_dir, "all_norms.toml"
-            )
-            norm_dict = (
-                toml.load(all_norms_path) if os.path.exists(all_norms_path) else {}
-            )
-            norm_iter_dict = toml.load(norm_dict_toml)
-            for event, norm in norm_iter_dict.items():
-                norm_dict[event] = float(norm)
-
-            with open(all_norms_path, "w") as fh:
-                toml.dump(norm_dict, fh)
-
+            self._store_norms(hpc_cluster, remote_norms_path)
         hpc_cluster.remote_get(remote_output_path, output_location)
 
         # Only sum the raw gradient in AdamOpt, not the update
         if sum_vpv_vph:
             sum_two_parameters_h5(output_location, ["VPV", "VPH"])
+
+    # TODO Rename this here and in `sum_gradients`
+    def _store_norms(self, hpc_cluster, remote_norms_path: str):
+        norm_dict_toml = self.optimizer.gradient_norm_path
+
+        hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
+        all_norms_path = os.path.join(
+            self.optimizer.gradient_norm_dir, "all_norms.toml"
+        )
+        norm_dict = toml.load(all_norms_path) if os.path.exists(all_norms_path) else {}
+        norm_iter_dict = toml.load(norm_dict_toml)
+        for event, norm in norm_iter_dict.items():
+            norm_dict[event] = float(norm)
+
+        with open(all_norms_path, "w") as fh:
+            toml.dump(norm_dict, fh)
 
 
 # The below is an old implementation for local summing. We don't expect

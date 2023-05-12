@@ -1,4 +1,4 @@
-from __future__ import absolute_import
+from __future__ import annotations
 import h5py
 import numpy as np
 import shutil
@@ -6,12 +6,15 @@ import os
 from pathlib import Path
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh
-from typing import Union, List
+from typing import Union, List, TYPE_CHECKING
 
-from lasif.components.component import Component
+from .component import Component
+
+if TYPE_CHECKING:
+    from inversionson.project import Project
 
 
-class SalvusMeshComponent(Component):
+class Mesh(Component):
     """
     Communications with Salvus Mesh.
     This will have to be done in a temporary way to begin with
@@ -22,9 +25,9 @@ class SalvusMeshComponent(Component):
     :type infodict: Dictionary
     """
 
-    def __init__(self, communicator, component_name):
-        super(SalvusMeshComponent, self).__init__(communicator, component_name)
-        self.meshes = Path(self.comm.project.lasif_root) / "MODELS"
+    def __init__(self, project: Project):
+        super().__init__(project)
+        self.meshes = Path(self.project.lasif_root) / "MODELS"
         self.event_meshes = self.meshes / "EVENT_MESHES"
         self.average_meshes = self.meshes / "AVERAGE_MESHES"
 
@@ -36,7 +39,7 @@ class SalvusMeshComponent(Component):
         line_below: bool = False,
         emoji_alias: Union[str, List[str]] = ":globe_with_meridians:",
     ):
-        self.comm.storyteller.printer.print(
+        self.project.storyteller.printer.print(
             message=message,
             color=color,
             line_above=line_above,
@@ -55,25 +58,25 @@ class SalvusMeshComponent(Component):
 
         from salvus.mesh.simple_mesh import SmoothieSEM
 
-        source_info = self.comm.lasif.get_source(event_name=event)
+        source_info = self.project.lasif.get_source(event_name=event)
         if isinstance(source_info, list):
             source_info = source_info[0]
         sm = SmoothieSEM()
         sm.basic.model = "prem_ani_one_crust"
-        sm.basic.min_period_in_seconds = self.comm.project.min_period
+        sm.basic.min_period_in_seconds = self.project.min_period
         sm.basic.elements_per_wavelength = 1.7
-        sm.basic.number_of_lateral_elements = self.comm.project.elem_per_quarter
+        sm.basic.number_of_lateral_elements = self.project.elem_per_quarter
         sm.advanced.tensor_order = 4
-        if self.comm.project.ellipticity:
+        if self.project.ellipticity:
             sm.spherical.ellipticity = 0.0033528106647474805
-        if self.comm.project.ocean_loading["use"]:
-            sm.ocean.bathymetry_file = self.comm.project.ocean_loading["file"]
-            sm.ocean.bathymetry_varname = self.comm.project.ocean_loading["variable"]
+        if self.project.ocean_loading["use"]:
+            sm.ocean.bathymetry_file = self.project.ocean_loading["file"]
+            sm.ocean.bathymetry_varname = self.project.ocean_loading["variable"]
             sm.ocean.ocean_layer_style = "loading"
             sm.ocean.ocean_layer_density = 1025.0
-        if self.comm.project.topography["use"]:
-            sm.topography.topography_file = self.comm.project.topography["file"]
-            sm.topography.topography_varname = self.comm.project.topography["variable"]
+        if self.project.topography["use"]:
+            sm.topography.topography_file = self.project.topography["file"]
+            sm.topography.topography_varname = self.project.topography["variable"]
         sm.source.latitude = source_info["latitude"]
         sm.source.longitude = source_info["longitude"]
         sm.refinement.lateral_refinements.append(
@@ -232,44 +235,6 @@ class SalvusMeshComponent(Component):
         mesh = UnstructuredMesh.from_h5(filename)
         mesh.write_h5(filename)
 
-    def add_fluid_and_roi_from_lasif_mesh(self):
-        """
-        For some reason the salvus opt meshes don't have all the necessary info.
-        I need this to get them simulation ready. I will write them into the
-        lasif folder afterwards.
-        As this is a quickfix, I will make it for my specific case.
-        """
-        import os
-        import numpy as np
-
-        initial_model = self.comm.lasif.lasif_comm.project.lasif_config[
-            "domain_settings"
-        ]["domain_file"]
-        iteration = self.comm.project.current_iteration
-        opt_mesh = os.path.join(
-            self.comm.project.paths["salvus_opt"],
-            "PHYSICAL_MODELS",
-            f"{iteration}.h5",
-        )
-        m_opt = UnstructuredMesh.from_h5(opt_mesh)
-        m_init = UnstructuredMesh.from_h5(initial_model)
-
-        fluid = m_init.elemental_fields["fluid"]
-        roi = np.abs(1.0 - fluid)
-
-        m_opt.attach_field(name="fluid", data=fluid)
-        m_opt.attach_field(name="ROI", data=roi)
-
-        iteration_mesh = os.path.join(
-            self.comm.project.lasif_root,
-            "MODELS",
-            f"ITERATION_{iteration}",
-            "mesh.h5",
-        )
-        if not os.path.exists(os.path.dirname(iteration_mesh)):
-            os.makedirs(os.path.dirname(iteration_mesh))
-        m_opt.write_h5(iteration_mesh)
-
     def get_average_model(self, iteration_range: tuple) -> Path:
         """
         Get an average model between a list of iteration numbers.
@@ -293,15 +258,15 @@ class SalvusMeshComponent(Component):
         # No, that may be an error, we copy the master model from LASIF
         # and put average field onto that one.
 
-        # model = self.comm.salvus_opt.get_model_path()
-        model = self.comm.lasif.get_master_model()
+        # model = self.project.salvus_opt.get_model_path()
+        model = self.project.lasif.get_master_model()
         shutil.copy(model, full_path)
 
         m = UnstructuredMesh.from_h5(full_path)
         fields = m.element_nodal_fields
         new_fields = {field: np.zeros_like(fields[field]) for field in fields.keys()}
         # m.element_nodal_fields = {}
-        optimizer = self.comm.project.get_optimizer()
+        optimizer = self.project.get_optimizer()
         for iteration in range(iteration_range[0], iteration_range[1] + 1):
             model_path = optimizer.get_path_for_iteration(
                 iteration, optimizer.model_path
@@ -332,7 +297,7 @@ class SalvusMeshComponent(Component):
         :type event: str
         """
 
-        mesh = self.comm.lasif.find_event_mesh(event)
+        mesh = self.project.lasif.find_event_mesh(event)
         m = UnstructuredMesh.from_h5(mesh)
         mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[::-1].astype(int)
         layers = m.elemental_fields["layer"]
@@ -414,7 +379,7 @@ class SalvusMeshComponent(Component):
         """
         self.print("Filling inversion parameters with zeros before interpolation")
         m = UnstructuredMesh.from_h5(mesh)
-        parameters = self.comm.project.inversion_params
+        parameters = self.project.inversion_params
         zero_nodal = np.zeros_like(m.element_nodal_fields[parameters[0]])
 
         for param in parameters:
