@@ -1,59 +1,22 @@
-import os
 import emoji
-import toml
-import inspect
 import sys
 from typing import List, Optional, Union
 
 from pathlib import Path
 from colorama import init
-from salvus.flow.api import get_site
+from inversionson.file_templates.inversion_info_template import InversionsonConfig
 from inversionson.project import Project
-from inversionson.optimizers.optson import OptsonLink
 
 init()
-__INTERPOLATION_SCRIPT_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "inversionson",
-    "remote_scripts",
-    "interpolation.py",
-)
-
-__INVERSION_INFO_template = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "inversionson",
-    "file_templates",
-    "inversion_info_template.toml",
-)
-
-
-def get_project(info):
-    """
-    Get Inversionson communicator.
-    """
-    return Project(info)
 
 
 class AutoInverter(object):
-    _REMOTE_DIRECTORIES = [
-        "DIFFUSION_MODELS",
-        "SOURCE_TIME_FUNCTIONS",
-        "INTERPOLATION_WEIGHTS",
-        "MESHES",
-        "WINDOWS",
-        "MISFITS",
-        "ADJOINT_SOURCES",
-        "PROCESSED_DATA",
-        "SCRIPTS",
-    ]
-
-    def __init__(self, info_dict: dict, manual_mode=False, verbose=True):
-        self.info = info_dict
-        self.project = get_project(self.info)
+    def __init__(
+        self,
+        config: InversionsonConfig,
+        manual_mode: bool = False,
+    ):
+        self.project = Project(config)
         self.print(
             message="All Good, let's go!",
             line_above=True,
@@ -62,7 +25,7 @@ class AutoInverter(object):
             color="cyan",
         )
         if not manual_mode:
-            self.run_inversion(verbose=verbose)
+            self.run_inversion()
 
     def print(
         self,
@@ -80,19 +43,6 @@ class AutoInverter(object):
             emoji_alias=emoji_alias,
         )
 
-    def _initialize_remote_directories(self, hpc_cluster):
-        self.print("Initializing remote directories.")
-        if not hpc_cluster.remote_exists(self.project.remote_inversionson_dir):
-            hpc_cluster.remote_mkdir(self.project.remote_inversionson_dir)
-
-        for directory in self._REMOTE_DIRECTORIES:
-            if not hpc_cluster.remote_exists(
-                self.project.remote_inversionson_dir / directory
-            ):
-                hpc_cluster.remote_mkdir(
-                    self.project.remote_inversionson_dir / directory
-                )
-
     @staticmethod
     def safe_put(hpc_cluster, local_path: str, remote_path: str):
         remote_parent = Path(remote_path).parent
@@ -108,51 +58,62 @@ class AutoInverter(object):
         Move all the remote scripts to hpc.
         Move the bathymetry and topography files if it makes sense.
         """
-        hpc_cluster = get_site(self.project.site_name)
-        self._initialize_remote_directories(hpc_cluster)
+        hpc_cluster = self.project.flow.hpc_cluster
+        self.project.remote_paths.create_remote_directories(hpc_cluster)
 
-        if self.project.ocean_loading["use"] and self.project.meshes == "multi-mesh":
-            if not hpc_cluster.remote_exists(self.project.ocean_loading["remote_path"]):
-                self.safe_put(
-                    hpc_cluster,
-                    self.project.ocean_loading["file"],
-                    self.project.ocean_loading["remote_path"],
-                )
-            else:
+        if (
+            self.project.config.meshing.ocean_loading
+            and self.project.config.meshing.multi_mesh
+        ):
+            if hpc_cluster.remote_exists(self.project.remote_paths.ocean_loading_f):
                 self.print(
                     "Remote Bathymetry file is already uploaded",
                     emoji_alias=":white_check_mark:",
                 )
 
-        if self.project.topography["use"]:
-            if not hpc_cluster.remote_exists(self.project.topography["remote_path"]):
+            else:
                 self.safe_put(
                     hpc_cluster,
-                    self.project.topography["file"],
-                    self.project.topography["remote_path"],
+                    self.project.config.meshing.ocean_loading_file,
+                    self.project.remote_paths.ocean_loading_f,
                 )
-            else:
+        if self.project.config.meshing.topography:
+            if hpc_cluster.remote_exists(self.project.remote_paths.topography_f):
                 self.print(
                     "Remote Topography file is already uploaded",
                     emoji_alias=":white_check_mark:",
                 )
 
-        remote_interp_path = self.project.multi_mesh.find_interpolation_script()
-        self.safe_put(__INTERPOLATION_SCRIPT_PATH, remote_interp_path)
+            else:
+                self.safe_put(
+                    hpc_cluster,
+                    self.project.config.meshing.topography_file,
+                    self.project.remote_paths.topography_f,
+                )
+        if not hpc_cluster.remote_exists(self.project.remote_paths.interp_script):
+            local_interpolation_script = (
+                Path(__file__).parent / "remote_scripts" / "interpolation.py"
+            )
+            self.safe_put(
+                hpc_cluster,
+                local_interpolation_script,
+                self.project.remote_paths.interp_script,
+            )
 
-        if self.project.meshes == "multi-mesh":
+        if self.project.config.meshing.multi_mesh:
             self.project.lasif.move_gradient_to_cluster(
                 hpc_cluster=hpc_cluster, overwrite=False
             )
 
-    def run_inversion(self, verbose=True):
-        self.move_files_to_cluster
-        opt_link = OptsonLink(self.comm)
-        opt_link.perform_task(verbose=verbose)
+    def run_inversion(self):
+        self.move_files_to_cluster()
 
 
 def _initialize_inversionson(root, info_toml_path):
-    with open(__INVERSION_INFO_template, "r") as fh:
+    info_template = (
+        Path(__file__).parent / "file_templates" / "inversion_info_template.py"
+    )
+    with open(info_template, "r") as fh:
         toml_string = fh.read()
     toml_string = toml_string.format(INVERSION_PATH=str(root))
     with open(info_toml_path, "w") as fh:
@@ -162,7 +123,7 @@ def _initialize_inversionson(root, info_toml_path):
     sys.exit()
 
 
-def read_info_toml(root: str):
+def get_config(root: str) -> InversionsonConfig:
     """
     Read the inversion config file inversion_info.toml into a dictionary.
 
@@ -170,16 +131,24 @@ def read_info_toml(root: str):
 
     :param root: the project root
     """
-    info_toml = "inversion_info.toml"
+    config_path = "inversion_config.py"
     root = Path(root).resolve() if root else Path.cwd()
     if not root.is_dir():
         raise NotADirectoryError(f"Specified project root {root} is not a directory")
-    info_toml_path = root / info_toml
+    info_toml_path = root / config_path
     if not info_toml_path.is_file():
-        _initialize_inversionson(root, info_toml_path)
+        _initialize_inversionson(root, config_path)
     else:
-        print(f"Using configuration file {str(info_toml_path)}")
-    return toml.load(info_toml_path)
+        print(f"Using configuration file {config_path}")
+        return _get_inversionson_config(info_toml_path)
+
+
+def _get_inversionson_config(config_path: Path) -> InversionsonConfig:
+    import importlib
+
+    inversion_config = importlib.import_module("inversion_config", config_path)
+    config: InversionsonConfig = inversion_config.InversionsonConfig()
+    return config
 
 
 def run(root: Optional[str] = None):
@@ -189,8 +158,7 @@ def run(root: Optional[str] = None):
             language="alias",
         )
     )
-    info = read_info_toml(root)
-    AutoInverter(info)
+    AutoInverter(config=get_config(root))
 
 
 if __name__ == "__main__":

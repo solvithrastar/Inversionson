@@ -29,6 +29,7 @@ class SalvusFlow(Component):
 
     def __init__(self, project: Project):
         super().__init__(project=project)
+        self.__hpc_cluster = None
 
     def print(
         self,
@@ -45,6 +46,12 @@ class SalvusFlow(Component):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
+        
+    @property
+    def hpc_cluster(self):
+        if not self.__hpc_cluster:
+            self.__hpc_cluster = get_site(self.project.config.hpc.sitename)
+        return self.__hpc_cluster
 
     def _get_job_name(
         self, event: str, sim_type: str, new=True, iteration="current"

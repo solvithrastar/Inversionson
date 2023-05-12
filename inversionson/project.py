@@ -10,19 +10,55 @@ import warnings
 from typing import Dict, Optional, Union, List
 import salvus.flow.api as sapi
 
+from inversionson.file_templates.inversion_info_template import InversionsonConfig
+
+class RemotePaths:
+    def __init__(self, config:InversionsonConfig):
+        self.root = config.hpc.inversionson_folder
+
+        self.diff_dir = self.root / "DIFFUSION_MODELS"
+        self.stf_dir = self.root / "SOURCE_TIME_FUNCTIONS"
+        self.interp_weights_dir = self.root / "INTERPOLATION_WEIGHTS"
+        self.mesh_dir = self.root / "MESHES"
+        self.window_dir = self.root / "WINDOWS"
+        self.misfit_dir = self.root / "MISFITS"
+        self.adj_src_dir = self.root / "ADJOINT_SOURCES"
+        self.receiver_dir = self.root / "RECEIVERS"
+        self.script_dir = self.root / "SCRIPTS"
+        self.proc_data_dir = self.root / "PROCESSED_DATA"
+
+        self.ocean_loading_f = self.root / "ocean_loading_file"
+        self.topography_f = self.root / "topography_file"
+        self.interp_script = self.script_dir / "interpolation.py"
+
+    def create_remote_directories(self, hpc_cluster):
+        if not hpc_cluster.remote_exists(self.root):
+            hpc_cluster.remote_mkdir(self.root)
+
+        for directory in [self.diff_dir, self.stf_dir, self.interp_weights_dir, self.mesh_dir, self.window_dir,
+            self.misfit_dir, self.adj_src_dir, self.receiver_dir, self.script_dir, self.proc_data_dir]:
+            if not hpc_cluster.remote_exists(
+                self.root / directory
+            ):
+                hpc_cluster.remote_mkdir(
+                    self.root / directory
+                )
 
 class ProjectPaths:
-    def __init__(self, inversion_root: str, lasif_root: str):
-        self.inversion_root = Path(inversion_root)
-        self.lasif_root = Path(lasif_root)
-        self.documentation = self.inversion_root / "DOCUMENTATION"
+    def __init__(self, config: InversionsonConfig):
+        self.root = config.inversion_path
+        self.lasif_root = config.lasif_root
+        self.documentation = self.root / "DOCUMENTATION"
         self.documentation.mkdir(exist_ok=True)
         self.iteration_tomls = self.documentation / "ITERATIONS"
         self.iteration_tomls.mkdir(exist_ok=True)
         self.misc_folder = self.documentation / "MISC"
         self.misc_folder.mkdir(exist_ok=True)
 
-    def iteration_toml(self, iteration: str) -> Path:
+        self.remote_ocean_loading_f = config.hpc.inversionson_folder / "ocean_loading_file"
+        self.remote_topography_f = config.hpc.inversionson_folder / "topography_file"
+
+    def get_iteration_toml(self, iteration: str) -> Path:
         return self.iteration_tomls / f"{iteration}.toml"
 
 
@@ -56,24 +92,20 @@ class LASIFSimulationSettings:
 class Project(object):
     # The below stuff is hardcoded for now
     ad_src_type = "tf_phase_misfit"
-    random_event_processing = True  # should be removed
-    remote_gradient_processing = True  # should be removed
 
-    def __init__(self, information_dict: dict):
+    def __init__(self, config: InversionsonConfig):
         """
         Initiate everything to make it work correctly. Make sure that
         a running inversion can be restarted although this is done.
         """
-        self.info = information_dict
-        self.simulation_settings = LASIFSimulationSettings(
-            os.path.join(self.info["lasif_root"], "lasif_config.toml")
-        )
-        self.get_inversion_attributes(first=True)
-        self.__setup_components()
-        self.get_inversion_attributes(first=False)
+        self.config = config
+        self.paths = ProjectPaths(self.config)
+        self.remote_paths = RemotePaths(self.config)
 
-        # Attempt to get the simulation timestep immediately if it exists.
+        self.simulation_settings = LASIFSimulationSettings(self.config.lasif_root / "lasif_config.toml")
+        self.__setup_components()
         self.simulation_time_step: Union[float, None] = None
+        # Attempt to get the simulation timestep immediately if it exists.
         self.find_simulation_time_step()
 
     def __setup_components(self):
@@ -117,105 +149,6 @@ class Project(object):
         """
         return
 
-    def get_inversion_attributes(self, first: bool = False):
-        """
-        Read crucial components into memory to keep them easily accessible.
-        :param first: Before components are set up, defaults to False
-        """
-        # Simulation attributes
-        self.time_step = self.simulation_settings.time_step
-        self.start_time = self.simulation_settings.start_time
-        self.end_time = self.simulation_settings.end_time
-        self.min_period = self.simulation_settings.min_period
-        self.max_period = self.simulation_settings.max_period
-        self.attenuation = self.simulation_settings.attenuation
-        self.abs_bound_length = self.simulation_settings.absorbing_boundaries_length
-        self.absorbing_boundaries: bool = self.info["absorbing_boundaries"]
-        self.domain_file = self.simulation_settings.domain_file
-
-        # Inversion attributes
-        self.inversion_root = Path(self.info["inversion_path"])
-        self.lasif_root = Path(self.info["lasif_root"])
-        self.inversion_mode = "mini-batch"
-        self.meshes = self.info["meshes"]
-        self.remote_interp = self.meshes == "multi-mesh"
-        self.optimizer = self.info["optimizer"].lower()
-        self.elem_per_quarter = self.info["Meshing"]["elements_per_azimuthal_quarter"]
-        self.elem_per_wavelength = self.info["Meshing"]["elements_per_wavelength"]
-        self.topography = self.info["Meshing"]["topography"]
-        self.ellipticity = self.info["Meshing"]["ellipticity"]
-        self.ocean_loading = self.info["Meshing"]["ocean_loading"]
-        self.cut_source_radius = self.info["cut_source_region_from_gradient_in_km"]
-        self.clip_gradient = self.info["clip_gradient"]
-        self.site_name = self.info["HPC"]["wave_propagation"]["site_name"]
-        self.ranks = self.info["HPC"]["wave_propagation"]["ranks"]
-        self.wall_time = self.info["HPC"]["wave_propagation"]["wall_time"]
-        self.model_interp_wall_time = self.info["HPC"]["interpolation"][
-            "model_wall_time"
-        ]
-        self.grad_interp_wall_time = self.info["HPC"]["interpolation"][
-            "gradient_wall_time"
-        ]
-        self.interpolation_site = self.site_name
-        self.remote_data_processing = self.info["HPC"]["remote_data_processing"]["use"]
-        self.remote_data_proc_wall_time = self.info["HPC"]["remote_data_processing"][
-            "wall_time"
-        ]
-        self.remote_raw_data_dir = self.info["HPC"]["remote_data_processing"][
-            "remote_raw_data_directory"
-        ]
-        self.smoothing_site_name = self.site_name
-        self.smoothing_ranks = self.info["HPC"]["diffusion_equation"]["ranks"]
-        self.smoothing_wall_time = self.info["HPC"]["diffusion_equation"]["wall_time"]
-        self.remote_mesh_dir = Path(self.info["HPC"]["remote_mesh_directory"])
-        self.sleep_time_in_s = self.info["HPC"]["sleep_time_in_seconds"]
-        self.max_reposts = self.info["HPC"]["max_reposts"]
-        self.remote_inversionson_dir = Path(self.info["HPC"]["inversionson_fast_dir"])
-        self.hpc_processing = self.info["HPC"]["processing"]["use"]
-        self.hpc_processing_wall_time = self.info["HPC"]["processing"]["wall_time"]
-        self.remote_conda_env = self.info["HPC"]["remote_conda_environment"]
-        self.remote_conda_source_location = self.info["HPC"][
-            "remote_conda_source_location"
-        ]
-        self.remote_diff_model_dir = self.remote_inversionson_dir / "DIFFUSION_MODELS"
-        self.remote_windows_dir = self.remote_inversionson_dir / "WINDOWS"
-        self.remote_misfits_dir = self.remote_inversionson_dir / "MISFITS"
-        self.fast_mesh_dir = self.remote_inversionson_dir / "MESHES"
-        self.batch_size = self.info["batch_size"]
-        self.val_it_interval = self.info["inversion_monitoring"][
-            "iterations_between_validation_checks"
-        ]
-        self.use_model_averaging = self.info["inversion_monitoring"][
-            "use_model_averaging"
-        ]
-        self.validation_dataset = self.info["inversion_monitoring"][
-            "validation_dataset"
-        ]
-        self.test_dataset = self.info["inversion_monitoring"]["test_dataset"]
-
-        self.inversion_params = self.info["inversion_parameters"]
-        self.modelling_params = self.info["modelling_parameters"]
-
-        # Some useful paths
-        self.paths = ProjectPaths(self.inversion_root, self.lasif_root)
-
-        self.smoothing_tensor_order = optimizer.get_tensor_order(
-            optimizer.initial_model
-        )
-        self.smoothing_timestep = optimizer.smoothing_timestep
-
-        self.prepare_forward = bool(
-            self.meshes == "multi-mesh" or self.remote_data_processing
-        )
-        if not first:
-            self.current_iteration = optimizer.iteration_name
-            self.print(
-                f"Current Iteration: {self.current_iteration}",
-                line_above=True,
-                line_below=True,
-                emoji_alias=":date:",
-            )
-
     def create_iteration_toml(self, iteration: str, events: List[str]):
         """
         Create the toml file for an iteration. This toml file is then updated.
@@ -224,7 +157,7 @@ class Project(object):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        iteration_toml = self.paths.iteration_toml(iteration)
+        iteration_toml = self.paths.get_iteration_toml(iteration)
 
         if os.path.exists(iteration_toml):
             warnings.warn(
@@ -285,7 +218,7 @@ class Project(object):
         :type iteration: str
         """
         iteration = iteration or self.current_iteration
-        iteration_toml = self.paths.iteration_toml(iteration)
+        iteration_toml = self.paths.get_iteration_toml(iteration)
 
         if not iteration_toml.exists():
             raise FileNotFoundError(
@@ -327,7 +260,7 @@ class Project(object):
         :param iteration: Name of iteration
         :type iteration: str
         """
-        iteration_toml = self.paths.iteration_toml(iteration)
+        iteration_toml = self.paths.get_iteration_toml(iteration)
         if not iteration_toml.exists():
             raise FileNotFoundError(f"No toml file exists for iteration: {iteration}")
 
@@ -381,7 +314,7 @@ class Project(object):
         :return: Information regarding that iteration
         :rtype: dict
         """
-        iteration_toml = self.paths.iteration_toml(iteration)
+        iteration_toml = self.paths.get_iteration_toml(iteration)
         if not iteration_toml.exists():
             raise FileNotFoundError(f"No toml file exists for iteration: {iteration}")
 
@@ -412,7 +345,7 @@ class Project(object):
         """Read the timestep value from a stdout produced by salvus run."""
         local_stdout = self.paths.documentation / "stdout_to_find_tinestep"
         hpc_cluster = sapi.get_site(self.site_name)
-        forward_job = self.salvus_flow.get_job(event=event, sim_type="forward")
+        forward_job = self.flow.get_job(event=event, sim_type="forward")
         stdout = forward_job.path / "stdout"
         hpc_cluster.remote_get(stdout, local_stdout)
 

@@ -27,7 +27,7 @@ class Mesh(Component):
 
     def __init__(self, project: Project):
         super().__init__(project)
-        self.meshes = Path(self.project.lasif_root) / "MODELS"
+        self.meshes = self.project.config.lasif_root / "MODELS"
         self.event_meshes = self.meshes / "EVENT_MESHES"
         self.average_meshes = self.meshes / "AVERAGE_MESHES"
 

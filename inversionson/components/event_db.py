@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Dict, List, Union
+
 if TYPE_CHECKING:
     from inversionson.project import Project
 
@@ -8,10 +9,17 @@ import json
 
 
 class EventDataBase(Component):
+    """
+    This component numbers all data. This is important since Optson labels samples with integer
+    values.
+    """
+
     def __init__(self, project: Project):
         super().__init__(project=project)
+        self.event_numbering_file = (
+            self.project.paths.documentation / "event_numbering.json"
+        )
         self.enumerate_all_data()
-        self.event_numbering_file = self.project.paths.documentation / "event_numbering.json"
 
     def enumerate_all_data(self) -> Dict[str, int]:
         all_events = self.project.lasif.list_events()
@@ -37,7 +45,9 @@ class EventDataBase(Component):
         with open(self.event_numbering_file, "w") as fh:
             json.dump(self.event_dict, fh)
 
-        self.flipped_event_dict = {int(idx): name for name, idx in self.event_dict.items()}
+        self.flipped_event_dict = {
+            int(idx): name for name, idx in self.event_dict.items()
+        }
 
     def get_event_idx(self, event: str):
         return self.event_dict[event]
@@ -45,7 +55,7 @@ class EventDataBase(Component):
     def get_event_indices(self, events: List[str]):
         return [self.event_dict[event] for event in events]
 
-    def get_event_name(self, event_idx: Union[str, int]) -> str
+    def get_event_name(self, event_idx: Union[str, int]) -> str:
         """Gives a list of string names for indices of events. Given on a list of integers given either in the form
         of ints of strings of ints.
         Strings of ints are supported to allow easy conversion from toml files."""
@@ -54,5 +64,5 @@ class EventDataBase(Component):
     def get_event_names(self, event_indices: Union[List[str], List[int]]) -> List[str]:
         """Gives a list of string names for indices of events. Given on a list of integers given either in the form
         of ints of strings of ints.
-        Strings of ints are supported to allow easy conversion from toml files."""
+        Strings of ints are supported as well to allow easy conversion from toml files."""
         return [self.flipped_event_dict[int(event_idx)] for event_idx in event_indices]

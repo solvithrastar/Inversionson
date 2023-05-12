@@ -26,7 +26,7 @@ class Lasif(Component):
 
     def __init__(self, project: Project):
         super().__init__(project=project)
-        self.lasif_root = self.project.lasif_root
+        self.lasif_root = self.project.config.lasif_root
         self.lasif_comm = self._find_project_comm()
 
         # Store if some event might not processing
@@ -155,21 +155,17 @@ class Lasif(Component):
         :rtype: pathlib.Path
         """
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.interpolation_site)
-        remote_mesh_dir = pathlib.Path(self.project.remote_mesh_dir)
-        fast_dir = pathlib.Path(self.project.remote_inversionson_dir)
+            hpc_cluster = get_site(self.project.config.hpc.sitename)
+        remote_mesh_dir = self.project.remote_paths.mesh_dir
+        fast_dir = self.project.config.hpc.inversionson_folder
         if iteration is None:
             iteration = self.project.current_iteration
 
         if gradient:
             if interpolate_to:
                 mesh = (
-                    self.project.remote_inversionson_dir
-                    / "MESHES"
-                    / "standard_gradient"
-                    / "mesh.h5"
+                    self.project.remote_paths.mesh_dir / "standard_gradient" / "mesh.h5"
                 )
-                # mesh = remote_mesh_dir / "standard_gradient" / "mesh.h5"
             else:
                 output = self.project.salvus_flow.get_job_file_paths(
                     event=event, sim_type="adjoint"
@@ -323,7 +319,9 @@ class Lasif(Component):
             hpc_cluster.remote_put(local_model, path_to_mesh)
             self.print("Did it")
 
-    def move_gradient_to_cluster(self, hpc_cluster=None, overwrite: bool = False):
+    def move_gradient_to_cluster(
+        self, hpc_cluster: Optional["BaseSite"] = None, overwrite: bool = False
+    ):
         """
         Empty gradient moved to a dedicated directory on cluster
 
@@ -331,7 +329,7 @@ class Lasif(Component):
         :type hpc_cluster: salvus.flow.Site, optional
         """
         if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.interpolation_site)
+            hpc_cluster = get_site(self.project.config.hpc.sitename)
 
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
@@ -478,7 +476,7 @@ class Lasif(Component):
         :return: Path to inversion grid
         :rtype: str
         """
-        return self.lasif_comm.project.lasif_config["domain_settings"]["domain_file"]
+        return self.project.config.inversion.initial_model
 
     def get_master_mesh(self) -> str:
         """
@@ -493,9 +491,7 @@ class Lasif(Component):
         """
         # We assume the lasif domain is the inversion grid
         if self.master_mesh is None:
-            path = self.lasif_comm.project.lasif_config["domain_settings"][
-                "domain_file"
-            ]
+            path = self.project.config.inversion.initial_model
             self.master_mesh = UnstructuredMesh.from_h5(path)
         return self.master_mesh
 

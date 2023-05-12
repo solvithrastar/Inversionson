@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from inversionson.project import Project
+from inversionson.project import Project
 
 class Component(object):
     """

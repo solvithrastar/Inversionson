@@ -571,17 +571,6 @@ class MultiMesh(Component):
 
         return commands
 
-    def find_interpolation_script(self) -> str:
-        """
-        Check to see if remote interpolation script is available.
-        If not, create one and put it there
-        """
-        return os.path.join(
-            self.project.remote_inversionson_dir,
-            "SCRIPTS",
-            "interpolation.py",
-        )
-
     def get_remote_field_moving_script_path(self):
         site = get_site(self.project.interpolation_site)
         username = site.config["ssh_settings"]["username"]

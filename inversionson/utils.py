@@ -93,33 +93,6 @@ def _print(
     )
 
 
-def sleep_or_process(
-    comm, color: Optional[str] = None, emoji_alias: Optional[str] = None
-):
-    """
-    This functions tries to process a random unprocessed event
-    or sleeps if all are processed.
-    """
-    if (
-        not comm.project.remote_data_processing
-        and comm.project.random_event_processing
-        and comm.lasif.process_random_unprocessed_event()
-    ):
-        _print(
-            comm,
-            "Seems like there is nothing to do now I might as well process some random event.",
-            emoji_alias=None,
-        )
-    else:
-        _print(
-            comm,
-            f"Waiting {comm.project.sleep_time_in_s} seconds before trying again",
-            emoji_alias=":hourglass:" if emoji_alias is None else emoji_alias,
-            color=color,
-        )
-        time.sleep(comm.project.sleep_time_in_s)
-
-
 def get_window_filename(event: str, iteration: str) -> str:
     return f"{event}_{iteration}_windows.json"
 

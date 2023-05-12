@@ -27,7 +27,7 @@ class StoryTeller(Component):
     def __init__(self, project: Project):
         super().__init__(project=project)
         self.root, self.backup = self._create_root_folder()
-        self.iteration_tomls = self.project.paths["iteration_tomls"]
+        self.iteration_tomls = self.project.paths.iteration_tomls
         self.story_file = os.path.join(self.root, "inversion.md")
         self.all_events = os.path.join(self.root, "all_events.txt")
         self.events_used_toml = os.path.join(self.root, "events_used.toml")
@@ -47,7 +47,7 @@ class StoryTeller(Component):
         """
         Initiate the folder structure if needed
         """
-        root = self.project.paths["documentation"]
+        root = self.project.paths.documentation
         backup = os.path.join(root, "BACKUP")
         if not os.path.exists(root):
             os.mkdir(root)

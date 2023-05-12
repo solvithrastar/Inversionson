@@ -1,36 +1,23 @@
 from __future__ import annotations
 from ast import List
 import os
-import inspect
 from typing import Optional
 import toml
 import json
+from pathlib import Path
 import salvus.flow.api as sapi
-from salvus.flow.api import get_site
 
 from inversionson.helpers.remote_job_listener import RemoteJobListener
 from inversionson.utils import (
-    sleep_or_process,
     get_misfits_filename,
     get_window_filename,
 )
 from inversionson import InversionsonError
 from inversionson.project import Project
 
-CUT_SOURCE_SCRIPT_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "remote_scripts",
-    "cut_and_clip.py",
-)
-
-PROCESS_OUTPUT_SCRIPT_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "remote_scripts",
-    "window_and_calc_adj_src.py",
+__CUT_SOURCE_SCRIPT_PATH = Path(__file__).parent / "remote_scripts" / "cut_and_clip.py"
+__PROCESS_OUTPUT_SCRIPT_PATH = (
+    Path(__file__).parent / "remote_scripts" / "window_and_calc_adj_src.py"
 )
 
 
@@ -92,15 +79,9 @@ class IterationListener(object):
         if submitted:
             return
 
-        hpc_cluster = get_site(self.project.interpolation_site)
-        interp_folder = os.path.join(
-            self.project.remote_inversionson_dir,
-            "INTERPOLATION_WEIGHTS",
-            "MODELS",
-            event,
-        )
-        if not hpc_cluster.remote_exists(interp_folder):
-            hpc_cluster.remote_mkdir(interp_folder)
+        interp_folder = self.project.remote_paths.interp_weights_dir / "MODELS" / event
+        if not self.project.flow.hpc_cluster.remote_exists(interp_folder):
+            self.project.flow.hpc_cluster.remote_mkdir(interp_folder)
 
         self.project.multi_mesh.prepare_forward(event=event)
 
@@ -138,31 +119,24 @@ class IterationListener(object):
         if submitted:
             return
 
-        # In the case of a prepare_forward job, assume dict is created remotely
-        simulation_created_remotely = bool(self.project.prepare_forward)
         if verbose:
             self.print(
                 "Run forward simulation", line_above=True, emoji_alias=":rocket:"
             )
             self.print(f"Event: {event}")
 
-        if simulation_created_remotely:
-            w = self.project.flow.construct_simulation_from_dict(event)
-        else:
-            receivers = self.project.flow.get_receivers(event)
-            source = self.project.flow.get_source_object(event)
-            w = self.project.flow.construct_simulation(event, source, receivers)
-
-        already_interpolated = self.project.meshes == "multi-mesh"
+        w = self.project.flow.construct_simulation_from_dict(event)
+        already_interpolated = self.project.config.meshing.multi_mesh
         # Get the average model when validation event
         validation = bool(
             (
                 self.project.is_validation_event(event)
-                and self.project.use_model_averaging
+                and self.project.config.monitoring.use_model_averaging
                 and "00000" not in self.project.current_iteration
             )
         )
-        hpc_cluster = get_site(self.project.interpolation_site)
+        hpc_cluster = self.project.flow.hpc_cluster
+
         remote_mesh = self.project.lasif.find_remote_mesh(
             event=event,
             gradient=False,
@@ -171,42 +145,18 @@ class IterationListener(object):
             validation=validation,
             already_interpolated=already_interpolated,
         )
+
         w.set_mesh(f"REMOTE:{str(remote_mesh)}")
-        # make the mesh use
 
         self.project.flow.submit_job(
             event=event,
             simulation=w,
             sim_type="forward",
-            site=self.project.site_name,
-            ranks=self.project.ranks,
+            site=self.project.config.hpc.sitename,
+            ranks=self.project.config.hpc.n_wave_ranks,
         )
 
         self.print(f"Submitted forward job for event: {event}")
-
-    def __compute_station_weights(self, event: str, verbose: bool = False):
-        """
-        Calculate station weights to reduce the effect of data coverage
-
-        :param event: Name of event
-        :type event: str
-        """
-        # Skip this in the event of remote weight set calculations
-        # as part of the HPC processing job.
-        if self.project.hpc_processing:
-            return
-
-        if self.project.is_validation_event(event):
-            return
-
-        if verbose:
-            self.print(
-                "Calculate station weights",
-                color="red",
-                line_above=True,
-                emoji_alias=":trident:",
-            )
-        self.project.lasif.calculate_station_weights(event)
 
     def __retrieve_seismograms(self, event: str, verbose: bool = False):
         self.project.flow.retrieve_outputs(event_name=event, sim_type="forward")
@@ -236,12 +186,9 @@ class IterationListener(object):
         if submitted:
             return
 
-        if not self.project.remote_data_processing:
-            self.__process_data(event)
-
         iteration = self.project.current_iteration
         forward_job = sapi.get_job(
-            site_name=self.project.site_name,
+            site_name=self.project.config.hpc.sitename,
             job_name=self.project.flow.get_job_name(event=event, sim_type="forward"),
         )
 
@@ -250,7 +197,7 @@ class IterationListener(object):
         forward_meta_json_filename = str(forward_job.output_path / "meta.json")
 
         # Get local proc filename
-        lasif_root = self.project.lasif_root
+        lasif_root = self.project.config.lasif_root
         proc_filename = (
             f"preprocessed_{int(self.project.min_period)}s_"
             f"to_{int(self.project.max_period)}s.h5"
@@ -260,58 +207,35 @@ class IterationListener(object):
         )
 
         remote_proc_file_name = f"{event}_{proc_filename}"
-        hpc_cluster = get_site(self.project.site_name)
+        hpc_cluster = self.project.flow.hpc_cluster
 
-        remote_processed_dir = os.path.join(
-            self.project.remote_inversionson_dir, "PROCESSED_DATA"
+        remote_proc_path = os.path.join(
+            self.project.remote_paths.proc_data_dir, remote_proc_file_name
         )
-        remote_adj_dir = os.path.join(
-            self.project.remote_inversionson_dir, "ADJOINT_SOURCES"
-        )
-        remote_receiver_dir = os.path.join(
-            self.project.remote_inversionson_dir, "RECEIVERS"
-        )
-        for dir_name in [remote_processed_dir, remote_adj_dir, remote_receiver_dir]:
-            if not hpc_cluster.remote_exists(dir_name):
-                hpc_cluster.remote_mkdir(remote_processed_dir)
-
-        remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
         tmp_remote_path = f"{remote_proc_path}_tmp"
         if not hpc_cluster.remote_exists(remote_proc_path):
             hpc_cluster.remote_put(local_proc_file, tmp_remote_path)
             hpc_cluster.run_ssh_command(f"mv {tmp_remote_path} {remote_proc_path}")
 
-        remote_adj_dir = os.path.join(
-            self.project.remote_inversionson_dir, "ADJOINT_SOURCES"
-        )
-
-        if "VPV" in self.project.inversion_params:
+        if "VPV" in self.project.config.inversion.inversion_parameters:
             parameterization = "tti"
-        elif "VP" in self.project.inversion_params:
+        elif "VP" in self.project.config.inversion.inversion_parameters:
             parameterization = "rho-vp-vs"
 
+        remote_window_dir = self.project.remote_paths.window_dir
         if event in self.prev_control_group_events:
             windowing_needed = False
-            window_path = os.path.join(
-                self.project.remote_windows_dir,
-                get_window_filename(event, self.prev_iteration),
+            window_path = remote_window_dir / get_window_filename(
+                event, self.prev_iteration
             )
-            new_window_path = os.path.join(
-                self.project.remote_windows_dir,
-                get_window_filename(event, iteration),
-            )
+            new_window_path = remote_window_dir / get_window_filename(event, iteration)
             # copy the windows over to ensure it works in the future.
             hpc_cluster.run_ssh_command(f"cp {window_path} {new_window_path}")
         else:
             windowing_needed = True
-            window_path = os.path.join(
-                self.project.remote_windows_dir,
-                get_window_filename(event, iteration),
-            )
+            window_path = (remote_window_dir / get_window_filename(event, iteration),)
 
-        misfits_path = os.path.join(
-            self.project.remote_misfits_dir, get_misfits_filename(event, iteration)
-        )
+        misfits_path = remote_window_dir / get_misfits_filename(event, iteration)
         info = dict(
             processed_filename=remote_proc_path,
             synthetic_filename=remote_syn_path,
@@ -320,33 +244,34 @@ class IterationListener(object):
             windowing_needed=windowing_needed,
             window_path=window_path,
             event_name=event,
-            delta=self.project.simulation_settings["time_step"],
-            npts=self.project.simulation_settings["number_of_time_steps"],
+            delta=self.project.simulation_settings.time_step,
+            npts=self.project.simulation_settings.number_of_time_steps,
             iteration_name=iteration,
             misfit_json_filename=misfits_path,
-            minimum_period=self.project.min_period,
-            maximum_period=self.project.max_period,
-            start_time_in_s=self.project.simulation_settings["start_time"],
+            minimum_period=self.project.simulation_settings.min_period,
+            maximum_period=self.project.simulation_settings.max_period,
+            start_time_in_s=self.project.simulation_settings.start_time,
             receiver_json_path=os.path.join(
-                remote_receiver_dir, f"{event}_receivers.json"
+                self.project.remote_paths.receiver_dir, f"{event}_receivers.json"
             ),
             ad_src_type=self.project.ad_src_type,
         )
 
         toml_filename = f"{iteration}_{event}_adj_info.toml"
         remote_toml = self._upload_toml_to_remote(
-            toml_filename, info, remote_adj_dir, hpc_cluster
+            toml_filename, info, self.project.remote_paths.adj_src_dir, hpc_cluster
         )
         # Copy processing script to hpc
-        remote_script = os.path.join(remote_adj_dir, "window_and_calc_adj_src.py")
+        remote_script = os.path.join(
+            self.project.remote_paths.adj_src_dir, "window_and_calc_adj_src.py"
+        )
         if not hpc_cluster.remote_exists(remote_script):
-            hpc_cluster.remote_put(PROCESS_OUTPUT_SCRIPT_PATH, remote_script)
+            hpc_cluster.remote_put(__PROCESS_OUTPUT_SCRIPT_PATH, remote_script)
 
         # Now submit the job
         description = f"HPC processing of {event} for iteration {iteration}"
 
-        # use interp wall time for now
-        wall_time = self.project.hpc_processing_wall_time
+        wall_time = self.project.config.hpc.proc_wall_time
         from salvus.flow.sites import job, remote_io_site
 
         commands = [
@@ -358,25 +283,25 @@ class IterationListener(object):
             ),
         ]
 
-        if self.project.remote_conda_env:
+        if self.project.config.hpc.conda_env_name:
             conda_command = [
                 remote_io_site.site_utils.RemoteCommand(
-                    command=f"conda activate {self.project.remote_conda_env}",
+                    command=f"conda activate {self.project.config.hpc.conda_env_name}",
                     execute_with_mpi=False,
                 )
             ]
             commands = conda_command + commands
-            if self.project.remote_conda_source_location:
+            if self.project.config.hpc.conda_location:
                 source_command = [
                     remote_io_site.site_utils.RemoteCommand(
-                        command=f"source {self.project.remote_conda_source_location}",
+                        command=f"source {self.project.config.hpc.conda_location}",
                         execute_with_mpi=False,
                     )
                 ]
                 commands = source_command + commands
 
         job = job.Job(
-            site=sapi.get_site(self.project.interpolation_site),
+            site=sapi.get_site(self.project.config.hpc.sitename),
             commands=commands,
             job_type="hpc_processing",
             job_description=description,
@@ -404,11 +329,7 @@ class IterationListener(object):
         :type event: str
         """
         iteration = self.project.current_iteration
-        if self.project.inversion_mode == "mini-batch":
-            window_set_name = f"{iteration}_{event}"
-        else:
-            window_set_name = event
-
+        window_set_name = f"{iteration}_{event}"
         self.project.lasif.select_windows(window_set_name=window_set_name, event=event)
 
     def __need_misfit_quantification(
@@ -507,21 +428,13 @@ class IterationListener(object):
             )
             self.print(f"Event: {event}")
 
-        simulation_created_remotely = bool(
-            self.project.meshes == "multi-mesh" or self.project.hpc_processing
-        )
-        if simulation_created_remotely:
-            w_adjoint = self.project.flow.construct_adjoint_simulation_from_dict(event)
-        else:
-            adj_src = self.project.flow.get_adjoint_source_object(event)
-            w_adjoint = self.project.flow.construct_adjoint_simulation(event, adj_src)
-
+        w_adjoint = self.project.flow.construct_adjoint_simulation_from_dict(event)
         self.project.flow.submit_job(
             event=event,
             simulation=w_adjoint,
             sim_type="adjoint",
-            site=self.project.site_name,
-            ranks=self.project.ranks,
+            site=self.project.config.hpc.sitename,
+            ranks=self.project.config.hpc.n_wave_ranks,
         )
         self.project.change_attribute(
             attribute=f'adjoint_job["{event}"]["submitted"]', new_value=True
@@ -575,7 +488,7 @@ class IterationListener(object):
         Dispatches the forward events
         """
 
-        if verbose and self.project.prepare_forward:
+        if verbose:
             self.print(
                 "Prepare forward Stage",
                 line_above=True,
@@ -588,20 +501,16 @@ class IterationListener(object):
 
         events = self.events
 
-        if self.project.prepare_forward:
-            self.print("Will dispatch all prepare_forward jobs")
-            for _i, event in enumerate(events):
-                if verbose:
-                    self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
-                self.__prepare_forward(event=event)
-            self.print("All prepare_forward jobs have been dispatched")
+        self.print("Will dispatch all prepare_forward jobs")
+        for _i, event in enumerate(events):
+            if verbose:
+                self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
+            self.__prepare_forward(event=event)
+        self.print("All prepare_forward jobs have been dispatched")
+        self.__listen_to_prepare_forward(events=events, verbose=verbose)
 
-            self.__listen_to_prepare_forward(events=events, verbose=verbose)
-
-        #
         for event in events:
             self.__run_forward_simulation(event, verbose=verbose)
-            self.__compute_station_weights(event, verbose)
 
     def __listen_to_prepare_forward(self, events: List[str], verbose: bool):
         """
@@ -614,7 +523,6 @@ class IterationListener(object):
         vint_job_listener.monitor_jobs()
         for event in vint_job_listener.events_retrieved_now:
             self.__run_forward_simulation(event, verbose=verbose)
-            self.__compute_station_weights(event, verbose)
             self.project.change_attribute(
                 attribute=f'prepare_forward_job["{event}"]["retrieved"]',
                 new_value=True,
@@ -642,7 +550,6 @@ class IterationListener(object):
         # In that case we should still submit these jobs.
         for event in vint_job_listener.events_already_retrieved:
             self.__run_forward_simulation(event, verbose=verbose)
-            self.__compute_station_weights(event, verbose)
 
         anything_retrieved = bool(vint_job_listener.events_retrieved_now)
         return anything_retrieved, vint_job_listener.events_already_retrieved
@@ -650,7 +557,6 @@ class IterationListener(object):
     def __listen_to_forward(
         self,
         events: List[str],
-        adjoint: bool = True,
         windows: bool = True,
         window_set: Optional[str] = None,
         verbose: bool = False,
@@ -664,24 +570,18 @@ class IterationListener(object):
         # submit remote jobs for the ones that did not get
         # submitted yet, although forwards are done.
         for event in for_job_listener.events_already_retrieved:
-            if self.project.hpc_processing and not self.project.is_validation_event(
-                event
-            ):
+            if not self.project.is_validation_event(event):
                 self._launch_hpc_processing_job(event)
 
         for event in for_job_listener.events_retrieved_now:
             # Still retrieve synthetics for validation data. NO QA
-            if not self.project.hpc_processing or self.project.is_validation_event(
-                event
-            ):
+            if self.project.is_validation_event(event):
                 self.__retrieve_seismograms(event=event, verbose=verbose)
 
             # Here I need to replace this with remote hpc job,
             # then this actually needs be finished before any adjoint
             # jobs are launched
-            if self.project.hpc_processing and not self.project.is_validation_event(
-                event
-            ):
+            if not self.project.is_validation_event(event):
                 self._launch_hpc_processing_job(event)
             else:
                 self.__work_with_retrieved_seismograms(
@@ -690,8 +590,6 @@ class IterationListener(object):
                     window_set,
                     verbose,
                 )
-            if adjoint and not self.project.hpc_processing:
-                self.__dispatch_adjoint_simulation(event, verbose)
             self.project.change_attribute(
                 attribute=f'forward_job["{event}"]["retrieved"]',
                 new_value=True,
@@ -731,7 +629,7 @@ class IterationListener(object):
             events=events,
         )
         hpc_proc_job_listener.monitor_jobs()
-        hpc_cluster = get_site(self.project.site_name)
+        hpc_cluster = self.project.flow.hpc_cluster
 
         for event in hpc_proc_job_listener.events_retrieved_now:
             self.project.change_attribute(
@@ -739,10 +637,11 @@ class IterationListener(object):
                 new_value=True,
             )
             # TODO, we need to retrieve the misfit here
-            remote_misfits = os.path.join(
-                self.project.remote_misfits_dir,
-                get_misfits_filename(event, iteration),
+            remote_misfits = (
+                self.project.remote_paths.misfit_dir
+                / get_misfits_filename(event, iteration),
             )
+
             tmp_filename = "tmp_misfits.json"
             hpc_cluster.remote_get(remote_misfits, "tmp_misfits.json")
             with open(tmp_filename, "r") as fh:
@@ -753,7 +652,7 @@ class IterationListener(object):
                 new_value=misfit_dict[event]["total_misfit"],
             )
 
-            if adjoint and self.project.hpc_processing:
+            if adjoint:
                 self.__dispatch_adjoint_simulation(event, verbose)
             hpc_proc_job_listener.events_already_retrieved.append(event)
 
@@ -778,17 +677,14 @@ class IterationListener(object):
         Again it is important that only candidate events enter here.
         So no validation events.
         """
-        multi_mesh = self.project.meshes == "multi-mesh"
+        multi_mesh = self.project.config.meshing.multi_mesh
         adj_job_listener = RemoteJobListener(
             comm=self.project, job_type="adjoint", events=events
         )
 
         adj_job_listener.monitor_jobs()
         for event in adj_job_listener.events_retrieved_now:
-            if (
-                self.project.meshes != "multi-mesh"
-                or self.project.interpolation_mode != "remote"
-            ):
+            if not multi_mesh or self.project.interpolation_mode != "remote":
                 self.__cut_and_clip_gradient(event=event, verbose=verbose)
             self.project.change_attribute(
                 attribute=f'adjoint_job["{event}"]["retrieved"]',
@@ -826,8 +722,7 @@ class IterationListener(object):
 
         It is important that only candidate events enter here
         """
-        if self.project.meshes != "multi-mesh":
-            raise ValueError("This should not enter here")
+        assert not self.project.config.meshing.multi_mesh
 
         int_job_listener = RemoteJobListener(
             comm=self.project,
@@ -1070,7 +965,7 @@ class IterationListener(object):
         # copy processing script to hpc
         remote_script = os.path.join(remote_inversionson_dir, "cut_and_clip.py")
         if not hpc_cluster.remote_exists(remote_script):
-            hpc_cluster.remote_put(CUT_SOURCE_SCRIPT_PATH, remote_script)
+            hpc_cluster.remote_put(__CUT_SOURCE_SCRIPT_PATH, remote_script)
 
         info = {
             "filename": str(gradient_path),
