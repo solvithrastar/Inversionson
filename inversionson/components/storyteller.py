@@ -124,15 +124,14 @@ class StoryTeller(Component):
         all_events = self.comm.lasif.list_events()
         already_in_list = list(self.events_used.keys())
         new = [x for x in all_events if x not in already_in_list]
-        if len(new) == 0:
+        if not new:
             return
-        else:
-            for event in new:
-                self.events_used[event] = 0
-            with open(self.events_used_toml, "w") as fh:
-                toml.dump(self.events_used, fh)
-            with open(self.all_events, "a") as fh:
-                fh.writelines(f"{event}\n" for event in new)
+        for event in new:
+            self.events_used[event] = 0
+        with open(self.events_used_toml, "w") as fh:
+            toml.dump(self.events_used, fh)
+        with open(self.all_events, "a") as fh:
+            fh.writelines(f"{event}\n" for event in new)
 
     def _update_usage_of_events(self):
         """

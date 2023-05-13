@@ -1,4 +1,5 @@
 from __future__ import annotations
+import shutil
 import salvus.flow.api as sapi
 import os
 import time
@@ -46,12 +47,30 @@ class SalvusFlow(Component):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
-        
+
     @property
     def hpc_cluster(self):
         if not self.__hpc_cluster:
             self.__hpc_cluster = get_site(self.project.config.hpc.sitename)
         return self.__hpc_cluster
+
+    def safe_put(
+        self,
+        local_file: Union[pathlib.Path, str],
+        remote_file: Union[pathlib.Path, str],
+    ):
+        tmp_remote_file = f"{remote_file}_tmp"
+        self.hpc_cluster.remote_put(local_file, tmp_remote_file)
+        self.hpc_cluster.run_ssh_command(f"mv {tmp_remote_file} {remote_file}")
+
+    def safe_get(
+        self,
+        remote_file: Union[pathlib.Path, str],
+        local_file: Union[pathlib.Path, str],
+    ):
+        tmp_local_path = f"{local_file}_tmp"
+        self.hpc_cluster.remote_get(remote_file, tmp_local_path)
+        shutil.move(tmp_local_path, local_file)
 
     def _get_job_name(
         self, event: str, sim_type: str, new=True, iteration="current"
@@ -195,9 +214,11 @@ class SalvusFlow(Component):
             ):
                 job_name = it_dict["smoothing"]["name"]
             else:
-                event_index = str(self.project.get_key_number_for_event(
-                    event=event, iteration=iteration
-                ))
+                event_index = str(
+                    self.project.get_key_number_for_event(
+                        event=event, iteration=iteration
+                    )
+                )
                 job_name = it_dict["events"][event_index]["job_info"][sim_type]["name"]
         if sim_type == "smoothing":
             site_name = self.project.smoothing_site_name
@@ -735,9 +756,7 @@ class SalvusFlow(Component):
         """
         self.print("Constructing Adjoint Simulation now", emoji_alias=":wrench:")
 
-        remote_interp = (
-            self.project.meshes == "multi-mesh"
-        )
+        remote_interp = self.project.meshes == "multi-mesh"
         # mesh = self.project.lasif.find_event_mesh(event)
         mesh = self.project.lasif.lasif_comm.project.lasif_config["domain_settings"][
             "domain_file"

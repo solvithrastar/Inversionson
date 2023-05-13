@@ -6,14 +6,13 @@ Maybe one day some of these will be moved to a handyman component
 or something like that.
 """
 
-from typing import Optional, Union, Tuple
+from typing import Union, Tuple
 import numpy as np
 import pathlib
 import os
 import h5py
-import time
 
-__FILE_TEMPLATES_DIR = (pathlib.Path(__file__) / ".." / "file_templates").resolve()
+__FILE_TEMPLATES_DIR = pathlib.Path(__file__).parent / "file_templates"
 
 
 def write_xdmf(filename: Union[pathlib.Path, str]):
@@ -23,8 +22,7 @@ def write_xdmf(filename: Union[pathlib.Path, str]):
     :param filename: Filename of the h5 file that needs an xdmf file.
     Should be a pathlib.Path or str.
     """
-    if type(filename) == str:
-        filename = pathlib.Path(filename)
+    filename = pathlib.Path(filename)
 
     xdmf_attribute_path = __FILE_TEMPLATES_DIR / "attribute.xdmf"
     base_xdmf_path = __FILE_TEMPLATES_DIR / "base_xdmf.xdmf"
@@ -74,23 +72,6 @@ def write_xdmf(filename: Union[pathlib.Path, str]):
 
     with open(complete_xdmf_filename, "w") as fh:
         fh.write(base_string)
-
-
-def _print(
-    comm,
-    message,
-    color="cyan",
-    line_above=False,
-    line_below=False,
-    emoji_alias=":ear:",
-):
-    comm.storyteller.printer.print(
-        message=message,
-        color=color,
-        line_above=line_above,
-        line_below=line_below,
-        emoji_alias=emoji_alias,
-    )
 
 
 def get_window_filename(event: str, iteration: str) -> str:

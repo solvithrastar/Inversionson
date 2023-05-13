@@ -4,16 +4,16 @@ import os
 import toml
 import shutil
 from pathlib import Path
-import json
 from inversionson import InversionsonWarning
 import warnings
-from typing import Dict, Optional, Union, List
+from typing import Optional, Union, List
 import salvus.flow.api as sapi
 
 from inversionson.file_templates.inversion_info_template import InversionsonConfig
 
+
 class RemotePaths:
-    def __init__(self, config:InversionsonConfig):
+    def __init__(self, config: InversionsonConfig):
         self.root = config.hpc.inversionson_folder
 
         self.diff_dir = self.root / "DIFFUSION_MODELS"
@@ -35,14 +35,21 @@ class RemotePaths:
         if not hpc_cluster.remote_exists(self.root):
             hpc_cluster.remote_mkdir(self.root)
 
-        for directory in [self.diff_dir, self.stf_dir, self.interp_weights_dir, self.mesh_dir, self.window_dir,
-            self.misfit_dir, self.adj_src_dir, self.receiver_dir, self.script_dir, self.proc_data_dir]:
-            if not hpc_cluster.remote_exists(
-                self.root / directory
-            ):
-                hpc_cluster.remote_mkdir(
-                    self.root / directory
-                )
+        for directory in [
+            self.diff_dir,
+            self.stf_dir,
+            self.interp_weights_dir,
+            self.mesh_dir,
+            self.window_dir,
+            self.misfit_dir,
+            self.adj_src_dir,
+            self.receiver_dir,
+            self.script_dir,
+            self.proc_data_dir,
+        ]:
+            if not hpc_cluster.remote_exists(self.root / directory):
+                hpc_cluster.remote_mkdir(self.root / directory)
+
 
 class ProjectPaths:
     def __init__(self, config: InversionsonConfig):
@@ -55,7 +62,9 @@ class ProjectPaths:
         self.misc_folder = self.documentation / "MISC"
         self.misc_folder.mkdir(exist_ok=True)
 
-        self.remote_ocean_loading_f = config.hpc.inversionson_folder / "ocean_loading_file"
+        self.remote_ocean_loading_f = (
+            config.hpc.inversionson_folder / "ocean_loading_file"
+        )
         self.remote_topography_f = config.hpc.inversionson_folder / "topography_file"
 
     def get_iteration_toml(self, iteration: str) -> Path:
@@ -102,7 +111,9 @@ class Project(object):
         self.paths = ProjectPaths(self.config)
         self.remote_paths = RemotePaths(self.config)
 
-        self.simulation_settings = LASIFSimulationSettings(self.config.lasif_root / "lasif_config.toml")
+        self.simulation_settings = LASIFSimulationSettings(
+            self.config.lasif_root / "lasif_config.toml"
+        )
         self.__setup_components()
         self.simulation_time_step: Union[float, None] = None
         # Attempt to get the simulation timestep immediately if it exists.

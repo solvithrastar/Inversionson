@@ -1,6 +1,7 @@
 from __future__ import annotations
 from ast import List
 import os
+import time
 from typing import Optional
 import toml
 import json
@@ -55,8 +56,8 @@ class IterationListener(object):
         self,
         message: str,
         color="yellow",
-        line_above=False,
-        line_below=False,
+        line_above: bool = False,
+        line_below: bool = False,
         emoji_alias=None,
     ):
         self.project.storyteller.printer.print(
@@ -781,20 +782,16 @@ class IterationListener(object):
             anything_retrieved = False
             anything_checked = False
 
-            if (
-                self.project.remote_data_processing
-                or self.project.meshes == "multi-mesh"
-            ):
+            if len(all_pf_retrieved_events) != len_all_events:
                 for event in self.events:
                     self.__prepare_forward(event)
-                if len(all_pf_retrieved_events) != len_all_events:
-                    (
-                        anything_retrieved_pf,
-                        all_pf_retrieved_events,
-                    ) = self.__listen_to_prepare_forward(
-                        events=self.events, verbose=verbose
-                    )
-                    anything_checked = True
+                (
+                    anything_retrieved_pf,
+                    all_pf_retrieved_events,
+                ) = self.__listen_to_prepare_forward(
+                    events=self.events, verbose=verbose
+                )
+                anything_checked = True
             if anything_retrieved_pf:
                 anything_retrieved = True
             # Then we listen to forward for the already retrieved events in
@@ -803,29 +800,14 @@ class IterationListener(object):
             # important that we dispatch everything first if there is no prepare
             # forward and that we then listen to all events.
             if (
-                self.project.remote_data_processing
-                or self.project.meshes == "multi-mesh"
+                len(all_pf_retrieved_events) > 0
+                and len(all_f_retrieved_events) != len_all_events
             ):
-                if (
-                    len(all_pf_retrieved_events) > 0
-                    and len(all_f_retrieved_events) != len_all_events
-                ):
-                    (
-                        anything_retrieved_f,
-                        all_f_retrieved_events,
-                    ) = self.__listen_to_forward(
-                        all_pf_retrieved_events, verbose=verbose
-                    )
-                    anything_checked = True
-            else:
-                for event in self.events:
-                    self.__run_forward_simulation(event, verbose=verbose)
-                    self.__compute_station_weights(event, verbose)
-                if len(all_f_retrieved_events) != len_all_events:
-                    (
-                        anything_retrieved_f,
-                        all_f_retrieved_events,
-                    ) = self.__listen_to_forward(self.events, verbose=verbose)
+                (
+                    anything_retrieved_f,
+                    all_f_retrieved_events,
+                ) = self.__listen_to_forward(all_pf_retrieved_events, verbose=verbose)
+                anything_checked = True
             if anything_retrieved_f:
                 anything_retrieved = True
 
@@ -838,43 +820,32 @@ class IterationListener(object):
             # Now we start listening to the hpc_proc jobs. Only for the ones that
             # finished and only if applicable.
 
-            if self.project.hpc_processing:
-                if (
-                    all_non_val_f_retrieved_events
-                    and len(all_hpc_proc_retrieved_events) != len_non_validation_events
-                ):
-                    (
-                        anything_retrieved_hpc_proc,
-                        all_hpc_proc_retrieved_events,
-                    ) = self.__listen_to_hpc_processing(
-                        all_non_val_f_retrieved_events, adjoint=self.submit_adjoint
-                    )
-                    anything_checked = True
-                if anything_retrieved_hpc_proc:
-                    anything_retrieved = True
+            if (
+                all_non_val_f_retrieved_events
+                and len(all_hpc_proc_retrieved_events) != len_non_validation_events
+            ):
+                (
+                    anything_retrieved_hpc_proc,
+                    all_hpc_proc_retrieved_events,
+                ) = self.__listen_to_hpc_processing(
+                    all_non_val_f_retrieved_events, adjoint=self.submit_adjoint
+                )
+                anything_checked = True
+            if anything_retrieved_hpc_proc:
+                anything_retrieved = True
 
             # Now we start listening to the adjoint jobs. If hpc proc,
             # we only listen to the ones that finished there already.
             # Otherwise we listen to the ones that finished forward
             if not self.misfit_only:
-                if self.project.hpc_processing:
-                    if (
-                        len(all_hpc_proc_retrieved_events) > 0
-                        and len(all_adj_retrieved_events) != len_non_validation_events
-                    ):
-                        (
-                            anything_adj_retrieved,
-                            all_adj_retrieved_events,
-                        ) = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
-                        anything_checked = True
-                elif (
-                    all_non_val_f_retrieved_events
+                if (
+                    len(all_hpc_proc_retrieved_events) > 0
                     and len(all_adj_retrieved_events) != len_non_validation_events
                 ):
                     (
                         anything_adj_retrieved,
                         all_adj_retrieved_events,
-                    ) = self.__listen_to_adjoint(all_non_val_f_retrieved_events)
+                    ) = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
                     anything_checked = True
                 if anything_adj_retrieved:
                     anything_retrieved = True
@@ -900,27 +871,27 @@ class IterationListener(object):
                     break
 
             if not anything_retrieved:
-                sleep_or_process(self.project)
+                time.sleep(self.project.config.hpc.sleep_time_in_seconds)
             if not anything_checked:
                 break
 
         # Finally update the estimated timestep
         for event in non_validation_events[:1]:
-            self.project.get_simulation_time_step(event)
+            self.project.find_simulation_time_step(event)
 
     def __dispatch_raw_gradient_interpolation(self, event: str, verbose: bool = False):
         """
         Take the gradient out of the adjoint simulations and
         interpolate them to the inversion grid.
         """
-        submitted, retrieved = self.__submitted_retrieved(event, "gradient_interp")
+        submitted, _ = self.__submitted_retrieved(event, "gradient_interp")
         if submitted:
             if verbose:
                 self.print(
                     f"Interpolation for gradient {event} " "has already been submitted"
                 )
             return
-        hpc_cluster = get_site(self.project.interpolation_site)
+        hpc_cluster = self.project.flow.hpc_cluster
         interp_folder = os.path.join(
             self.project.remote_inversionson_dir,
             "INTERPOLATION_WEIGHTS",
@@ -929,10 +900,7 @@ class IterationListener(object):
         )
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
-        # Here I need to make sure that the correct layers are interpolated
-        # I can just do this by specifying the layers, rather than saying
-        # nocore. That's less nice though of course. Could be specified
-        # in the config file. Then it should work fine.
+
         self.project.multi_mesh.interpolate_gradient_to_model(
             event, smooth=False, interp_folder=interp_folder
         )
@@ -946,19 +914,21 @@ class IterationListener(object):
 
         :param event: name of the event
         """
-        if self.project.cut_source_radius == 0.0 and self.project.clip_gradient == 1.0:
+        if (
+            self.project.config.inversion.source_cut_radius_in_km == 0.0
+            and self.project.config.inversion.clipping_percentile == 1.0
+        ):
             return
 
         job = self.project.flow.get_job(event, "adjoint")
         output_files = job.get_output_files()
         gradient_path = output_files[0][("adjoint", "gradient", "output_filename")]
         # Connect to daint
-        hpc_cluster = get_site(self.project.site_name)
+        hpc_cluster = self.project.flow.hpc_cluster
 
         remote_inversionson_dir = os.path.join(
-            self.project.remote_inversionson_dir, "GRADIENT_PROCESSING"
+            self.project.config.hpc.inversionson_folder, "GRADIENT_PROCESSING"
         )
-
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
@@ -969,11 +939,11 @@ class IterationListener(object):
 
         info = {
             "filename": str(gradient_path),
-            "cutout_radius_in_km": self.project.cut_source_radius,
+            "cutout_radius_in_km": self.project.config.inversion.source_cut_radius_in_km,
             "source_location": self.project.lasif.get_source(event_name=event),
         }
-        info["clipping_percentile"] = self.project.clip_gradient
-        info["parameters"] = self.project.inversion_params
+        info["clipping_percentile"] = self.project.config.inversion.clipping_percentile
+        info["parameters"] = self.project.config.inversion.inversion_parameters
 
         toml_filename = f"{event}_gradient_process.toml"
         remote_toml = self._upload_toml_to_remote(

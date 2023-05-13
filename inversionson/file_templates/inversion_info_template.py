@@ -73,7 +73,7 @@ class InversionSettings:
     initial_batch_size: int = 4
     source_cut_radius_in_km: float = 100.0
     # Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be clipped.
-    clip_gradient: float = 1.0
+    clipping_percentile: float = 1.0
     # You specify the length of the absorbing boundaries in the lasif config
     absorbing_boundaries: bool = True
     inversion_parameters: List[str] = field(

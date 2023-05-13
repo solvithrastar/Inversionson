@@ -33,12 +33,11 @@ class InnerProductPrecondtioner(AbstractPreconditioner):
 
 def get_set_flag(x: OptsonVec, it_num: int, control_group: bool):
     if not control_group:
-        set_flag = "mb"
+        return "mb"
     elif it_num < x.iteration:
-        set_flag = "cg_prev"
+        return "cg_prev"
     else:
-        set_flag = "cg"
-    return set_flag
+        return "cg"
 
 
 # class AbstractProblem(metaclass=OptsonMeta):

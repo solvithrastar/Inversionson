@@ -1,17 +1,15 @@
-import inspect
+from __future__ import annotations
 import os
 import toml
 from typing import Optional, Union, List
+from pathlib import Path
 
-from salvus.flow.api import get_site
+from inversionson.project import Project
 from inversionson.utils import sum_two_parameters_h5
 
-SUM_GRADIENTS_SCRIPT_PATH = os.path.join(
-    os.path.dirname(
-        os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-    ),
-    "remote_scripts",
-    "gradient_summing.py",
+
+SUM_GRADIENTS_SCRIPT_PATH = (
+    Path(__file__).parent.parent / "remote_scripts" / "gradient_summing.py"
 )
 
 
@@ -21,12 +19,12 @@ class GradientSummer(object):
     Currently only implemented for remote summing.
     """
 
-    def __init__(self, comm):
+    def __init__(self, project: Project):
         """
         :param comm: Inversionson communicator
         """
-        self.comm = comm
-        self.optimizer = self.comm.project.get_optimizer()
+        self.project = project
+        self.optimizer = self.project.get_optimizer()
 
     def print(
         self,
@@ -36,7 +34,7 @@ class GradientSummer(object):
         line_below: bool = False,
         emoji_alias: Union[str, List[str]] = ":nerd_face:",
     ):
-        self.comm.storyteller.printer.print(
+        self.project.storyteller.printer.print(
             message=message,
             color=color,
             line_above=line_above,
@@ -70,17 +68,17 @@ class GradientSummer(object):
         """
         gradient_paths = []
 
-        iteration = iteration or self.comm.project.current_iteration
+        iteration = iteration or self.project.current_iteration
 
         for event in events:
-            if self.comm.project.meshes == "multi-mesh":
-                job = self.comm.salvus_flow.get_job(event, "gradient_interp", iteration)
+            if self.project.config.meshing.multi_mesh:
+                job = self.project.flow.get_job(event, "gradient_interp", iteration)
                 gradient_path = os.path.join(
                     str(job.stderr_path.parent), "output/mesh.h5"
                 )
 
             else:
-                job = self.comm.salvus_flow.get_job(event, "adjoint", iteration)
+                job = self.project.flow.get_job(event, "adjoint", iteration)
 
                 output_files = job.get_output_files()
                 gradient_path = output_files[0][
@@ -88,27 +86,25 @@ class GradientSummer(object):
                 ]
             gradient_paths.append(str(gradient_path))
         # Connect to daint
-        hpc_cluster = get_site(self.comm.project.site_name)
+        hpc_cluster = self.project.flow.hpc_cluster
 
-        remote_inversionson_dir = os.path.join(
-            self.comm.project.remote_inversionson_dir, "SUMMING"
+        remote_inversionson_dir = (
+            self.project.config.hpc.inversionson_folder / "SUMMING"
         )
         if not hpc_cluster.remote_exists(remote_inversionson_dir):
             hpc_cluster.remote_mkdir(remote_inversionson_dir)
 
-        remote_output_path = os.path.join(remote_inversionson_dir, "summed_gradient.h5")
-        remote_norms_path = os.path.join(
-            remote_inversionson_dir, f"{iteration}_gradient_norms.toml"
-        )
+        remote_output_path = remote_inversionson_dir / "summed_gradient.h5"
+        remote_norms_path = remote_inversionson_dir / f"{iteration}_gradient_norms.toml"
 
         # copy summing script to hpc
-        remote_script = os.path.join(remote_inversionson_dir, "gradient_summing.py")
+        remote_script = remote_inversionson_dir / "gradient_summing.py"
         if not hpc_cluster.remote_exists(remote_script):
-            hpc_cluster.remote_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
+            self.project.flow.safe_put(SUM_GRADIENTS_SCRIPT_PATH, remote_script)
 
         info = dict(
             filenames=gradient_paths,
-            parameters=self.comm.project.inversion_params,
+            parameters=self.project.config.inversion.inversion_parameters,
             output_gradient=remote_output_path,
             events_list=events,
             gradient_norms_path=remote_norms_path,
@@ -152,36 +148,3 @@ class GradientSummer(object):
 
         with open(all_norms_path, "w") as fh:
             toml.dump(norm_dict, fh)
-
-
-# The below is an old implementation for local summing. We don't expect
-# to be doing this again, but keep it here in case we want to implement it
-# again.
-
-# def sum_local_gradients(self):
-#     from inversionson.utils import sum_gradients
-#     events = self.comm.project.events_in_iteration
-#     grad_mesh = self.comm.lasif.find_gradient(
-#         iteration=self.comm.project.current_iteration,
-#         event=None,
-#         summed=True,
-#         smooth=False,
-#         just_give_path=True,
-#     )
-#     if os.path.exists(grad_mesh):
-#         print("Gradient has already been summed. Moving on")
-#         return
-#
-#     gradients = []
-#     for event in events:
-#         gradients.append(
-#             self.comm.lasif.find_gradient(
-#                 iteration=self.comm.project.current_iteration,
-#                 event=event,
-#                 summed=False,
-#                 smooth=False,
-#                 just_give_path=False,
-#             )
-#         )
-#     shutil.copy(gradients[0], grad_mesh)
-#     sum_gradients(mesh=grad_mesh, gradients=gradients)

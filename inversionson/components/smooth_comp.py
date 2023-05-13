@@ -6,6 +6,9 @@ from .component import Component
 if TYPE_CHECKING:
     from inversionson.project import Project
 
+import salvus.flow.simple_config as sc
+from salvus.opt import smoothing
+
 
 class Smoother(Component):
     """
@@ -45,15 +48,11 @@ class Smoother(Component):
         :param smoothing_parameters: List of strings that specify which parameters need smoothing
         :type smoothing_parameters: list
         """
-        import salvus.flow.simple_config as sc
-        from salvus.opt import smoothing
-        from salvus.flow.api import get_site
-
         ref_model_name = ".".join(reference_model.split("/")[-1].split(".")[:-1])
-        freq = 1.0 / self.project.min_period
+        freq = 1.0 / self.project.simulation_settings.min_period
 
-        hpc_cluster = get_site(self.project.site_name)
-        remote_diff_dir = self.project.remote_diff_model_dir
+        hpc_cluster = self.project.flow.hpc_cluster
+        remote_diff_dir = self.project.remote_paths.diff_dir
         local_diff_model_dir = "DIFFUSION_MODELS"
 
         if not os.path.exists(local_diff_model_dir):
@@ -67,9 +66,7 @@ class Smoother(Component):
             )
             file_name = model_to_smooth.split("/")[-1]
             remote_file_path = os.path.join(remote_diff_dir, file_name)
-            tmp_remote_file_path = f"{remote_file_path}_tmp"
-            hpc_cluster.remote_put(model_to_smooth, tmp_remote_file_path)
-            hpc_cluster.run_ssh_command(f"mv {tmp_remote_file_path} {remote_file_path}")
+            self.project.flow.safe_put(model_to_smooth, remote_file_path)
             model_to_smooth = f"REMOTE:{remote_file_path}"
 
         sims = []
@@ -108,22 +105,13 @@ class Smoother(Component):
                 diff_model.write_h5(diff_model_file)
 
             if not hpc_cluster.remote_exists(remote_diff_model):
-                tmp_remote_diff_model = f"{remote_diff_model}_tmp"
-                hpc_cluster.remote_put(diff_model_file, tmp_remote_diff_model)
-                hpc_cluster.run_ssh_command(
-                    f"mv {tmp_remote_diff_model} {remote_diff_model}"
-                )
+                self.project.flow.safe_put(diff_model_file, remote_diff_model)
 
             sim = sc.simulation.Diffusion(mesh=diff_model_file)
 
             tensor_order = self.project.smoothing_tensor_order
 
             sim.domain.polynomial_order = tensor_order
-
-            if self.project.smoothing_timestep != "auto":
-                sim.physics.diffusion_equation.time_step_in_seconds = (
-                    self.project.smoothing_timestep
-                )
             sim.physics.diffusion_equation.courant_number = 0.06
 
             sim.physics.diffusion_equation.initial_values.filename = model_to_smooth

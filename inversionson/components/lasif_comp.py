@@ -88,7 +88,6 @@ class Lasif(Component):
         event: str,
         gradient: bool,
         interpolate_to: bool = True,
-        hpc_cluster=None,
         iteration: str = None,
         validation: bool = False,
     ):
@@ -107,11 +106,9 @@ class Lasif(Component):
         :type iteration: str, optional
         """
 
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.interpolation_site)
+        hpc_cluster = self.project.flow.hpc_cluster
         mesh = self.find_remote_mesh(
             event=event,
-            hpc_cluster=hpc_cluster,
             check_if_exists=False,
             iteration=iteration,
             validation=validation,
@@ -127,7 +124,6 @@ class Lasif(Component):
         gradient: bool = False,
         interpolate_to: bool = True,
         check_if_exists: bool = False,
-        hpc_cluster=None,
         iteration: str = None,
         already_interpolated: bool = False,
         validation: bool = False,
@@ -154,8 +150,7 @@ class Lasif(Component):
         :return: The path to the correct mesh
         :rtype: pathlib.Path
         """
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.config.hpc.sitename)
+        hpc_cluster = self.project.flow.hpc_cluster
         remote_mesh_dir = self.project.remote_paths.mesh_dir
         fast_dir = self.project.config.hpc.inversionson_folder
         if iteration is None:
@@ -215,10 +210,8 @@ class Lasif(Component):
         :return: Path to where the mesh is stored.
         :rtype: Pathlib.Path
         """
-        if self.project.meshes == "mono-mesh":
-            return self.lasif_comm.project.lasif_config["domain_settings"][
-                "domain_file"
-            ]
+        if not self.project.config.meshing.multi_mesh:
+            return self.project.config.inversion.initial_model
         has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
         if not has:
             raise InversionsonError(f"Mesh for event: {event} can not be found.")
@@ -249,8 +242,7 @@ class Lasif(Component):
         if not has:
             raise InversionsonError(f"Mesh for event {event} does not exist.")
         # Get remote connection
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.interpolation_site)
+        hpc_cluster = self.project.flow.hpc_cluster
 
         path_to_mesh = self.find_remote_mesh(
             event=event,
@@ -265,12 +257,9 @@ class Lasif(Component):
                 f"Moving mesh for event {event} to cluster", emoji_alias=":package:"
             )
             hpc_cluster.remote_put(event_mesh, path_to_mesh)
-        # else:
-        #     print(f"Mesh for event {event} already on cluster")
 
     def _move_model_to_cluster(
         self,
-        hpc_cluster=None,
         overwrite: bool = False,
         validation: bool = False,
     ):
@@ -282,8 +271,7 @@ class Lasif(Component):
         :param overwrite: Overwrite mesh already there?, defaults to False
         :type overwrite: bool, optional
         """
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.interpolation_site)
+        hpc_cluster = self.project.flow.hpc_cluster
 
         optimizer = self.project.get_optimizer()
         iteration = optimizer.iteration_name
@@ -319,17 +307,14 @@ class Lasif(Component):
             hpc_cluster.remote_put(local_model, path_to_mesh)
             self.print("Did it")
 
-    def move_gradient_to_cluster(
-        self, hpc_cluster: Optional["BaseSite"] = None, overwrite: bool = False
-    ):
+    def move_gradient_to_cluster(self, overwrite: bool = False):
         """
         Empty gradient moved to a dedicated directory on cluster
 
         :param hpc_cluster: A Salvus site object, defaults to None
         :type hpc_cluster: salvus.flow.Site, optional
         """
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.config.hpc.sitename)
+        hpc_cluster = self.project.flow.hpc_cluster
 
         has, path_to_mesh = self.has_remote_mesh(
             event=None,
@@ -346,9 +331,13 @@ class Lasif(Component):
             )
             return
 
-        local_grad = self.lasif_comm.project.paths["models"] / "GRADIENT" / "mesh.h5"
-        if not os.path.exists(local_grad.parent):
-            os.makedirs(local_grad.parent)
+        local_grad = (
+            pathlib.Path(self.lasif_comm.project.paths["models"])
+            / "GRADIENT"
+            / "mesh.h5"
+        )
+        local_grad.mkdir(parents=True, exist_ok=True)
+
         inversion_grid = self.get_master_model()
         shutil.copy(inversion_grid, local_grad)
         self.project.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
@@ -367,7 +356,7 @@ class Lasif(Component):
         :type iteration: str
         """
         # If we use mono-mesh we copy the mesh here.
-        if self.project.meshes == "mono-mesh":
+        if not self.project.config.meshing.multi_mesh:
             optimizer = self.project.get_optimizer()
             model = optimizer.model_path
             # copy to lasif project and also move to cluster
@@ -401,7 +390,7 @@ class Lasif(Component):
         iterations = lapi.list_iterations(self.lasif_comm, output=True, verbose=False)
         if isinstance(iterations, list) and name in iterations:
             warnings.warn(f"Iteration {name} already exists", InversionsonWarning)
-        event_specific = self.project.meshes == "multi-mesh"
+        event_specific = self.project.config.meshing.multi_mesh
         lapi.set_up_iteration(
             self.lasif_root,
             iteration=name,
@@ -433,7 +422,7 @@ class Lasif(Component):
         stfs = pathlib.Path(self.lasif_comm.project.paths["salvus_files"])
         return str(stfs / long_iter / "stf.h5")
 
-    def upload_stf(self, iteration: str, hpc_cluster=None) -> None:
+    def upload_stf(self, iteration: str) -> None:
         """
         Upload the source time function to the remote machine
 
@@ -444,8 +433,7 @@ class Lasif(Component):
         if not os.path.exists(local_stf):
             write_custom_stf(stf_path=local_stf, comm=self.lasif_comm)
 
-        if hpc_cluster is None:
-            hpc_cluster = get_site(self.project.site_name)
+        hpc_cluster = self.project.flow.hpc_cluster
 
         if not hpc_cluster.remote_exists(
             self.project.remote_inversionson_dir / "SOURCE_TIME_FUNCTIONS" / iteration
@@ -692,8 +680,8 @@ class Lasif(Component):
         :return: True/False regarding the alreadyness of the processed data.
         :rtype: bool
         """
-        high_period = self.project.max_period
-        low_period = self.project.min_period
+        high_period = self.project.simulation_settings.max_period
+        low_period = self.project.simulation_settings.min_period
         processed_filename = (
             f"preprocessed_{int(low_period)}s_to_{int(high_period)}s.h5"
         )
@@ -713,36 +701,29 @@ class Lasif(Component):
         if self._already_processed(event):
             return
 
-        if self.project.remote_data_processing:
-            # Get local proc filename
-            lasif_root = self.project.lasif_root
-            proc_filename = (
-                f"preprocessed_{int(self.project.min_period)}s_"
-                f"to_{int(self.project.max_period)}s.h5"
-            )
-            local_proc_folder = os.path.join(
-                lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event
-            )
-            local_proc_file = os.path.join(local_proc_folder, proc_filename)
+        # Get local proc filename
+        lasif_root = self.project.config.lasif_root
+        proc_filename = (
+            f"preprocessed_{int(self.project.simulation_settings.min_period)}s_"
+            f"to_{int(self.project.simulation_settings.max_period)}s.h5"
+        )
+        local_proc_folder = os.path.join(
+            lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event
+        )
+        local_proc_file = os.path.join(local_proc_folder, proc_filename)
 
-            if not os.path.exists(local_proc_folder):
-                os.mkdir(local_proc_folder)
+        if not os.path.exists(local_proc_folder):
+            os.mkdir(local_proc_folder)
 
-            remote_proc_file_name = f"{event}_{proc_filename}"
-            hpc_cluster = get_site(self.project.site_name)
+        remote_proc_file_name = f"{event}_{proc_filename}"
+        hpc_cluster = self.project.flow.hpc_cluster
 
-            remote_processed_dir = os.path.join(
-                self.project.remote_inversionson_dir, "PROCESSED_DATA"
-            )
+        remote_processed_dir = self.project.remote_paths.proc_data_dir
 
-            remote_proc_path = os.path.join(remote_processed_dir, remote_proc_file_name)
-            tmp_local_path = f"{local_proc_file}_tmp"
-            if hpc_cluster.remote_exists(remote_proc_path):
-                hpc_cluster.remote_get(remote_proc_path, tmp_local_path)
-                os.rename(tmp_local_path, local_proc_file)
-                return  # Return if it got it and got it there.
-
-        lapi.process_data(self.lasif_comm, events=[event])
+        remote_proc_path = remote_processed_dir / remote_proc_file_name
+        if hpc_cluster.remote_exists(remote_proc_path):
+            self.project.flow.safe_get(remote_proc_path, local_proc_file)
+            return  # Return if it got it and got it there.
 
     def process_random_unprocessed_event(self) -> bool:
         """
@@ -762,7 +743,7 @@ class Lasif(Component):
 
         events_in_iteration = self.project.events_in_iteration
         events = self.project.lasif.list_events()
-        validation_events = self.project.validation_dataset
+        validation_events = self.project.config.monitoring.validation_dataset
         if not self.everything_processed:
             self.everything_processed = True
             msg = "Seems like there is nothing to do now. I might as well process some random event."
@@ -799,7 +780,7 @@ class Lasif(Component):
         self,
         window_set_name: str,
         event: str,
-        validation=False,
+        validation: bool = False,
     ):
         """
         Select window for a certain event in an iteration.
