@@ -1,23 +1,22 @@
 from __future__ import annotations
 import shutil
-import salvus.flow.api as sapi
+import salvus.flow.api as sapi  # type: ignore
 import os
 import time
-import numpy as np
-import json
 import pathlib
 import toml
-from typing import Union, List, TYPE_CHECKING
+import random
+from typing import Optional, Union, List, TYPE_CHECKING
 
 from .component import Component
-from salvus.flow import schema_validator
+from salvus.flow import schema_validator  # type: ignore
 import typing
-from salvus.flow.simple_config.simulation import Waveform
-from salvus.flow.sites import job as s_job
-from salvus.flow.simple_config import simulation, source, stf, receiver
-from salvus.flow.api import get_site
+from salvus.flow.simple_config.simulation import Waveform  # type: ignore
+from salvus.flow.sites import job as s_job  # type: ignore
+from salvus.flow.api import get_site  # type: ignore
 from inversionson import InversionsonError
-from salvus.mesh.unstructured_mesh import UnstructuredMesh
+from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
+from salvus.flow.db import SalvusFlowDoesNotExistDBException  # type: ignore
 
 if TYPE_CHECKING:
     from inversionson.project import Project
@@ -35,10 +34,10 @@ class SalvusFlow(Component):
     def print(
         self,
         message: str,
-        color: str = None,
+        color: Optional[str] = None,
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias: Union[str, List[str]] = None,
+        emoji_alias: Optional[Union[str, List[str]]] = None,
     ):
         self.project.storyteller.printer.print(
             message=message,
@@ -91,26 +90,20 @@ class SalvusFlow(Component):
         :return: Job name
         :rtype: str
         """
-        sim_types = [
-            "forward",
-            "adjoint",
-            "smoothing",
+        sim_types = {
             "prepare_forward",
-            "gradient_interp",
+            "forward",
             "hpc_processing",
-        ]
+            "adjoint",
+            "gradient_interp",
+        }
+        assert sim_type in sim_types
+
         if iteration == "current":
             iteration = self.project.current_iteration
         old_iter = iteration != self.project.current_iteration
-        if sim_type not in sim_types:
-            raise ValueError(
-                f"Simulation type {sim_type} not supported. Only supported "
-                f"ones are {sim_types}"
-            )
 
         if new:
-            import random
-
             unique_id = "".join(random.choice("0123456789ABCDEF") for _ in range(8))
             job = f"{iteration}_{sim_type}_{unique_id}"
             if sim_type == "adjoint":
@@ -121,16 +114,8 @@ class SalvusFlow(Component):
                 raise InversionsonError("This isn't even used anyway")
         elif old_iter:
             iteration_info = self.project.get_old_iteration_info(iteration)
-            event_index = str(self.project.get_key_number_for_event(event, iteration))
-            job = (
-                iteration_info[sim_type]["name"]
-                if (
-                    self.project.inversion_mode == "mono-batch"
-                    or self.project.optimizer == "adam"
-                )
-                and sim_type == "smoothing"
-                else iteration_info["events"][event_index]["job_info"][sim_type]["name"]
-            )
+            event_index = str(self.project.event_db.get_event_idx(event))
+            job = iteration_info["events"][event_index]["job_info"][sim_type]["name"]
         elif sim_type == "adjoint":
             job = self.project.adjoint_job[event]["name"]
         elif sim_type == "forward":
@@ -141,8 +126,6 @@ class SalvusFlow(Component):
             job = self.project.hpc_processing_job[event]["name"]
         elif sim_type == "prepare_forward":
             job = self.project.prepare_forward_job[event]["name"]
-        else:
-            job = self.project.smoothing_job["name"]
 
         self.project.update_iteration_toml()
         return job
@@ -152,88 +135,40 @@ class SalvusFlow(Component):
             event=event, sim_type=sim_type, new=False, iteration=iteration
         )
 
-    def get_job(self, event: str, sim_type: str, iteration=None) -> object:
+    def get_job(self, event: str, sim_type: str, iteration: Optional[str] = None):
         """
-        Get Salvus.Flow Job Object, or JobArray Object
-
-        :param event: Name of event
-        :type event: str
-        :param sim_type: type of simulation
-        :type sim_type: str
-        :param iteration: name of iteration, defaults to "current"
-        :type iteration: str, optional
-        #TODO, this needs work for the case when the iteration
-         is not the current iteration
+        Get Salvus.flow.job.Job Object
         """
         if not iteration or iteration == "current":
             iteration = self.project.current_iteration
+        assert isinstance(iteration, str)
+
+        site_name = self.project.config.hpc.sitename
+        custom_job = sim_type in {
+            "gradient_interp",
+            "prepare_forward",
+            "hpc_processing",
+        }
+        if custom_job:
+            return self.__get_custom_job(
+                event=event, sim_type=sim_type, iteration=iteration
+            )
+
+        # Note: DP: the below if seems optional, but may have performance benefits.
         if iteration == self.project.current_iteration:
-            if sim_type in {
-                "gradient_interp",
-                "prepare_forward",
-                "hpc_processing",
-            }:
-                return self.__get_custom_job(
-                    event=event, sim_type=sim_type, iteration=iteration
-                )
             if sim_type == "adjoint":
-                if self.project.adjoint_job[event]["submitted"]:
-                    job_name = self.project.adjoint_job[event]["name"]
-                else:
-                    raise InversionsonError(
-                        f"Adjoint job for event: {event} has not been " "submitted"
-                    )
+                assert self.project.adjoint_job[event]["submitted"]
+                job_name = self.project.adjoint_job[event]["name"]
             elif sim_type == "forward":
-                if self.project.forward_job[event]["submitted"]:
-                    job_name = self.project.forward_job[event]["name"]
-                else:
-                    raise InversionsonError(
-                        f"Forward job for event: {event} has not been " "submitted"
-                    )
-            elif sim_type == "smoothing":
-                smoothing_job = (
-                    self.project.smoothing_job
-                    if (
-                        self.project.inversion_mode == "mono-batch"
-                        or self.project.optimizer == "adam"
-                    )
-                    else self.project.smoothing_job[event]
-                )
-                if smoothing_job["submitted"]:
-                    job_name = smoothing_job["name"]
-                else:
-                    raise InversionsonError(
-                        f"Smoothing job for event: {event} has not been " "submitted"
-                    )
-        else:
+                assert self.project.forward_job[event]["submitted"]
+                job_name = self.project.forward_job[event]["name"]
+
+        else:  # get it from an old iteration
             it_dict = self.project.get_old_iteration_info(iteration)
-            if (
-                sim_type == "smoothing"
-                and self.project.inversion_mode == "mono-batch"
-                or self.project.optimizer == "adam"
-            ):
-                job_name = it_dict["smoothing"]["name"]
-            else:
-                event_index = str(
-                    self.project.get_key_number_for_event(
-                        event=event, iteration=iteration
-                    )
-                )
-                job_name = it_dict["events"][event_index]["job_info"][sim_type]["name"]
-        if sim_type == "smoothing":
-            site_name = self.project.smoothing_site_name
-            return sapi.get_job_array(job_array_name=job_name, site_name=site_name)
-        else:
-            if sim_type in {
-                "gradient_interp",
-                "prepare_forward",
-                "hpc_processing",
-            }:
-                return self.__get_custom_job(
-                    event=event, sim_type=sim_type, iteration=iteration
-                )
-            site_name = self.project.site_name
-            return sapi.get_job(job_name=job_name, site_name=site_name)
+            event_index = str(self.project.event_db.get_event_idx(event))
+            assert it_dict["events"][event_index]["job_info"][sim_type]["submitted"]
+            job_name = it_dict["events"][event_index]["job_info"][sim_type]["name"]
+        return sapi.get_job(job_name=job_name, site_name=site_name)
 
     def __get_custom_job(self, event: str, sim_type: str, iteration=None):
         """
@@ -278,7 +213,7 @@ class SalvusFlow(Component):
                     f"Model interpolation job for event: {event} "
                     "has not been submitted"
                 )
-        site_name = self.project.interpolation_site
+        site_name = self.project.config.hpc.sitename
         db_job = sapi._get_config()["db"].get_jobs(
             limit=1,
             site_name=site_name,
@@ -317,7 +252,9 @@ class SalvusFlow(Component):
         """
 
         job_name = self._get_job_name(event=event_name, sim_type=sim_type, new=False)
-        salvus_job = sapi.get_job(site_name=self.project.site_name, job_name=job_name)
+        salvus_job = sapi.get_job(
+            site_name=self.project.config.hpc.sitename, job_name=job_name
+        )
         if sim_type == "forward":
             destination = self.project.lasif.find_seismograms(
                 event=event_name, iteration=self.project.current_iteration
@@ -341,281 +278,6 @@ class SalvusFlow(Component):
             allow_existing_destination_folder=True,
         )
 
-    def get_source_object(self, event_name: str):
-        """
-        Create the source object that the simulation wants
-
-        :param event_name: Name of event
-        :type event_name: str
-        """
-
-        iteration = self.project.current_iteration
-        src_info = self.project.lasif.get_source(event_name)
-        stf_file = self.project.lasif.find_stf(iteration)
-        side_set = "r1"
-        if isinstance(src_info, list):
-            src_info = src_info[0]
-        if self.project.meshes == "multi-mesh":
-            return source.seismology.SideSetMomentTensorPoint3D(
-                latitude=src_info["latitude"],
-                longitude=src_info["longitude"],
-                depth_in_m=src_info["depth_in_m"],
-                mrr=src_info["mrr"],
-                mtt=src_info["mtt"],
-                mpp=src_info["mpp"],
-                mtp=src_info["mtp"],
-                mrp=src_info["mrp"],
-                mrt=src_info["mrt"],
-                source_time_function=stf.Custom(filename=stf_file, dataset_name="stf"),
-                side_set_name=side_set,
-            )
-        if self.project.ocean_loading["use"]:
-            side_set = "r1_ol"
-        return source.seismology.SideSetMomentTensorPoint3D(
-            latitude=src_info["latitude"],
-            longitude=src_info["longitude"],
-            depth_in_m=src_info["depth_in_m"],
-            mrr=src_info["mrr"],
-            mtt=src_info["mtt"],
-            mpp=src_info["mpp"],
-            mtp=src_info["mtp"],
-            mrp=src_info["mrp"],
-            mrt=src_info["mrt"],
-            side_set_name=side_set,
-            source_time_function=stf.Custom(filename=stf_file, dataset_name="stf"),
-        )
-
-    def get_adjoint_source_object(self, event_name: str) -> object:
-        """
-        Generate the adjoint source object for the respective event
-
-        :param event_name: Name of event
-        :type event_name: str
-        :return: Adjoint source object for salvus
-        :rtype: object
-        """
-        import h5py
-
-        iteration = self.project.current_iteration
-        receivers = self.project.lasif.get_receivers(event_name)
-        if not self.project.hpc_processing:
-            adjoint_filename = self.project.lasif.get_adjoint_source_file(
-                event=event_name, iteration=iteration
-            )
-
-        if not self.project.hpc_processing:
-            p = h5py.File(adjoint_filename, "r")
-            adjoint_recs = list(p.keys())
-            p.close()
-        else:
-            forward_job = self.get_job(event_name, sim_type="forward")
-
-            # remote synthetics
-            remote_meta_path = forward_job.output_path / "meta.json"
-            hpc_cluster = get_site(self.project.site_name)
-            meta_json_filename = "meta.json"
-            if os.path.exists(meta_json_filename):
-                os.remove(meta_json_filename)
-            hpc_cluster.remote_get(remote_meta_path, meta_json_filename)
-
-            proc_job = self.get_job(event_name, sim_type="hpc_processing")
-            remote_misfit_dict_toml = str(
-                proc_job.stdout_path.parent / "output" / "misfit_dict.toml"
-            )
-            adjoint_filename = "REMOTE:" + str(
-                proc_job.stdout_path.parent / "output" / "stf.h5"
-            )
-            local_misfit_dict = "misfit_dict.toml"
-            if os.path.exists(local_misfit_dict):
-                os.remove(local_misfit_dict)
-            hpc_cluster.remote_get(remote_misfit_dict_toml, local_misfit_dict)
-            misfits = toml.load(local_misfit_dict)
-            adjoint_recs = list(misfits[event_name].keys())
-            if os.path.exists(local_misfit_dict):
-                os.remove(local_misfit_dict)
-
-        adjoint_sources = [
-            rec
-            for rec in receivers
-            if (
-                rec["network-code"] + "_" + rec["station-code"] in adjoint_recs
-                or rec["network-code"] + "." + rec["station-code"] in adjoint_recs
-            )
-        ]
-        # print(adjoint_sources)
-
-        # Get path to meta.json to obtain receiver position, use again for adjoint
-        if not self.project.hpc_processing:
-            meta_json_filename = os.path.join(
-                self.project.lasif_root,
-                "SYNTHETICS",
-                "EARTHQUAKES",
-                f"ITERATION_{iteration}",
-                event_name,
-                "meta.json",
-            )
-
-        # Build meta info dict
-
-        with open(meta_json_filename) as json_file:
-            data = json.load(json_file)
-        meta_recs = data["forward_run_input"]["output"]["point_data"]["receiver"]
-        meta_info_dict = {}
-        for rec in meta_recs:
-            if (
-                rec["network_code"] + "_" + rec["station_code"] in adjoint_recs
-                or rec["network_code"] + "." + rec["station_code"] in adjoint_recs
-            ):
-                rec_name = rec["network_code"] + "_" + rec["station_code"]
-                meta_info_dict[rec_name] = {
-                    "rotation_on_input": {
-                        "matrix": np.array(
-                            rec["rotation_on_output"]["matrix"]
-                        ).T.tolist()
-                    }
-                }
-                meta_info_dict[rec_name]["location"] = rec["location"]
-
-        adj_src = [
-            source.cartesian.VectorPoint3D(
-                x=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
-                    "location"
-                ][0],
-                y=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
-                    "location"
-                ][1],
-                z=meta_info_dict[rec["network-code"] + "_" + rec["station-code"]][
-                    "location"
-                ][2],
-                fx=1.0,
-                fy=1.0,
-                fz=1.0,
-                source_time_function=stf.Custom(
-                    filename=adjoint_filename,
-                    dataset_name="/" + rec["network-code"] + "_" + rec["station-code"],
-                ),
-                rotation_on_input=meta_info_dict[
-                    rec["network-code"] + "_" + rec["station-code"]
-                ]["rotation_on_input"],
-            )
-            for rec in adjoint_sources
-        ]
-        if os.path.exists(meta_json_filename) and self.project.hpc_processing:
-            os.remove(meta_json_filename)
-
-        return adj_src
-
-    def get_receivers(self, event: str):
-        """
-        Locate receivers and get them in a format that salvus flow
-        can use.
-
-        :param event: Name of event to get the receivers for
-        :type event: str
-        """
-
-        side_set = "r1"
-
-        recs = self.project.lasif.get_receivers(event)
-        if self.project.meshes != "multi-mesh" and self.project.ocean_loading["use"]:
-            side_set = "r1_ol"
-        return [
-            receiver.seismology.SideSetPoint3D(
-                latitude=rec["latitude"],
-                longitude=rec["longitude"],
-                network_code=rec["network-code"],
-                station_code=rec["station-code"],
-                depth_in_m=0.0,
-                fields=["displacement"],
-                side_set_name=side_set,
-            )
-            for rec in recs
-        ]
-
-    def construct_simulation(self, event: str, sources: object, receivers: object):
-        """
-        Generate the simulation object which salvus flow loves
-
-        :param event: Name of event
-        :type event: str
-        :param sources: Information regarding source
-        :type sources: source object
-        :param receivers: Information regarding receivers
-        :type receivers: list of receiver objects
-        """
-        import salvus.flow.simple_config as sc
-
-        mesh = self.project.lasif.get_master_model()
-        w = sc.simulation.Waveform(mesh=mesh, sources=sources, receivers=receivers)
-
-        w.physics.wave_equation.end_time_in_seconds = self.project.end_time
-        # w.physics.wave_equation.time_step_in_seconds = self.project.time_step
-        w.physics.wave_equation.start_time_in_seconds = self.project.start_time
-        w.physics.wave_equation.attenuation = self.project.attenuation
-        bound = False
-        boundaries = []
-
-        if self.project.absorbing_boundaries:
-            bound = True
-            if (
-                "inner_boundary"
-                in self.project.lasif.lasif_comm.project.domain.get_side_set_names()
-            ):
-                side_sets = ["inner_boundary"]
-            else:
-                side_sets = [
-                    "r0",
-                    "t0",
-                    "t1",
-                    "p0",
-                    "p1",
-                ]
-            absorbing = sc.boundary.Absorbing(
-                width_in_meters=self.project.abs_bound_length * 1000.0,
-                side_sets=side_sets,
-                taper_amplitude=1.0
-                / self.project.lasif.lasif_comm.project.simulation_settings[
-                    "minimum_period_in_s"
-                ],
-            )
-            boundaries.append(absorbing)
-        if self.project.ocean_loading["use"]:
-            bound = True
-            side_set = "r1" if self.project.meshes == "multi-mesh" else "r1_ol"
-            ocean_loading = sc.boundary.OceanLoading(side_sets=[side_set])
-            boundaries.append(ocean_loading)
-        if bound:
-            w.physics.wave_equation.boundaries = boundaries
-
-        # Compute wavefield subsampling factor.
-        # if self.project.simulation_time_step:
-        #     # Compute wavefield subsampling factor.
-        #     samples_per_min_period = (
-        #             self.project.min_period / self.project.simulation_time_step
-        #     )
-        #     min_samples_per_min_period = 30.0
-        #     reduction_factor = int(
-        #         samples_per_min_period / min_samples_per_min_period)
-        #     reduction_factor_syn = int(
-        #         samples_per_min_period / 40.0)
-        #     # if reduction_factor_syn >= 2:
-        #     #     w.output.point_data.sampling_interval_in_time_steps = reduction_factor_syn
-        #     if reduction_factor >= 2:
-        #         checkpointing_flag = f"auto-for-checkpointing_{reduction_factor}"
-        #     else:
-        #         checkpointing_flag = "auto-for-checkpointing"
-        # else:
-        checkpointing_flag = "auto-for-checkpointing"
-        # For gradient computation
-        w.output.volume_data.format = "hdf5"
-        w.output.volume_data.filename = "output.h5"
-        w.output.volume_data.fields = ["adjoint-checkpoint"]
-        w.output.volume_data.sampling_interval_in_time_steps = checkpointing_flag
-
-        w.validate()
-
-        return w
-
     def construct_simulation_from_dict(self, event: str):
         """
         Download a dictionary with the simulation object and use it to create a local simulation object
@@ -637,12 +299,11 @@ class SalvusFlow(Component):
             os.makedirs(destination.parent)
 
         if not os.path.exists(destination):
-            hpc_cluster = sapi.get_site(self.project.site_name)
             interp_job = self.get_job(event, sim_type="prepare_forward")
             remote_dict = (
                 interp_job.stdout_path.parent / "output" / "simulation_dict.toml"
             )
-            hpc_cluster.remote_get(remotepath=remote_dict, localpath=destination)
+            self.safe_get(remote_file=remote_dict, local_file=destination)
 
         sim_dict = toml.load(destination)
 
@@ -710,7 +371,7 @@ class SalvusFlow(Component):
         :type event: str
         """
 
-        hpc_cluster = sapi.get_site(self.project.site_name)
+        hpc_cluster = sapi.get_site(self.project.config.hpc.sitename)
         hpc_proc_job = self.get_job(event, sim_type="hpc_processing")
 
         # Always write events to the same folder
@@ -742,65 +403,6 @@ class SalvusFlow(Component):
         w.set_mesh(f"REMOTE:{str(remote_mesh)}")
         return w
 
-    def construct_adjoint_simulation(self, event: str, adj_src: object) -> object:
-        """
-        Create the adjoint simulation object that salvus flow needs.
-        This only gets used in the non HPC processing case.
-
-        :param event: Name of event
-        :type event: str
-        :param adj_src: List of adjoint source objects
-        :type adj_src: object
-        :return: Simulation object
-        :rtype: object
-        """
-        self.print("Constructing Adjoint Simulation now", emoji_alias=":wrench:")
-
-        remote_interp = self.project.meshes == "multi-mesh"
-        # mesh = self.project.lasif.find_event_mesh(event)
-        mesh = self.project.lasif.lasif_comm.project.lasif_config["domain_settings"][
-            "domain_file"
-        ]
-
-        if remote_interp:
-            interp_job = self.get_job(event=event, sim_type="prepare_forward")
-
-        forward_job = self.get_job(event=event, sim_type="forward")
-        meta = forward_job.output_path / "meta.json"
-        if remote_interp:
-            remote_mesh = interp_job.path / "output" / "mesh.h5"
-        else:
-            local_meta = os.path.join(
-                self.project.lasif_root,
-                "SYNTHETICS",
-                "EARTHQUAKES",
-                f"ITERATION_{self.project.current_iteration}",
-                event,
-                "meta.json",
-            )
-            with open(local_meta, "r") as fh:
-                meta_info = json.load(fh)
-            remote_mesh = meta_info["forward_run_input"]["domain"]["mesh"]["filename"]
-
-        gradient = "gradient.h5"
-
-        w = simulation.Waveform(mesh=mesh)
-        w.adjoint.forward_meta_json_filename = f"REMOTE:{meta}"
-        if "VPV" in self.project.inversion_params:
-            parameterization = "tti"
-        elif "VP" in self.project.inversion_params:
-            parameterization = "rho-vp-vs"
-        w.adjoint.gradient.parameterization = parameterization
-        w.adjoint.gradient.output_filename = gradient
-        w.adjoint.gradient.format = "hdf5-full"
-        w.adjoint.point_source = adj_src
-
-        # Now set a remote mesh
-        w.set_mesh(f"REMOTE:{str(remote_mesh)}")
-        w.validate()
-
-        return w
-
     def submit_job(
         self,
         event: str,
@@ -828,10 +430,11 @@ class SalvusFlow(Component):
         """
         # Adjoint simulation takes longer and seems to be less predictable
         # we thus give it a longer wall time.
+
+        wall_time = self.project.config.hpc.wave_wall_time
         if sim_type == "adjoint":
-            wall_time = self.project.wall_time * 1.5
-        else:
-            wall_time = self.project.wall_time
+            wall_time = wall_time * 1.5
+
         start_submit = time.time()
         job = sapi.run_async(
             site_name=site,
@@ -845,7 +448,7 @@ class SalvusFlow(Component):
             emoji_alias=":hourglass:",
             color="magenta",
         )
-        hpc_cluster = sapi.get_site(self.project.site_name)
+        hpc_cluster = sapi.get_site(self.project.config.hpc.sitename)
 
         if sim_type == "forward":
             self.project.change_attribute(
@@ -861,7 +464,9 @@ class SalvusFlow(Component):
         self.project.update_iteration_toml()
         if hpc_cluster.config["site_type"] == "local":
             self.print(f"Running {sim_type} simulation...")
-            job.wait(poll_interval_in_seconds=self.project.sleep_time_in_s)
+            job.wait(
+                poll_interval_in_seconds=self.project.config.hpc.sleep_time_in_seconds
+            )
 
     def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
         """
@@ -900,12 +505,14 @@ class SalvusFlow(Component):
         else:
             raise InversionsonError(f"Don't recognize sim_type {sim_type}")
 
-        job = sapi.get_job(job_name=job_name, site_name=self.project.site_name)
+        job = sapi.get_job(
+            job_name=job_name, site_name=self.project.config.hpc.sitename
+        )
 
         return job.get_output_files()
 
     def delete_stored_wavefields(
-        self, iteration: str, sim_type: str, event_name: str = None
+        self, iteration: str, sim_type: str, event_name: Optional[str] = None
     ):
         """
         Delete all stored jobs for a certain simulation type of an iteration
@@ -919,7 +526,6 @@ class SalvusFlow(Component):
             Defaults to None
         :type event_name: str, optional
         """
-        from salvus.flow.db import SalvusFlowDoesNotExistDBException
 
         if event_name is not None:
             try:
@@ -934,7 +540,7 @@ class SalvusFlow(Component):
             return
         events_in_iteration = self.project.lasif.list_events(iteration=iteration)
         non_val_tasks = ["gradient_interp", "hpc_processing"]
-        for _i, event in enumerate(events_in_iteration):
+        for event in events_in_iteration:
             if self.project.is_validation_event(event) and sim_type in non_val_tasks:
                 continue
             try:
@@ -951,28 +557,3 @@ class SalvusFlow(Component):
                     emoji_alias=":hankey:",
                 )
                 print(e)
-
-    def submit_smoothing_job(self, event: str, simulation, par: str):
-        """
-        Submit the salvus diffusion equation smoothing job
-
-        :param event: name of event
-        :type event: str
-        :param simulation: Simulation object required by salvus flow
-        :type simulation: object
-        :param par: Parameter to smooth
-        :type par: str
-        """
-
-        job = sapi.run_async(
-            site_name=self.project.smoothing_site_name,
-            input_file=simulation,
-            ranks=self.project.smoothing_ranks,
-            wall_time_in_seconds=self.project.smoothing_wall_time,
-        )
-        self.project.change_attribute(
-            f'smoothing_job["{event}"]["{par}"]["name"]', job.job_name
-        )
-        self.project.change_attribute(
-            f'smoothing_job["{event}"]["{par}"]["submitted"]', True
-        )

@@ -1,5 +1,4 @@
 from __future__ import annotations, absolute_import
-
 import os
 import toml
 import shutil
@@ -7,15 +6,13 @@ from pathlib import Path
 from inversionson import InversionsonWarning
 import warnings
 from typing import Optional, Union, List
-import salvus.flow.api as sapi
-
 from inversionson.file_templates.inversion_info_template import InversionsonConfig
 
 
 class RemotePaths:
     def __init__(self, config: InversionsonConfig):
+        # Directories
         self.root = config.hpc.inversionson_folder
-
         self.diff_dir = self.root / "DIFFUSION_MODELS"
         self.stf_dir = self.root / "SOURCE_TIME_FUNCTIONS"
         self.interp_weights_dir = self.root / "INTERPOLATION_WEIGHTS"
@@ -27,28 +24,18 @@ class RemotePaths:
         self.script_dir = self.root / "SCRIPTS"
         self.proc_data_dir = self.root / "PROCESSED_DATA"
 
+        # Remote files
         self.ocean_loading_f = self.root / "ocean_loading_file"
         self.topography_f = self.root / "topography_file"
         self.interp_script = self.script_dir / "interpolation.py"
 
     def create_remote_directories(self, hpc_cluster):
-        if not hpc_cluster.remote_exists(self.root):
-            hpc_cluster.remote_mkdir(self.root)
-
-        for directory in [
-            self.diff_dir,
-            self.stf_dir,
-            self.interp_weights_dir,
-            self.mesh_dir,
-            self.window_dir,
-            self.misfit_dir,
-            self.adj_src_dir,
-            self.receiver_dir,
-            self.script_dir,
-            self.proc_data_dir,
-        ]:
-            if not hpc_cluster.remote_exists(self.root / directory):
-                hpc_cluster.remote_mkdir(self.root / directory)
+        all_directories = [
+            d for d in self.__dict__.values() if isinstance(d, Path) and d.is_dir()
+        ]
+        for directory in all_directories:
+            if not hpc_cluster.remote_exists(directory):
+                hpc_cluster.remote_mkdir(directory)
 
 
 class ProjectPaths:
@@ -61,11 +48,6 @@ class ProjectPaths:
         self.iteration_tomls.mkdir(exist_ok=True)
         self.misc_folder = self.documentation / "MISC"
         self.misc_folder.mkdir(exist_ok=True)
-
-        self.remote_ocean_loading_f = (
-            config.hpc.inversionson_folder / "ocean_loading_file"
-        )
-        self.remote_topography_f = config.hpc.inversionson_folder / "topography_file"
 
     def get_iteration_toml(self, iteration: str) -> Path:
         return self.iteration_tomls / f"{iteration}.toml"
@@ -93,9 +75,6 @@ class LASIFSimulationSettings:
         self.absorbing_boundaries_length: float = self.salvus_settings[
             "absorbing_boundaries_in_km"
         ]
-        self.domain_file: str = config_dict["lasif_project"]["domain_settings"][
-            "domain_file"
-        ]
 
 
 class Project(object):
@@ -111,7 +90,7 @@ class Project(object):
         self.paths = ProjectPaths(self.config)
         self.remote_paths = RemotePaths(self.config)
 
-        self.simulation_settings = LASIFSimulationSettings(
+        self.lasif_settings = LASIFSimulationSettings(
             self.config.lasif_root / "lasif_config.toml"
         )
         self.__setup_components()
@@ -140,10 +119,10 @@ class Project(object):
     def print(
         self,
         message: str,
-        color: str = None,
+        color: Optional[str] = None,
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias: Union[str, List[str]] = None,
+        emoji_alias: Optional[Union[str, List[str]]] = None,
     ):
         self.storyteller.printer.print(
             message=message,
@@ -178,29 +157,27 @@ class Project(object):
             backup = self.paths.iteration_tomls / f"backup_{iteration}.toml"
             shutil.copyfile(iteration_toml, backup)
 
-        it_dict = dict(name=iteration, events={})
-        if self.meshes == "mono-mesh":
-            it_dict["remote_simulation_mesh"] = None
+        it_dict = {"name": iteration, "events": {}}
+        if not self.config.meshing.multi_mesh:
+            it_dict["remote_simulation_mesh"] = ""
 
         job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
 
         for event in events:
             str_idx = str(self.event_db.get_event_idx(event))
             if self.is_validation_event(event):
-                jobs = {"forward": job_dict}
-                if self.prepare_forward:
-                    jobs["prepare_forward"] = job_dict
+                jobs = {"prepare_forward": job_dict, "forward": job_dict}
+
             if not self.is_validation_event(event):
-                jobs = {
-                    "forward": job_dict,
-                    "adjoint": job_dict,
-                }
-                if self.prepare_forward:
-                    jobs["prepare_forward"] = job_dict
-                if self.remote_interp:
-                    jobs["gradient_interp"] = job_dict
-                if self.hpc_processing and not self.is_validation_event(event):
-                    jobs["hpc_processing"] = job_dict
+                jobs.update(
+                    {
+                        "hpc_processing": job_dict,
+                        "adjoint": job_dict,
+                    }
+                )
+                if self.config.meshing.multi_mesh:
+                    jobs.update({"gradient_interp": job_dict})
+
             it_dict["events"][str_idx] = {
                 "name": event,
                 "job_info": jobs,
@@ -222,36 +199,26 @@ class Project(object):
         self.update_iteration_toml()
 
     def update_iteration_toml(self, iteration: Optional[str] = None):
-        """
-        Store iteration attributes in iteration_toml file.
-
-        :param iteration: Name of iteration
-        :type iteration: str
-        """
+        """Update iteration the iteration toml file."""
         iteration = iteration or self.current_iteration
         iteration_toml = self.paths.get_iteration_toml(iteration)
-
-        if not iteration_toml.exists():
-            raise FileNotFoundError(
-                f"Iteration toml for iteration: {iteration} does not exists"
-            )
+        assert iteration_toml.exists(), f"Iteration toml {iteration_toml} not found."
 
         it_dict = toml.load(iteration_toml)
-
         for ev in it_dict["events"].values():
             event = ev["name"]
             str_idx = str(self.event_db.get_event_idx(event))
 
-            jobs = {"forward": self.forward_job[event]}
-            if not self.is_validation_event(event):
-                jobs["adjoint"] = self.adjoint_job[event]
-            if self.prepare_forward:
-                jobs["prepare_forward"] = self.prepare_forward_job[event]
+            jobs = {
+                "prepare_forward": self.prepare_forward_job[event],
+                "forward": self.forward_job[event],
+            }
 
-            if self.remote_interp and not self.is_validation_event(event):
-                jobs["gradient_interp"] = self.gradient_interp_job[event]
-            if self.hpc_processing and not self.is_validation_event(event):
+            if not self.is_validation_event(event):
                 jobs["hpc_processing"] = self.hpc_processing_job[event]
+                jobs["adjoint"] = self.adjoint_job[event]
+                if self.config.meshing.multi_mesh:
+                    jobs["gradient_interp"] = self.gradient_interp_job[event]
 
             it_dict["events"][str_idx] = {
                 "name": event,
@@ -265,24 +232,18 @@ class Project(object):
             toml.dump(it_dict, fh)
 
     def get_iteration_attributes(self, iteration: str):
-        """
-        Save the attributes of the current iteration into memory
-
-        :param iteration: Name of iteration
-        :type iteration: str
-        """
+        """Get iteration attributes from iterationt toml."""
         iteration_toml = self.paths.get_iteration_toml(iteration)
-        if not iteration_toml.exists():
-            raise FileNotFoundError(f"No toml file exists for iteration: {iteration}")
+        assert iteration_toml.exists()
 
         it_dict = toml.load(iteration_toml)
-
         self.current_iteration = it_dict["name"]
         self.events_in_iteration = self.event_db.get_event_names(
             list(it_dict["events"].keys())
         )
         self.non_val_events_in_iteration = list(
-            set(self.events_in_iteration) - set(self.validation_dataset)
+            set(self.events_in_iteration)
+            - set(self.config.monitoring.validation_dataset)
         )
         self.adjoint_job = {}
         self.misfits = {}
@@ -292,29 +253,24 @@ class Project(object):
         self.hpc_processing_job = {}
         self.gradient_interp_job = {}
 
-        # Not sure if it's worth it to include station misfits
         for event in self.events_in_iteration:
             ev_idx = str(self.event_db.get_event_idx(event))
-            if not self.is_validation_event(event):
-                self.updated[event] = it_dict["events"][ev_idx]["usage_updated"]
-                self.misfits[event] = it_dict["events"][ev_idx]["misfit"]
-
-                self.adjoint_job[event] = it_dict["events"][ev_idx]["job_info"][
-                    "adjoint"
-                ]
+            self.prepare_forward_job[event] = it_dict["events"][ev_idx]["job_info"][
+                "prepare_forward"
+            ]
             self.forward_job[event] = it_dict["events"][ev_idx]["job_info"]["forward"]
-            if self.prepare_forward:
-                self.prepare_forward_job[event] = it_dict["events"][ev_idx]["job_info"][
-                    "prepare_forward"
-                ]
-            if self.remote_interp and not self.is_validation_event(event):
-                self.gradient_interp_job[event] = it_dict["events"][ev_idx]["job_info"][
-                    "gradient_interp"
-                ]
-            if self.hpc_processing and not self.is_validation_event(event):
+            if not self.is_validation_event(event):
                 self.hpc_processing_job[event] = it_dict["events"][ev_idx]["job_info"][
                     "hpc_processing"
                 ]
+                self.misfits[event] = it_dict["events"][ev_idx]["misfit"]
+                self.adjoint_job[event] = it_dict["events"][ev_idx]["job_info"][
+                    "adjoint"
+                ]
+                self.gradient_interp_job[event] = it_dict["events"][ev_idx]["job_info"][
+                    "gradient_interp"
+                ]
+                self.updated[event] = it_dict["events"][ev_idx]["usage_updated"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:
         """
@@ -326,15 +282,14 @@ class Project(object):
         :rtype: dict
         """
         iteration_toml = self.paths.get_iteration_toml(iteration)
-        if not iteration_toml.exists():
-            raise FileNotFoundError(f"No toml file exists for iteration: {iteration}")
+        assert iteration_toml.exists(), f"Iteration toml {iteration_toml} not found."
 
         with open(iteration_toml, "r") as fh:
             it_dict = toml.load(fh)
         return it_dict
 
     def is_validation_event(self, event: str) -> bool:
-        return event in self.validation_dataset
+        return event in self.config.monitoring.validation_dataset
 
     def find_simulation_time_step(self, event: Optional[str] = None):
         """
@@ -346,7 +301,7 @@ class Project(object):
         """
         timestep_file = self.paths.misc_folder / "simulation_timestep.toml"
 
-        if not timestep_file.exists() and event is not None:
+        if event and not timestep_file.exists():
             self._get_timestep_from_stdout(event, timestep_file)
         elif timestep_file.exists():
             time_dict = toml.load(timestep_file)
@@ -355,7 +310,7 @@ class Project(object):
     def _get_timestep_from_stdout(self, event, timestep_file):
         """Read the timestep value from a stdout produced by salvus run."""
         local_stdout = self.paths.documentation / "stdout_to_find_tinestep"
-        hpc_cluster = sapi.get_site(self.site_name)
+        hpc_cluster = self.flow.hpc_cluster
         forward_job = self.flow.get_job(event=event, sim_type="forward")
         stdout = forward_job.path / "stdout"
         hpc_cluster.remote_get(stdout, local_stdout)
@@ -371,7 +326,7 @@ class Project(object):
             try:
                 time_step = float(stdout_str_split[time_step_idx])
                 # basic check to see if timestep makes some sense
-                if time_step > 0.00001 and time_step < 1000:
+                if time_step > 0.0 and time_step < 1000.0:
                     time_step_dict = dict(time_step=time_step)
                     with open(timestep_file, "w") as fh:
                         toml.dump(time_step_dict, fh)

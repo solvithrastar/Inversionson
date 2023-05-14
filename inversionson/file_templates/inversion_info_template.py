@@ -70,6 +70,7 @@ class HPCSettings:
 @dataclass(frozen=True)
 class InversionSettings:
     initial_model: Path = Path("")
+    mini_batch: bool = True  # Use mini-batches or not.
     initial_batch_size: int = 4
     source_cut_radius_in_km: float = 100.0
     # Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be clipped.

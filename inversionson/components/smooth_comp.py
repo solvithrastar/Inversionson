@@ -49,7 +49,7 @@ class Smoother(Component):
         :type smoothing_parameters: list
         """
         ref_model_name = ".".join(reference_model.split("/")[-1].split(".")[:-1])
-        freq = 1.0 / self.project.simulation_settings.min_period
+        freq = 1.0 / self.project.lasif_settings.min_period
 
         hpc_cluster = self.project.flow.hpc_cluster
         remote_diff_dir = self.project.remote_paths.diff_dir

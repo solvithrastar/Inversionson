@@ -7,7 +7,7 @@ import emoji
 from colorama import init, Fore
 
 init()
-from typing import List, Union, TYPE_CHECKING
+from typing import List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from inversionson.project import Project
@@ -630,8 +630,8 @@ class PrettyPrinter(object):
         message: str,
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias: Union[str, List[str]] = None,
-        color: str = None,
+        emoji_alias: Optional[Union[str, List[str]]] = None,
+        color: Optional[str] = None,
     ):
         """
         A printing function which works with the stream and finally prints it and

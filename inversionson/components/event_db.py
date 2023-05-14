@@ -21,7 +21,7 @@ class EventDataBase(Component):
         )
         self.enumerate_all_data()
 
-    def enumerate_all_data(self) -> Dict[str, int]:
+    def enumerate_all_data(self):
         all_events = self.project.lasif.list_events()
         if not self.event_numbering_file.exists():
             self.event_dict = {e: i for i, e in enumerate(all_events)}

@@ -184,18 +184,10 @@ def sum_two_parameters_h5(filename: Union[str, pathlib.Path], parameters):
 
     with h5py.File(filename, "r+") as h5:
         dat = h5["MODEL/data"]
+        # TODO: DP it seems the below can be simplified. Look into this at some point.
         data_copy = dat[:, :, :].copy()
         par_sum = data_copy[:, indices[0], :] + data_copy[:, indices[1], :]
         data_copy[:, indices[0], :] = par_sum
         data_copy[:, indices[1], :] = par_sum
 
         dat[:, indices, :] = data_copy[:, indices, :]
-
-
-if __name__ == "__main__":
-    from pathlib import Path
-
-    # Get the filepath of the current script
-    current_file_path = (Path(__file__) / ".." / "file_templates").resolve()
-
-    print("File path:", current_file_path, type(current_file_path))

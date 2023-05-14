@@ -1,12 +1,12 @@
 from __future__ import annotations
-import h5py
+import h5py  # type: ignore
 import numpy as np
 import shutil
 import os
 from pathlib import Path
 from inversionson import InversionsonError
-from salvus.mesh.unstructured_mesh import UnstructuredMesh
-from typing import Union, List, TYPE_CHECKING
+from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
+from typing import Optional, Union, List, TYPE_CHECKING
 
 from .component import Component
 
@@ -34,10 +34,10 @@ class Mesh(Component):
     def print(
         self,
         message: str,
-        color: str = None,
+        color: Optional[str] = None,
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias: Union[str, List[str]] = ":globe_with_meridians:",
+        emoji_alias: Optional[Union[str, List[str]]] = ":globe_with_meridians:",
     ):
         self.project.storyteller.printer.print(
             message=message,
@@ -46,47 +46,6 @@ class Mesh(Component):
             line_below=line_below,
             emoji_alias=emoji_alias,
         )
-
-    def create_mesh(self, event: str):
-        """
-        Create a smoothiesem mesh for an event. I'll keep refinements fixed
-        for now.
-
-        :param event: Name of event
-        :type event: str
-        """
-
-        from salvus.mesh.simple_mesh import SmoothieSEM
-
-        source_info = self.project.lasif.get_source(event_name=event)
-        if isinstance(source_info, list):
-            source_info = source_info[0]
-        sm = SmoothieSEM()
-        sm.basic.model = "prem_ani_one_crust"
-        sm.basic.min_period_in_seconds = self.project.min_period
-        sm.basic.elements_per_wavelength = 1.7
-        sm.basic.number_of_lateral_elements = self.project.elem_per_quarter
-        sm.advanced.tensor_order = 4
-        if self.project.ellipticity:
-            sm.spherical.ellipticity = 0.0033528106647474805
-        if self.project.ocean_loading["use"]:
-            sm.ocean.bathymetry_file = self.project.ocean_loading["file"]
-            sm.ocean.bathymetry_varname = self.project.ocean_loading["variable"]
-            sm.ocean.ocean_layer_style = "loading"
-            sm.ocean.ocean_layer_density = 1025.0
-        if self.project.topography["use"]:
-            sm.topography.topography_file = self.project.topography["file"]
-            sm.topography.topography_varname = self.project.topography["variable"]
-        sm.source.latitude = source_info["latitude"]
-        sm.source.longitude = source_info["longitude"]
-        sm.refinement.lateral_refinements.append(
-            {"theta_min": 40.0, "theta_max": 140.0, "r_min": 6250.0}
-        )
-        m = sm.create_mesh()
-        mesh_file = self.event_meshes / event / "mesh.h5"
-        if not os.path.exists(os.path.dirname(mesh_file)):
-            os.makedirs(os.path.dirname(mesh_file))
-        m.write_h5(mesh_file)
 
     def _check_if_mesh_has_field(
         self,
@@ -162,15 +121,6 @@ class Mesh(Component):
             is True, we write it anyway, defaults to True
         :type bool, optional
         """
-        import os
-        import shutil
-
-        # has_field = self._check_if_mesh_has_field(
-        #     check_mesh=from_mesh,
-        #     field_name=field_name,
-        #     elemental=elemental,
-        #     global_string=global_string,
-        # )
         has_field = self._check_if_mesh_has_field(
             check_mesh=to_mesh,
             field_name=field_name,
@@ -189,20 +139,12 @@ class Mesh(Component):
         tm = UnstructuredMesh.from_h5(to_mesh)
         fm = UnstructuredMesh.from_h5(from_mesh)
         if global_string:
-            # if field_name in tm.global_strings.keys():
-            #     if not overwrite:
-            #         print(f"Field {field_name} already exists on mesh")
-            #         return
             field = fm.global_strings[field_name]
             tm.attach_global_variable(name=field_name, data=field)
             tm.write_h5(to_mesh)
             self.print(f"Attached field {field_name} to mesh {to_mesh}")
             return
         elif elemental:
-            # if field_name in tm.elemental_fields.keys():
-            #     if not overwrite:
-            #         print(f"Field {field_name} already exists on mesh")
-            #         return
             field = fm.elemental_fields[field_name]
         elif side_sets:
             for side_set in fm.side_sets.keys():
@@ -215,10 +157,6 @@ class Mesh(Component):
             attach_field = False
 
         else:
-            # if field_name in tm.element_nodal_fields.keys():
-            #     if not overwrite:
-            #         print(f"Field {field_name} already exists on mesh")
-            #         return
             field = fm.element_nodal_fields[field_name]
         if attach_field:
             tm.attach_field(field_name, field)
@@ -316,7 +254,7 @@ class Mesh(Component):
         mesh: str,
         fieldname_1: str,
         fieldname_2: str,
-        newname: str = None,
+        newname: Optional[str] = None,
         delete_old_fields: bool = False,
     ):
         """
@@ -379,7 +317,7 @@ class Mesh(Component):
         """
         self.print("Filling inversion parameters with zeros before interpolation")
         m = UnstructuredMesh.from_h5(mesh)
-        parameters = self.project.inversion_params
+        parameters = self.project.config.inversion.inversion_parameters
         zero_nodal = np.zeros_like(m.element_nodal_fields[parameters[0]])
 
         for param in parameters:
