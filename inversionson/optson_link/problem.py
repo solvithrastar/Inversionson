@@ -60,4 +60,4 @@ class Problem(AbstractProblem):
 
     @CallCounter
     def g(self, x: OptsonVec) -> OptsonVec:
-        pass]
+        pass

@@ -77,22 +77,6 @@ class Lasif(Component):
             it_name = it_name.replace("ITERATION_", "")
         return isinstance(iterations, list) and it_name in iterations
 
-    def find_event_mesh(self, event: str) -> pathlib.Path:
-        """
-        Find the path for an event mesh
-
-        :param event: Name of event
-        :type event: str
-        :return: Path to where the mesh is stored.
-        :rtype: Pathlib.Path
-        """
-        if not self.project.config.meshing.multi_mesh:
-            return self.project.config.inversion.initial_model
-        has, mesh = lapi.find_event_mesh(self.lasif_comm, event)
-        if not has:
-            raise InversionsonError(f"Mesh for event: {event} can not be found.")
-        return pathlib.Path(mesh)
-
     def move_gradient_to_cluster(self):
         """
         Empty gradient moved to a dedicated directory on cluster
@@ -376,64 +360,27 @@ class Lasif(Component):
             return
 
         # Get local proc filename
-        lasif_root = self.project.config.lasif_root
         proc_filename = (
             f"preprocessed_{int(self.project.lasif_settings.min_period)}s_"
             f"to_{int(self.project.lasif_settings.max_period)}s.h5"
         )
-        local_proc_folder = os.path.join(
-            lasif_root, "PROCESSED_DATA", "EARTHQUAKES", event
-        )
-        local_proc_file = os.path.join(local_proc_folder, proc_filename)
 
-        if not os.path.exists(local_proc_folder):
-            os.mkdir(local_proc_folder)
+        local_proc_folder = (
+            self.project.config.lasif_root / "PROCESSED_DATA" / "EARTHQUAKES" / event
+        )
+        local_proc_folder.mkdir(exist_ok=True)
+        local_proc_file = local_proc_folder / proc_filename
 
         remote_proc_file_name = f"{event}_{proc_filename}"
         hpc_cluster = self.project.flow.hpc_cluster
 
-        remote_processed_dir = self.project.remote_paths.proc_data_dir
-
-        remote_proc_path = remote_processed_dir / remote_proc_file_name
+        remote_proc_path = (
+            self.project.remote_paths.proc_data_dir / remote_proc_file_name
+        )
         if hpc_cluster.remote_exists(remote_proc_path):
             self.project.flow.safe_get(remote_proc_path, local_proc_file)
-            return  # Return if it got it and got it there.
 
-    def select_windows(
-        self,
-        window_set_name: str,
-        event: str,
-        validation: bool = False,
-    ):
-        """
-        Select window for a certain event in an iteration.
-
-        :param window_set_name: Name of window set
-        :type window_set_name: str
-        :param event: Name of event to pick windows on
-        :type event: str
-        """
-        # Check if window set exists:
-        path = os.path.join(
-            self.lasif_root, "SETS", "WINDOWS", f"{window_set_name}.sqlite"
-        )
-
-        if os.path.exists(path) and not validation:
-            self.print(
-                f"Window set for event {event} exists.",
-                emoji_alias=":white_check_mark:",
-            )
-            return
-
-        lapi.select_windows_multiprocessing(
-            self.lasif_comm,
-            iteration=self.project.current_iteration,
-            window_set=window_set_name,
-            events=[event],
-            num_processes=8,
-        )
-
-    def find_seismograms(self, event: str, iteration: str) -> str:
+    def find_seismograms(self, event: str, iteration: str) -> pathlib.Path:
         """
         Find path to seismograms
 
@@ -446,10 +393,6 @@ class Lasif(Component):
         if not iteration.startswith("ITERATION_"):
             iteration = f"ITERATION_{iteration}"
 
-        event_folder = os.path.join(
-            self.lasif_root, "SYNTHETICS", "EARTHQUAKES", iteration, event
-        )
-        if not os.path.exists(event_folder):
-            os.mkdir(event_folder)
-
-        return os.path.join(event_folder, "receivers.h5")
+        folder = self.lasif_root / "SYNTHETICS" / "EARTHQUAKES" / iteration / event
+        folder.parent.mkdir(exist_ok=True, parents=True)
+        return folder / "receivers.h5"
