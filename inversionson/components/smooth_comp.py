@@ -24,7 +24,7 @@ class Smoother(Component):
         model_to_smooth: str,
         smoothing_lengths: List[float],
         smoothing_parameters: List[str],
-    ):
+    ) -> List[sc.simulation.Diffusion]:
         """
         Writes diffusion models based on a reference model and smoothing
         lengths. Then ploads them to the remote cluster if they don't exist there
@@ -50,22 +50,14 @@ class Smoother(Component):
         """
         ref_model_name = ".".join(reference_model.split("/")[-1].split(".")[:-1])
         freq = 1.0 / self.project.lasif_settings.min_period
-
         hpc_cluster = self.project.flow.hpc_cluster
-        remote_diff_dir = self.project.remote_paths.diff_dir
-        local_diff_model_dir = "DIFFUSION_MODELS"
 
-        if not os.path.exists(local_diff_model_dir):
-            os.mkdir(local_diff_model_dir)
-
-        if not hpc_cluster.remote_exists(remote_diff_dir):
-            hpc_cluster.remote_mkdir(remote_diff_dir)
         if "REMOTE:" not in model_to_smooth:
             print(
                 f"Uploading initial values from: {model_to_smooth} " f"for smoothing."
             )
             file_name = model_to_smooth.split("/")[-1]
-            remote_file_path = os.path.join(remote_diff_dir, file_name)
+            remote_file_path = self.project.remote_paths.diff_dir / file_name
             self.project.flow.safe_put(model_to_smooth, remote_file_path)
             model_to_smooth = f"REMOTE:{remote_file_path}"
 
@@ -90,11 +82,11 @@ class Smoother(Component):
                 + str(self.project.lasif_settings.min_period)
             )
 
-            diff_model_file = f"{unique_id}diff_model_{ref_model_name}_{param}.h5"
-            remote_diff_model = os.path.join(remote_diff_dir, diff_model_file)
-            diff_model_file = os.path.join(local_diff_model_dir, diff_model_file)
+            fname = f"{unique_id}_diff_model_{ref_model_name}_{param}.h5"
+            remote_diff_model = self.project.remote_paths.diff_dir / fname
+            diff_model_path = self.project.paths.diff_model_dir / fname
 
-            if not os.path.exists(diff_model_file):
+            if not os.path.exists(diff_model_path):
                 smooth = smoothing.AnisotropicModelDependent(
                     reference_frequency_in_hertz=freq,
                     smoothing_lengths_in_wavelengths=smoothing_lengths,
@@ -102,16 +94,13 @@ class Smoother(Component):
                     reference_velocity=reference_velocity,
                 )
                 diff_model = smooth.get_diffusion_model(reference_model)
-                diff_model.write_h5(diff_model_file)
+                diff_model.write_h5(diff_model_path)
 
             if not hpc_cluster.remote_exists(remote_diff_model):
-                self.project.flow.safe_put(diff_model_file, remote_diff_model)
+                self.project.flow.safe_put(diff_model_path, remote_diff_model)
 
-            sim = sc.simulation.Diffusion(mesh=diff_model_file)
-
-            tensor_order = self.project.smoothing_tensor_order
-
-            sim.domain.polynomial_order = tensor_order
+            sim = sc.simulation.Diffusion(mesh=diff_model_path)
+            sim.domain.polynomial_order = self.project.tensor_order
             sim.physics.diffusion_equation.courant_number = 0.06
 
             sim.physics.diffusion_equation.initial_values.filename = model_to_smooth

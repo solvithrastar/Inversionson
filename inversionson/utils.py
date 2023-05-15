@@ -6,23 +6,22 @@ Maybe one day some of these will be moved to a handyman component
 or something like that.
 """
 
-from typing import Union, Tuple
+from typing import List, Union, Tuple
 import numpy as np
-import pathlib
-import os
-import h5py
+from pathlib import Path
+import h5py  # type: ignore
 
-__FILE_TEMPLATES_DIR = pathlib.Path(__file__).parent / "file_templates"
+__FILE_TEMPLATES_DIR = Path(__file__).parent / "file_templates"
 
 
-def write_xdmf(filename: Union[pathlib.Path, str]):
+def write_xdmf(filename: Union[Path, str]) -> None:
     """
     Takes a path to an h5 file and writes the accompanying xdmf file.
 
     :param filename: Filename of the h5 file that needs an xdmf file.
-    Should be a pathlib.Path or str.
+    Should be a Path or str.
     """
-    filename = pathlib.Path(filename)
+    filename = Path(filename)
 
     xdmf_attribute_path = __FILE_TEMPLATES_DIR / "attribute.xdmf"
     base_xdmf_path = __FILE_TEMPLATES_DIR / "base_xdmf.xdmf"
@@ -107,62 +106,22 @@ def latlondepth_to_cartesian(
     return x, y, z
 
 
-def cut_source_region_from_gradient(
-    mesh: str, source_location: dict, radius_to_cut: float
-):
+def get_tensor_order(filename: Union[str, Path]) -> int:
     """
-    Sources often show unreasonable sensitivities. This function
-    brings the value of the gradient down to zero for that region.
-    I recommend doing this before smoothing.
-
-    :param mesh: Path to the mesh
-    :type mesh: str
-    :param source_location: Source latitude, longitude and depth
-    :type source_location: dict
-    :param radius_to_cut: Radius to cut in km
-    :type radius_to_cut: float
+    Get the tensor order from a Salvus h5 mesh file.
     """
-    gradient = h5py.File(mesh, "r+")
-    coordinates = gradient["MODEL/coordinates"]
-    data = gradient["MODEL/data"]
-    # TODO: Maybe I should implement this in a way that it uses predefined
-    # params. Then I only need to find out where they are
-    if isinstance(source_location, list):
-        source_location = source_location[0]
-    s_x, s_y, s_z = latlondepth_to_cartesian(
-        lat=source_location["latitude"],
-        lon=source_location["longitude"],
-        depth_in_km=source_location["depth_in_m"] / 1000.0,
-    )
-
-    dist = np.sqrt(
-        (coordinates[:, :, 0] - s_x) ** 2
-        + (coordinates[:, :, 1] - s_y) ** 2
-        + (coordinates[:, :, 2] - s_z) ** 2
-    ).ravel()
-
-    cut_indices = np.where(dist < radius_to_cut * 1000.0)
-
-    for i in range(data.shape[1]):
-        tmp_dat = data[:, i, :].ravel()
-        tmp_dat[cut_indices] = 0.0
-        tmp_dat = np.reshape(tmp_dat, (data.shape[0], 1, data.shape[2]))
-        if i == 0:
-            cut_data = tmp_dat.copy()
-        else:
-            cut_data = np.concatenate((cut_data, tmp_dat), axis=1)
-    data[:, :, :] = cut_data
-
-    gradient.close()
+    with h5py.File(filename, "r") as h5:
+        num_gll = h5["MODEL"]["coordinates"].shape[1]
+        dimension = h5["MODEL"]["coordinates"].shape[2]
+    return int(round(num_gll ** (1 / dimension) - 1))
 
 
-def get_h5_parameter_indices(filename, parameters):
+def get_h5_parameter_indices(
+    filename: Union[str, Path], parameters: List[str]
+) -> List[int]:
     """Get indices in h5 file for parameters in filename"""
     with h5py.File(filename, "r") as h5:
         h5_data = h5["MODEL/data"]
-        # Get dimension indices of relevant parameters
-        # These should be constant for all gradients, so this is only done
-        # once.
         dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
         if type(dim_labels) != str:
             dim_labels = dim_labels.decode()
@@ -171,23 +130,16 @@ def get_h5_parameter_indices(filename, parameters):
     return indices
 
 
-def sum_two_parameters_h5(filename: Union[str, pathlib.Path], parameters):
+def sum_two_parameters_h5(filename: Union[str, Path], parameters: List[str]):
     """sum two parameters in h5 file. Mostly used for summing VPV and VPH"""
-    if not os.path.exists(filename):
-        raise FileNotFoundError("only works on existing files.")
-
+    if not isinstance(filename, Path):
+        filename = Path(filename)
+    assert filename.exists(), "f{filename} does not exist. "
+    assert len(set(parameters)) == 2, "Only implemented for two unique parameters."
     indices = get_h5_parameter_indices(filename, parameters)
-    indices.sort()
-
-    if len(indices) != 2:
-        raise ValueError("Only implemented for 2 fields.")
 
     with h5py.File(filename, "r+") as h5:
         dat = h5["MODEL/data"]
-        # TODO: DP it seems the below can be simplified. Look into this at some point.
-        data_copy = dat[:, :, :].copy()
-        par_sum = data_copy[:, indices[0], :] + data_copy[:, indices[1], :]
-        data_copy[:, indices[0], :] = par_sum
-        data_copy[:, indices[1], :] = par_sum
-
-        dat[:, indices, :] = data_copy[:, indices, :]
+        par_sum = dat[:, indices[0], :] + dat[:, indices[1], :]
+        dat[:, indices[0], :] = par_sum
+        dat[:, indices[1], :] = par_sum

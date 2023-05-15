@@ -7,18 +7,22 @@ from inversionson import InversionsonWarning
 import warnings
 from typing import Optional, Union, List
 from inversionson.file_templates.inversion_info_template import InversionsonConfig
+from inversionson.utils import get_tensor_order
 
 
 class RemotePaths:
-    def __init__(self, config: InversionsonConfig):
+    def __init__(self, project: Project):
         # Directories
-        self.root = config.hpc.inversionson_folder
+        self.project = project
+        self.root = self.project.config.hpc.inversionson_folder
         self.diff_dir = self.root / "DIFFUSION_MODELS"
         self.stf_dir = self.root / "SOURCE_TIME_FUNCTIONS"
         self.interp_weights_dir = self.root / "INTERPOLATION_WEIGHTS"
-        self.mesh_dir = self.root / "MESHES"
+        self.multi_mesh_dir = self.root / "MULTI_MESHES"
         self.window_dir = self.root / "WINDOWS"
         self.misfit_dir = self.root / "MISFITS"
+        self.model_dir = self.root / "MODELS"
+        self.avg_model_dir = self.model_dir / "AVG_MODELS"
         self.adj_src_dir = self.root / "ADJOINT_SOURCES"
         self.receiver_dir = self.root / "RECEIVERS"
         self.script_dir = self.root / "SCRIPTS"
@@ -28,6 +32,38 @@ class RemotePaths:
         self.ocean_loading_f = self.root / "ocean_loading_file"
         self.topography_f = self.root / "topography_file"
         self.interp_script = self.script_dir / "interpolation.py"
+
+    @property
+    def master_gradient(self):
+        """This is the target for interpolating gradients to"""
+        return self.multi_mesh_dir / "standard_gradient.h5"
+
+    def get_master_model_path(self, iteration: Optional[str] = None):
+        """This is the path to the master or mono-mesh model"""
+        iteration = iteration or self.project.current_iteration
+        return self.model_dir / f"{iteration}.h5"
+
+    def get_event_specific_model(self, event: str):
+        """Get the already interpolated event-specific model/mesh combination used for forward runs."""
+        job = self.project.flow.get_job(
+            event=event,
+            sim_type="prepare_forward",
+            iteration=self.project.current_iteration,
+        )
+        return job.stdout_path.parent / "output" / "mesh.h5"
+
+    def get_event_specific_gradient(self, event: str) -> Path:
+        output = self.project.flow.get_job_file_paths(event=event, sim_type="adjoint")
+        return output[0][("adjoint", "gradient", "output_filename")]
+
+    def get_event_specific_mesh_path(self, event: str):
+        """This is the path to the cached event-specific mesh without the model interpolated"""
+        return self.multi_mesh_dir / f"{event}.h5"
+
+    def get_avg_model_path(self, iteration: Optional[str] = None):
+        iteration = iteration or self.project.current_iteration
+        """This is the path to the master average mdoel."""
+        return self.avg_model_dir / f"{iteration}.h5"
 
     def create_remote_directories(self, hpc_cluster):
         all_directories = [
@@ -39,15 +75,30 @@ class RemotePaths:
 
 
 class ProjectPaths:
-    def __init__(self, config: InversionsonConfig):
-        self.root = config.inversion_path
-        self.lasif_root = config.lasif_root
-        self.documentation = self.root / "DOCUMENTATION"
-        self.documentation.mkdir(exist_ok=True)
-        self.iteration_tomls = self.documentation / "ITERATIONS"
-        self.iteration_tomls.mkdir(exist_ok=True)
-        self.misc_folder = self.documentation / "MISC"
-        self.misc_folder.mkdir(exist_ok=True)
+    def __init__(self, project: Project):
+        self.project = project
+        self.root = self.project.config.inversion_path
+        self.lasif_root = self.project.config.lasif_root
+        assert self.root.is_dir()
+        assert self.lasif_root.is_dir()
+        self.doc_dir = self.root / "DOCUMENTATION"
+        self.iteration_tomls = self.doc_dir / "ITERATIONS"
+        self.misc_dir = self.doc_dir / "MISC"
+        self.diff_model_dir = self.root / "DIFFUSION_MODELS"
+
+        self.opt_dir = self.root / "OPTIMIZATION"
+        self.model_dir = self.opt_dir / "MODELS"
+
+    def _initialize_dirs(self):
+        all_directories = [
+            d for d in self.__dict__.values() if isinstance(d, Path) and d.is_dir()
+        ]
+        for directory in all_directories:
+            if not directory.is_dir():
+                directory.mkdir()
+
+    def get_model_path(self, model_descriptor: str) -> Path:
+        return self.model_dir / f"{model_descriptor}.h5"
 
     def get_iteration_toml(self, iteration: str) -> Path:
         return self.iteration_tomls / f"{iteration}.toml"
@@ -88,17 +139,20 @@ class Project(object):
         """
         self.config = config
         self.paths = ProjectPaths(self.config)
-        self.remote_paths = RemotePaths(self.config)
+        self.remote_paths = RemotePaths(self)
 
         self.lasif_settings = LASIFSimulationSettings(
             self.config.lasif_root / "lasif_config.toml"
         )
-        self.__setup_components()
+
+        self._validate_inversion_project()
+        self._initialize_components()
         self.simulation_time_step: Union[float, None] = None
-        # Attempt to get the simulation timestep immediately if it exists.
+
+        self.tensor_order = get_tensor_order(self.config.inversion.initial_model)
         self.find_simulation_time_step()
 
-    def __setup_components(self):
+    def _initialize_components(self):
         from inversionson.components.lasif_comp import Lasif
         from .components.multimesh_comp import MultiMesh
         from .components.flow_comp import SalvusFlow
@@ -137,7 +191,9 @@ class Project(object):
         This used to check the inputs in inversion_info.toml.
         TODO: reimplement this.
         """
-        return
+        assert self.config.inversion.initial_model.name.endswith(
+            ".h5"
+        ), "Provide a valid initial model."
 
     def create_iteration_toml(self, iteration: str, events: List[str]):
         """
@@ -231,8 +287,8 @@ class Project(object):
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
 
-    def get_iteration_attributes(self, iteration: str):
-        """Get iteration attributes from iterationt toml."""
+    def set_iteration_attributes(self, iteration: str):
+        """Set iteration attributes from iterationt toml."""
         iteration_toml = self.paths.get_iteration_toml(iteration)
         assert iteration_toml.exists()
 
@@ -299,7 +355,7 @@ class Project(object):
         If an event is passed and it does not exist it, it will get it
         from an stdout file.
         """
-        timestep_file = self.paths.misc_folder / "simulation_timestep.toml"
+        timestep_file = self.paths.misc_dir / "simulation_timestep.toml"
 
         if event and not timestep_file.exists():
             self._get_timestep_from_stdout(event, timestep_file)
@@ -309,7 +365,7 @@ class Project(object):
 
     def _get_timestep_from_stdout(self, event, timestep_file):
         """Read the timestep value from a stdout produced by salvus run."""
-        local_stdout = self.paths.documentation / "stdout_to_find_tinestep"
+        local_stdout = self.paths.doc_dir / "stdout_to_find_tinestep"
         hpc_cluster = self.flow.hpc_cluster
         forward_job = self.flow.get_job(event=event, sim_type="forward")
         stdout = forward_job.path / "stdout"

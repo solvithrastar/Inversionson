@@ -47,7 +47,7 @@ class StoryTeller(Component):
         """
         Initiate the folder structure if needed
         """
-        root = self.project.paths.documentation
+        root = self.project.paths.doc_dir
         backup = os.path.join(root, "BACKUP")
         if not os.path.exists(root):
             os.mkdir(root)
@@ -227,7 +227,7 @@ class StoryTeller(Component):
                 )
         self.markdown.add_paragraph(text=text)
         # iteration = self.project.current_iteration
-        self.project.get_iteration_attributes()
+        self.project.set_iteration_attributes()
         self.markdown.add_table(
             data=self.project.misfits, headers=["Events", "Misfits"]
         )

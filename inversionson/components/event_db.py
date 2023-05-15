@@ -16,9 +16,7 @@ class EventDataBase(Component):
 
     def __init__(self, project: Project):
         super().__init__(project=project)
-        self.event_numbering_file = (
-            self.project.paths.documentation / "event_numbering.json"
-        )
+        self.event_numbering_file = self.project.paths.doc_dir / "event_numbering.json"
         self.enumerate_all_data()
 
     def enumerate_all_data(self):

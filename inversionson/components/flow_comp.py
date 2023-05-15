@@ -187,7 +187,7 @@ class SalvusFlow(Component):
             self.project.change_attribute(
                 "current_iteration", self.project.current_iteration
             )
-            self.project.get_iteration_attributes(iteration=iteration)
+            self.project.set_iteration_attributes(iteration=iteration)
 
         if sim_type == "gradient_interp":
             gradient = True
@@ -278,7 +278,7 @@ class SalvusFlow(Component):
             allow_existing_destination_folder=True,
         )
 
-    def construct_simulation_from_dict(self, event: str):
+    def forward_simulation_from_dict(self, event: str):
         """
         Download a dictionary with the simulation object and use it to create a local simulation object
         without having any of the relevant data locally.
@@ -308,7 +308,7 @@ class SalvusFlow(Component):
         sim_dict = toml.load(destination)
 
         local_dummy_mesh_path = self.project.lasif.get_master_model()
-        local_dummy_mesh = self.project.lasif.get_master_mesh()
+        local_dummy_mesh = self.project.lasif.master_mesh
         for key in ["mesh", "model", "geometry"]:
             sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
 
@@ -395,7 +395,7 @@ class SalvusFlow(Component):
         adjoint_sim_dict = toml.load(destination)
         remote_mesh = adjoint_sim_dict["domain"]["mesh"]["filename"]
         local_dummy_mesh_path = self.project.lasif.get_master_model()
-        local_dummy_mesh = self.project.lasif.get_master_mesh()
+        local_dummy_mesh = self.project.lasif.master_mesh
         for key in ["mesh", "model", "geometry"]:
             adjoint_sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
 

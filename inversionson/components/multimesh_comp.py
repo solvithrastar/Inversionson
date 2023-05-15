@@ -207,11 +207,13 @@ class MultiMesh(Component):
 
         remote_weights_path = self.project.remote_paths.interp_weights_dir / tag / event
 
+        target_mesh = self.project.remote_paths.master_gradient if gradient else self.project.remote_paths.get_event_specific_mesh_path(event)  
+
         information = toml.load(toml_filename) if os.path.exists(toml_filename) else {}
         information["gradient"] = gradient
         information["mesh_info"] = {
             "event_name": event,
-            "mesh_folder": str(self.project.remote_paths.mesh_dir),
+            "target_mesh": str(target_mesh),
             "min_period": self.project.lasif_settings.min_period,
             "elems_per_quarter": self.project.config.meshing.elements_per_azimuthal_quarter,
             "interpolation_weights": remote_weights_path,
@@ -348,7 +350,9 @@ class MultiMesh(Component):
         :type event: str
         """
         hpc_cluster = self.project.flow.hpc_cluster
-        remote_path = self.project.remote_paths.mesh_dir / event / toml_filename.name
+        remote_path = (
+            self.project.remote_paths.multi_mesh_dir / event / toml_filename.name
+        )
         if not hpc_cluster.remote_exists(remote_path.parent):
             hpc_cluster.remote_mkdir(remote_path.parent)
         self.project.flow.safe_put(toml_filename, remote_path)
@@ -368,17 +372,15 @@ class MultiMesh(Component):
             and self.project.config.monitoring.use_model_averaging
             and "00000" not in self.project.current_iteration
         )
-        optimizer = self.project.get_optimizer()
-        mesh_to_interpolate_from = (
-            self.project.lasif.find_remote_mesh(
-                event=event,
-                gradient=True,
-                interpolate_to=False,
-                validation=False,
-            )
-            if gradient
-            else optimizer.get_remote_model_path(model_average=average_model)
-        )
+
+        # Either the raw gradient or the model
+        if gradient:
+            mesh_to_interpolate_from = self.project.remote_paths.get_event_specific_gradient(event)
+        elif average_model:
+            mesh_to_interpolate_from = self.project.remote_paths.get_avg_model_path()
+        else:
+            mesh_to_interpolate_from = self.project.remote_paths.get_master_model_path()
+
         hpc_cluster = self.project.flow.hpc_cluster
         interpolation_toml = self.prepare_interpolation_toml(
             gradient=gradient, event=event
@@ -413,7 +415,10 @@ class MultiMesh(Component):
         if not gradient:
             hpc_cluster = self.project.flow.hpc_cluster
             remote_processed_dir = self.project.remote_paths.proc_data_dir
-            proc_filename = f"preprocessed_{int(self.project.lasif_settings.min_period)}s_to_{int(self.project.lasif_settings.max_period)}s.h5"
+            proc_filename = (
+                f"preprocessed_{int(self.project.lasif_settings.min_period)}s_"
+                f"to_{int(self.project.lasif_settings.max_period)}s.h5"
+            )
             remote_proc_file_name = f"{event}_{proc_filename}"
             remote_proc_path = remote_processed_dir / remote_proc_file_name
 

@@ -224,31 +224,6 @@ class Mesh(Component):
 
         return full_path
 
-    def add_region_of_interest(self, event: str):
-        """
-        Region of interest is the region where the gradient is computed
-        and outside the region, it is not computed.
-        Currently we add the region of interest as an elemental field
-        which is the oposite of the fluid field.
-
-        :param event: Name of event
-        :type event: str
-        """
-
-        mesh = self.project.lasif.find_event_mesh(event)
-        m = UnstructuredMesh.from_h5(mesh)
-        mesh_layers = np.sort(np.unique(m.elemental_fields["layer"]))[::-1].astype(int)
-        layers = m.elemental_fields["layer"]
-        o_core_idx = layers[np.where(m.elemental_fields["fluid"] == 1)[0][0]]
-        o_core_idx = np.where(mesh_layers == o_core_idx)[0][0]
-        correct_layers = mesh_layers[o_core_idx:]
-        roi = np.zeros_like(layers)
-        for layer in correct_layers:
-            roi = np.logical_or(roi, layers == layer)
-
-        m.attach_field("ROI", roi)
-        m.write_h5(mesh)
-
     def sum_two_fields_on_a_mesh(
         self,
         mesh: str,

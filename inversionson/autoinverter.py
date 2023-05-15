@@ -1,4 +1,4 @@
-import emoji
+import emoji  # type: ignore
 import sys
 from typing import List, Optional, Union
 
@@ -33,7 +33,7 @@ class AutoInverter(object):
         color: str = "cyan",
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias: Union[str, List[str]] = None,
+        emoji_alias: Optional[Union[str, List[str]]] = None,
     ):
         self.project.storyteller.printer.print(
             message=message,
@@ -105,8 +105,30 @@ class AutoInverter(object):
                 hpc_cluster=hpc_cluster, overwrite=False
             )
 
+    def _run_optson(self):
+        """
+        This function will be extracted and become user configurable.
+        """
+        from optson.optimizer import Optimizer
+        from optson.methods import AdamUpdate
+        from optson.stopping_criterion import BasicStoppingCriterion
+        from optson.monitor import BasicMonitor
+        from inversionson.optson_link.problem import Problem
+        from inversionson.optson_link.helpers import mesh_to_vector
+        
+        sc = BasicStoppingCriterion(tolerance=1e-5, max_iterations=1)
+        monitor = BasicMonitor(step=1)
+        problem = Problem()
+        
+        opt = Optimizer(problem=problem, update=AdamUpdate(alpha=1.5), stopping_criterion=sc, monitor=monitor)
+        m = opt.iterate(x0=mesh_to_vector(self.project.lasif.master_mesh))
+        print(m.x)
+
     def run_inversion(self):
         self.move_files_to_cluster()
+        self._run_optson()
+
+        # Here, we initialize Optson
 
 
 def _initialize_inversionson(root, info_toml_path):
@@ -123,7 +145,7 @@ def _initialize_inversionson(root, info_toml_path):
     sys.exit()
 
 
-def get_config(root: str) -> InversionsonConfig:
+def get_config(root: Optional[Union[str, Path]] = None) -> InversionsonConfig:
     """
     Read the inversion config file inversion_info.toml into a dictionary.
 
@@ -132,21 +154,24 @@ def get_config(root: str) -> InversionsonConfig:
     :param root: the project root
     """
     config_path = "inversion_config.py"
-    root = Path(root).resolve() if root else Path.cwd()
-    if not root.is_dir():
-        raise NotADirectoryError(f"Specified project root {root} is not a directory")
-    info_toml_path = root / config_path
+    root = root or ""
+    inversion_root = Path(root)
+
+    if not inversion_root.is_dir():
+        raise NotADirectoryError(
+            f"Specified project root {inversion_root} is not a directory"
+        )
+    info_toml_path = inversion_root / config_path
     if not info_toml_path.is_file():
-        _initialize_inversionson(root, config_path)
-    else:
-        print(f"Using configuration file {config_path}")
-        return _get_inversionson_config(info_toml_path)
+        _initialize_inversionson(inversion_root, config_path)
+    print(f"Using configuration file {config_path}")
+    return _get_inversionson_config(info_toml_path)
 
 
 def _get_inversionson_config(config_path: Path) -> InversionsonConfig:
     import importlib
 
-    inversion_config = importlib.import_module("inversion_config", config_path)
+    inversion_config = importlib.import_module("inversion_config", str(config_path))
     config: InversionsonConfig = inversion_config.InversionsonConfig()
     return config
 
@@ -162,5 +187,5 @@ def run(root: Optional[str] = None):
 
 
 if __name__ == "__main__":
-    root = sys.argv[1] if len(sys.argv) > 1 else None
+    root = sys.argv[1] if len(sys.argv) > 1 else ""
     run(root)

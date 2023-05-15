@@ -111,7 +111,7 @@ class IterationListener(object):
             job_info = self.project.gradient_interp_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
-    def __run_forward_simulation(self, event: str, verbose: bool = False):
+    def _run_forward(self, event: str, verbose: bool = False):
         """
         Submit forward simulation to daint and possibly monitor aswell
 
@@ -129,8 +129,8 @@ class IterationListener(object):
             )
             self.print(f"Event: {event}")
 
-        w = self.project.flow.construct_simulation_from_dict(event)
-        already_interpolated = self.project.config.meshing.multi_mesh
+        w = self.project.flow.forward_simulation_from_dict(event)
+
         # Get the average model when validation event
         validation = bool(
             (
@@ -139,18 +139,16 @@ class IterationListener(object):
                 and "00000" not in self.project.current_iteration
             )
         )
-        hpc_cluster = self.project.flow.hpc_cluster
 
-        remote_mesh = self.project.lasif.find_remote_mesh(
-            event=event,
-            gradient=False,
-            interpolate_to=False,
-            hpc_cluster=hpc_cluster,
-            validation=validation,
-            already_interpolated=already_interpolated,
-        )
+        if self.project.config.meshing.multi_mesh:
+            remote_model = self.project.remote_paths.get_event_specific_model(event)
+        elif validation:
+            remote_model = self.project.remote_paths.get_avg_model_path()
+        else:
+            remote_model = self.project.remote_paths.get_master_model_path()
 
-        w.set_mesh(f"REMOTE:{str(remote_mesh)}")
+        # remote_mesh = self.project.remote_paths.get_remote_master_model_path
+        w.set_mesh(f"REMOTE:{str(remote_model)}")
 
         self.project.flow.submit_job(
             event=event,
@@ -487,35 +485,6 @@ class IterationListener(object):
 
         self.__misfit_quantification(event, window_set=window_set)
 
-    def dispatch_forward_simulations(self, verbose: bool):
-        """
-        Dispatches the forward events
-        """
-
-        if verbose:
-            self.print(
-                "Prepare forward Stage",
-                line_above=True,
-                emoji_alias=[
-                    ":globe_with_meridians:",
-                    ":point_right:",
-                    ":globe_with_meridians:",
-                ],
-            )
-
-        events = self.events
-
-        self.print("Will dispatch all prepare_forward jobs")
-        for _i, event in enumerate(events):
-            if verbose:
-                self.print(f"Event {_i+1}/{len(self.events)}:  {event}")
-            self.__prepare_forward(event=event)
-        self.print("All prepare_forward jobs have been dispatched")
-        self.__listen_to_prepare_forward(events=events, verbose=verbose)
-
-        for event in events:
-            self.__run_forward_simulation(event, verbose=verbose)
-
     def __listen_to_prepare_forward(self, events: List[str], verbose: bool):
         """
         Listens to prepare forward jobs and waits for them to be done.
@@ -526,7 +495,7 @@ class IterationListener(object):
         )
         vint_job_listener.monitor_jobs()
         for event in vint_job_listener.events_retrieved_now:
-            self.__run_forward_simulation(event, verbose=verbose)
+            self._run_forward(event, verbose=verbose)
             self.project.change_attribute(
                 attribute=f'prepare_forward_job["{event}"]["retrieved"]',
                 new_value=True,
@@ -553,12 +522,12 @@ class IterationListener(object):
         # retrieved without ever entering the events_retrieved_now loop.
         # In that case we should still submit these jobs.
         for event in vint_job_listener.events_already_retrieved:
-            self.__run_forward_simulation(event, verbose=verbose)
+            self._run_forward(event, verbose=verbose)
 
         anything_retrieved = bool(vint_job_listener.events_retrieved_now)
         return anything_retrieved, vint_job_listener.events_already_retrieved
 
-    def __listen_to_forward(
+    def _listen_to_forward(
         self,
         events: List[str],
         windows: bool = True,
@@ -609,7 +578,7 @@ class IterationListener(object):
                 sim_type="forward",
                 event_name=event,
             )
-            self.__run_forward_simulation(event=event)
+            self._run_forward(event=event)
         if len(for_job_listener.events_retrieved_now) > 0:
             self.print(
                 f"Retrieved {len(for_job_listener.events_retrieved_now)} " "seismograms"
@@ -675,7 +644,7 @@ class IterationListener(object):
         anything_retrieved = bool(hpc_proc_job_listener.events_retrieved_now)
         return anything_retrieved, hpc_proc_job_listener.events_already_retrieved
 
-    def __listen_to_adjoint(self, events: List[str], verbose: bool = False):
+    def _listen_to_adjoint(self, events: List[str], verbose: bool = False):
         """
         Here we listen to the adjoint jobs.
         Again it is important that only candidate events enter here.
@@ -718,7 +687,7 @@ class IterationListener(object):
         anything_retrieved = bool(adj_job_listener.events_retrieved_now)
         return anything_retrieved, adj_job_listener.events_already_retrieved
 
-    def __listen_to_gradient_interp(self, events: List[str]):
+    def listen_to_gradient_interp(self, events: List[str]):
         """
         Monitor the status of the interpolations.
 
@@ -768,11 +737,11 @@ class IterationListener(object):
         all_adj_retrieved_events: List[str] = []
         all_gi_retrieved_events: List[str] = []
 
-        len_all_events = len(self.events)
+        num_events = len(self.events)
         non_validation_events = list(
             set(self.events) - set(self.project.config.monitoring.validation_dataset)
         )
-        len_non_validation_events = len(non_validation_events)
+        num_non_validation_events = len(non_validation_events)
 
         while True:
             anything_retrieved_pf = False
@@ -783,7 +752,7 @@ class IterationListener(object):
             anything_retrieved = False
             anything_checked = False
 
-            if len(all_pf_retrieved_events) != len_all_events:
+            if len(all_pf_retrieved_events) != num_events:
                 for event in self.events:
                     self.__prepare_forward(event)
                 (
@@ -802,12 +771,12 @@ class IterationListener(object):
             # forward and that we then listen to all events.
             if (
                 len(all_pf_retrieved_events) > 0
-                and len(all_f_retrieved_events) != len_all_events
+                and len(all_f_retrieved_events) != num_events
             ):
                 (
                     anything_retrieved_f,
                     all_f_retrieved_events,
-                ) = self.__listen_to_forward(all_pf_retrieved_events, verbose=verbose)
+                ) = self._listen_to_forward(all_pf_retrieved_events, verbose=verbose)
                 anything_checked = True
             if anything_retrieved_f:
                 anything_retrieved = True
@@ -824,7 +793,7 @@ class IterationListener(object):
 
             if (
                 all_non_val_f_retrieved_events
-                and len(all_hpc_proc_retrieved_events) != len_non_validation_events
+                and len(all_hpc_proc_retrieved_events) != num_non_validation_events
             ):
                 (
                     anything_retrieved_hpc_proc,
@@ -842,12 +811,12 @@ class IterationListener(object):
             if not self.misfit_only:
                 if (
                     len(all_hpc_proc_retrieved_events) > 0
-                    and len(all_adj_retrieved_events) != len_non_validation_events
+                    and len(all_adj_retrieved_events) != num_non_validation_events
                 ):
                     (
                         anything_adj_retrieved,
                         all_adj_retrieved_events,
-                    ) = self.__listen_to_adjoint(all_hpc_proc_retrieved_events)
+                    ) = self._listen_to_adjoint(all_hpc_proc_retrieved_events)
                     anything_checked = True
                 if anything_adj_retrieved:
                     anything_retrieved = True
@@ -857,19 +826,19 @@ class IterationListener(object):
                 if self.project.config.meshing.multi_mesh:
                     if (
                         len(all_adj_retrieved_events) > 0
-                        and len(all_gi_retrieved_events) != len_non_validation_events
+                        and len(all_gi_retrieved_events) != num_non_validation_events
                     ):
                         (
                             anything_gi_retrieved,
                             all_gi_retrieved_events,
-                        ) = self.__listen_to_gradient_interp(all_adj_retrieved_events)
+                        ) = self.listen_to_gradient_interp(all_adj_retrieved_events)
                         anything_checked = True
-                        if len(all_gi_retrieved_events) == len_non_validation_events:
+                        if len(all_gi_retrieved_events) == num_non_validation_events:
                             break
                     if anything_gi_retrieved:
                         anything_retrieved = True
 
-                elif len(all_adj_retrieved_events) == len_non_validation_events:
+                elif len(all_adj_retrieved_events) == num_non_validation_events:
                     break
 
             if not anything_retrieved:
@@ -895,10 +864,7 @@ class IterationListener(object):
             return
         hpc_cluster = self.project.flow.hpc_cluster
         interp_folder = (
-            self.project.remote_paths.interp_weights_dir
-            / "INTERPOLATION_WEIGHTS"
-            / "GRADIENTS"
-            / event
+            self.project.remote_paths.interp_weights_dir / "GRADIENTS" / event
         )
 
         if not hpc_cluster.remote_exists(interp_folder):

@@ -33,7 +33,7 @@ class Lasif(Component):
         # Store if some event might not processing
         self.everything_processed = False
         self.validation_data_processed = False
-        self.master_mesh = None
+        self._master_mesh = None
 
     def print(
         self,
@@ -77,124 +77,6 @@ class Lasif(Component):
             it_name = it_name.replace("ITERATION_", "")
         return isinstance(iterations, list) and it_name in iterations
 
-    def has_remote_mesh(
-        self,
-        event: Optional[str] = None,
-        gradient: bool = False,
-        interpolate_to: bool = True,
-        iteration: Optional[str] = None,
-        validation: bool = False,
-    ):
-        """
-        Just to check if remote mesh exists
-
-        :param event: Name of event
-        :type event: str
-        :param gradient: Is it a gradient?
-        :type gradient: bool
-        :param interpolate_to: Mesh to interpolate to?, defaults to True
-        :type interpolate_to: bool, optional
-        :param hpc_cluster: you can pass the site object. Defaults to None
-        :type hpc_cluster: salvus.flow.Site, optional
-        :param iteration: Name of an iteration, defaults to None
-        :type iteration: str, optional
-        """
-
-        hpc_cluster = self.project.flow.hpc_cluster
-        mesh = self.find_remote_mesh(
-            event=event,
-            gradient=gradient,
-            interpolate_to=interpolate_to,
-            check_if_exists=False,
-            iteration=iteration,
-            validation=validation,
-        )
-
-        return hpc_cluster.remote_exists(mesh), mesh
-
-    def find_remote_mesh(
-        self,
-        event: Optional[str] = None,
-        gradient: bool = False,
-        interpolate_to: bool = True,
-        check_if_exists: bool = False,
-        iteration: Optional[str] = None,
-        already_interpolated: bool = False,
-        validation: bool = False,
-    ) -> pathlib.Path:
-        """
-        Find the path to the relevant mesh on the hpc cluster
-
-        :param event: Name of event
-        :type event: str
-        :param gradient: Is it a gradient? If not, it's a model,
-            defaults to False
-        :type gradient: bool, optional
-        :param interpolate_to: Mesh to interpolate to?, defaults to True
-        :type interpolate_to: bool, optional
-        :param check_if_exists: Check if the file exists?, defaults to False
-        :type check_if_exists: bool, optional
-        :param hpc_cluster: you can pass the site object. Defaults to None
-        :type hpc_cluster: salvus.flow.Site, optional
-        :param iteration: Name of an iteration, defaults to None
-        :type iteration: str, optional
-        :param already_interpolated: If mesh has been interpolated,
-            we find it in the interpolation job folder, defaults to False
-        :type already_interpolated: bool, optional
-        :return: The path to the correct mesh
-        :rtype: pathlib.Path
-        """
-        hpc_cluster = self.project.flow.hpc_cluster
-        remote_mesh_dir = self.project.remote_paths.mesh_dir
-        fast_dir = self.project.config.hpc.inversionson_folder
-        iteration = iteration or self.project.current_iteration
-
-        if event is None:
-            assert True in {interpolate_to, already_interpolated, gradient}
-
-        if gradient:
-            if interpolate_to:
-                mesh = (
-                    self.project.remote_paths.mesh_dir / "standard_gradient" / "mesh.h5"
-                )
-            else:
-                output = self.project.flow.get_job_file_paths(
-                    event=event, sim_type="adjoint"
-                )
-                mesh = output[0][("adjoint", "gradient", "output_filename")]
-        elif already_interpolated:
-            job = self.project.flow.get_job(
-                event=event,
-                sim_type="prepare_forward",
-                iteration=iteration,
-            )
-            mesh = job.stdout_path.parent / "output" / "mesh.h5"
-        elif interpolate_to:
-            mesh = remote_mesh_dir / "meshes" / event / "mesh.h5"
-        else:
-            mesh = (
-                (fast_dir / "AVERAGE_MODELS" / iteration / "mesh.h5")
-                if validation
-                else fast_dir / "MODELS" / iteration / "mesh.h5"
-            )
-        if check_if_exists and not hpc_cluster.remote_exists(mesh):
-            if gradient and interpolate_to:
-                self._move_mesh_to_cluster(gradient=gradient)
-            raise InversionsonError("Mesh for event {event} does not exist")
-        return mesh
-
-    def has_mesh(self, event: str) -> bool:
-        """
-        Check whether mesh has been constructed for respective event
-
-        :param event: Name of event
-        :type event: str
-        :return: Answer whether mesh exists
-        :rtype: bool
-        """
-        has, _ = self.has_remote_mesh(event, gradient=False)
-        return has
-
     def find_event_mesh(self, event: str) -> pathlib.Path:
         """
         Find the path for an event mesh
@@ -211,92 +93,7 @@ class Lasif(Component):
             raise InversionsonError(f"Mesh for event: {event} can not be found.")
         return pathlib.Path(mesh)
 
-    def _move_mesh_to_cluster(
-        self, event: Optional[str] = None, gradient: bool = False
-    ):
-        """
-        Move the mesh to the cluster for interpolation
-
-        :param event: Name of event
-        :type event: str
-        """
-        hpc_cluster = self.project.flow.hpc_cluster
-
-        if event is None:
-            if gradient:
-                self.print(
-                    "Moving example gradient to cluster", emoji_alias=":package:"
-                )
-                self.move_gradient_to_cluster()
-            else:
-                # This happens when we want to move the model to the cluster
-                self.print("Moving model to cluster", emoji_alias=":package:")
-                self._move_model_to_cluster()
-            return
-        has, event_mesh = lapi.find_event_mesh(self.lasif_comm, event)
-
-        if not has:
-            raise InversionsonError(f"Mesh for event {event} does not exist.")
-        # Get remote connection
-
-        path_to_mesh = self.find_remote_mesh(
-            event=event,
-            interpolate_to=True,
-            check_if_exists=False,
-        )
-        if not hpc_cluster.remote_exists(path_to_mesh.parent):
-            hpc_cluster.remote_mkdir(path_to_mesh.parent)
-        if not hpc_cluster.remote_exists(path_to_mesh):
-            self.print(
-                f"Moving mesh for event {event} to cluster", emoji_alias=":package:"
-            )
-            hpc_cluster.remote_put(event_mesh, path_to_mesh)
-
-    def _move_model_to_cluster(
-        self,
-        validation: bool = False,
-    ):
-        """
-        The model is moved to a dedicated directory on cluster
-
-        :param hpc_cluster: A Salvus site object, defaults to None
-        :type hpc_cluster: salvus.flow.Site, optional
-        :param overwrite: Overwrite mesh already there?, defaults to False
-        :type overwrite: bool, optional
-        """
-        hpc_cluster = self.project.flow.hpc_cluster
-        iteration = self.project.current_iteration
-
-        if validation:
-            print("It's validation!")
-            iteration = f"validation_{iteration}"
-            local_model = self.project.multi_mesh.find_model_file(iteration)
-        else:
-            local_model = optimizer.model_path
-
-        has, path_to_mesh = self.has_remote_mesh(
-            event=None,
-            interpolate_to=False,
-            gradient=False,
-            iteration=iteration,
-            validation=validation,
-        )
-        if has:
-            self.print(
-                f"Model for iteration {iteration} already on cluster",
-                emoji_alias=":white_check_mark:",
-            )
-            return
-        else:
-            if not hpc_cluster.remote_exists(path_to_mesh.parent):
-                self.print("Making the directory")
-                self.print(f"Directory is: {path_to_mesh.parent}")
-                hpc_cluster.remote_mkdir(path_to_mesh.parent)
-            self.print(f"Path to mesh is: {path_to_mesh}")
-            self.project.flow.safe_put(local_model, path_to_mesh)
-            self.print("Did it")
-
-    def move_gradient_to_cluster(self, overwrite: bool = False):
+    def move_gradient_to_cluster(self):
         """
         Empty gradient moved to a dedicated directory on cluster
 
@@ -305,15 +102,8 @@ class Lasif(Component):
         """
         hpc_cluster = self.project.flow.hpc_cluster
 
-        has, path_to_mesh = self.has_remote_mesh(
-            event=None,
-            interpolate_to=True,
-            gradient=True,
-            iteration=None,
-            validation=False,
-        )
-
-        if has and not overwrite:
+        remote_gradient = self.project.remote_paths.master_gradient
+        if hpc_cluster.remote_exists(remote_gradient):
             self.print(
                 "Empty gradient already on cluster", emoji_alias=":white_check_mark:"
             )
@@ -325,40 +115,9 @@ class Lasif(Component):
             / "mesh.h5"
         )
         local_grad.mkdir(parents=True, exist_ok=True)
-
-        inversion_grid = self.get_master_model()
-        shutil.copy(inversion_grid, local_grad)
+        shutil.copy(self.get_master_model(), local_grad)
         self.project.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
-
-        if not hpc_cluster.remote_exists(path_to_mesh.parent):
-            hpc_cluster.remote_mkdir(path_to_mesh.parent)
-        hpc_cluster.remote_put(local_grad, path_to_mesh)
-
-    def move_mesh(self, event: Optional[str] = None, validation: bool = False):
-        """
-        Move mesh to simulation mesh path, where model will be added to it
-
-        :param event: Name of event
-        :type event: str
-        :param iteration: Name of iteration
-        :type iteration: str
-        """
-        # If we use mono-mesh we copy the mesh here.
-        if not self.project.config.meshing.multi_mesh:
-            optimizer = self.project.get_optimizer()
-            model = optimizer.model_path
-            # copy to lasif project and also move to cluster
-            simulation_mesh = self.project.lasif.get_simulation_mesh(event_name=None)
-            shutil.copy(model, simulation_mesh)
-            self._move_model_to_cluster(validation=validation)
-            return
-        else:  # multi-mesh case
-            if event:
-                self._move_mesh_to_cluster(event=event)
-            else:
-                self._move_model_to_cluster(
-                    validation=validation,
-                )
+        self.project.flow.safe_put(local_grad, remote_gradient)
 
     def set_up_iteration(self, name: str, events: Optional[List[str]] = None):
         """
@@ -437,7 +196,8 @@ class Lasif(Component):
         """
         return self.project.config.inversion.initial_model
 
-    def get_master_mesh(self):
+    @property
+    def master_mesh(self):
         """
         Get the salvus mesh object.
         This function is there to keep the mesh object in memory.
@@ -446,10 +206,10 @@ class Lasif(Component):
         :rtype: UnstructuredMesh
         """
         # We assume the lasif domain is the inversion grid
-        if self.master_mesh is None:
+        if self._master_mesh is None:
             path = self.project.config.inversion.initial_model
             self.master_mesh = UnstructuredMesh.from_h5(path)
-        return self.master_mesh
+        return self._master_mesh
 
     def get_source(self, event_name: str) -> dict:
         """
@@ -476,37 +236,6 @@ class Lasif(Component):
         """
         return lapi.get_receivers(
             lasif_root=self.lasif_comm, event=event_name, load_from_file=True
-        )
-
-    def get_simulation_mesh(self, event_name: str, iteration="current") -> str:
-        """
-        Get path to correct simulation mesh for a simulation
-
-        :param event_name: Name of event
-        :type event_name: str
-        :return: Path to a mesh
-        :rtype: str
-        """
-        if iteration == "current":
-            iteration = self.project.current_iteration
-        if self.project.config.meshing.multi_mesh:
-            return str(
-                self.find_remote_mesh(
-                    event=event_name,
-                    iteration=iteration,
-                    already_interpolated=True,
-                )
-            )
-
-        optimizer = self.project.get_optimizer()
-        return (
-            optimizer.get_average_model_name()
-            if (
-                self.project.is_validation_event(event_name)
-                and self.project.config.monitoring.use_model_averaging
-                and "00000" not in self.project.current_iteration
-            )
-            else optimizer.model_path
         )
 
     def calculate_station_weights(self, event: str) -> None:
@@ -616,22 +345,6 @@ class Lasif(Component):
             )
         return misfit
 
-    def get_adjoint_source_file(self, event: str, iteration: str) -> str:
-        """
-        Find the path to the correct asdf file containing the adjoint sources
-
-        :param event: Name of event
-        :type event: str
-        :param iteration: Name of iteration
-        :type iteration: str
-        :return: Path to adjoint source file
-        :rtype: str
-        """
-        adjoint_filename = "stf.h5"
-        adj_sources = self.lasif_comm.project.paths["adjoint_sources"]
-        it_name = self.lasif_comm.iterations.get_long_iteration_name(iteration)
-        return os.path.join(adj_sources, it_name, event, adjoint_filename)
-
     def _already_processed(self, event: str) -> bool:
         """
         Looks for processed data for a certain event
@@ -685,57 +398,6 @@ class Lasif(Component):
         if hpc_cluster.remote_exists(remote_proc_path):
             self.project.flow.safe_get(remote_proc_path, local_proc_file)
             return  # Return if it got it and got it there.
-
-    def process_random_unprocessed_event(self) -> bool:
-        """
-        Instead of sleeping when we queue for the HPC, we can also process a
-        random unprocessed event. That is what this function does.
-
-        it first tries to process a high priority event, from
-        the validation dataset or the current iteration, otherwise
-        it tries to process any other event that may be used in the future.
-
-        Leaves the function as soon as one event was processed or
-        if there was nothing to process.
-
-        :return: Returns True if an event was processed, otherwise False
-        :rtype: bool
-        """
-
-        events_in_iteration = self.project.events_in_iteration
-        events = self.project.lasif.list_events()
-        validation_events = self.project.config.monitoring.validation_dataset
-        if not self.everything_processed:
-            self.everything_processed = True
-            msg = "Seems like there is nothing to do now. I might as well process some random event."
-            # First give the most urgent events a try.
-            if not self.validation_data_processed:
-                self.validation_data_processed = True
-                for event in validation_events:
-                    if self._already_processed(event):
-                        continue
-                    self.print(msg)
-                    self.print(f"Processing validation {event}...")
-                    self.validation_data_processed = False
-                    lapi.process_data(self.lasif_comm, events=[event])
-                    return True
-            for event in events_in_iteration:
-                if self._already_processed(event):
-                    continue
-                self.print(msg)
-                self.print(f"Processing {event} from current iteration...")
-                self.everything_processed = False
-                lapi.process_data(self.lasif_comm, events=[event])
-                return True
-            for event in events:
-                if self._already_processed(event):
-                    continue
-                self.print(msg)
-                self.print(f"Processing random other {event}...")
-                self.everything_processed = False
-                lapi.process_data(self.lasif_comm, events=[event])
-                return True
-        return False
 
     def select_windows(
         self,
