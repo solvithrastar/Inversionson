@@ -15,11 +15,8 @@ Then we need to be able to compute f and g
 """
 from optson.problem import AbstractProblem, CallCounter
 from optson.vector import OptsonVec
-
 from inversionson.file_templates.inversion_info_template import InversionsonConfig
 from .helpers import vector_to_mesh
-
-
 from inversionson.project import Project
 
 

@@ -153,7 +153,7 @@ class Project(object):
         self.find_simulation_time_step()
 
     def _initialize_components(self):
-        from inversionson.components.lasif_comp import Lasif
+        from inversionson.components.lasif_comp import LASIF
         from .components.multimesh_comp import MultiMesh
         from .components.flow_comp import SalvusFlow
         from .components.mesh_comp import Mesh
@@ -162,7 +162,7 @@ class Project(object):
         from .components.event_db import EventDataBase
 
         # Project acts as a communicator that contains a bunch of components.
-        self.lasif = Lasif(project=self)
+        self.lasif = LASIF(project=self)
         self.multi_mesh = MultiMesh(project=self)
         self.flow = SalvusFlow(project=self)
         self.salvus_mesher = Mesh(project=self)

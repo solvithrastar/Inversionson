@@ -1,29 +1,23 @@
 from __future__ import annotations
 import shutil
-
+import warnings
+import lasif.api as lapi  # type: ignore
+import toml
+import os
 from .component import Component
-from typing import TYPE_CHECKING, Optional
+from lasif.utils import write_custom_stf  # type: ignore
+from inversionson import InversionsonWarning
+from pathlib import Path
+from lasif.components.project import Project as LASIFProject  # type: ignore
+from typing import List, Dict, Union, TYPE_CHECKING, Optional
+from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
 
 if TYPE_CHECKING:
     from inversionson.project import Project
-import lasif.api as lapi  # type: ignore
-from lasif.utils import write_custom_stf  # type: ignore
-import os
-from inversionson import InversionsonError, InversionsonWarning
-import warnings
-import toml
-import pathlib
-
-from lasif.components.project import Project as LASIFProject  # type: ignore
-
-from typing import List, Dict, Union
-from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
 
 
-class Lasif(Component):
-    """
-    Communication with Lasif
-    """
+class LASIF(Component):
+    """Class to deal wuth things related to LASIF"""
 
     def __init__(self, project: Project):
         super().__init__(project=project)
@@ -55,7 +49,7 @@ class Lasif(Component):
         """
         Get lasif communicator.
         """
-        folder = pathlib.Path(self.lasif_root).absolute()
+        folder = Path(self.lasif_root).absolute()
         max_folder_depth = 4
 
         for _ in range(max_folder_depth):
@@ -94,9 +88,7 @@ class Lasif(Component):
             return
 
         local_grad = (
-            pathlib.Path(self.lasif_comm.project.paths["models"])
-            / "GRADIENT"
-            / "mesh.h5"
+            Path(self.lasif_comm.project.paths["models"]) / "GRADIENT" / "mesh.h5"
         )
         local_grad.mkdir(parents=True, exist_ok=True)
         shutil.copy(self.get_master_model(), local_grad)
@@ -138,7 +130,7 @@ class Lasif(Component):
             self.lasif_root, just_list=True, iteration=iteration, output=True
         )
 
-    def find_stf(self, iteration: str) -> pathlib.Path:
+    def find_stf(self, iteration: str) -> Path:
         """
         Get path to source time function file
 
@@ -146,7 +138,7 @@ class Lasif(Component):
         :type iteration: str
         """
         long_iter = self.lasif_comm.iterations.get_long_iteration_name(iteration)
-        stfs = pathlib.Path(self.lasif_comm.project.paths["salvus_files"])
+        stfs = Path(self.lasif_comm.project.paths["salvus_files"])
         return stfs / long_iter / "stf.h5"
 
     def upload_stf(self, iteration: str) -> None:
@@ -380,7 +372,7 @@ class Lasif(Component):
         if hpc_cluster.remote_exists(remote_proc_path):
             self.project.flow.safe_get(remote_proc_path, local_proc_file)
 
-    def find_seismograms(self, event: str, iteration: str) -> pathlib.Path:
+    def find_seismograms(self, event: str, iteration: str) -> Path:
         """
         Find path to seismograms
 
