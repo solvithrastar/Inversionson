@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, List, Union
+from typing import TYPE_CHECKING, List, Union
 
 if TYPE_CHECKING:
     from inversionson.project import Project

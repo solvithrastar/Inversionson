@@ -60,7 +60,6 @@ def process_data(processing_info):
     """
 
     from inversionson.hpc_processing.data_processing import preprocessing_function_asdf
-
     preprocessing_function_asdf(processing_info)
 
 
@@ -68,16 +67,9 @@ def create_mesh(mesh_info, source_info):
     mesh_location = os.path.join(
         mesh_info["mesh_folder"], mesh_info["event_name"], "mesh.h5"
     )
-    long_term_mesh_location = os.path.join(
-        mesh_info["long_term_mesh_folder"], mesh_info["event_name"], "mesh.h5"
-    )
     if os.path.exists(mesh_location):
         print("Mesh already exists, copying it to here")
         shutil.copy(mesh_location, "./to_mesh.h5")
-        return
-    elif os.path.exists(long_term_mesh_location):
-        print("Mesh already exists, copying it to here")
-        shutil.copy(long_term_mesh_location, "./to_mesh.h5")
         return
     else:
         from salvus.mesh.simple_mesh import SmoothieSEM

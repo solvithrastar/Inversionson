@@ -6,8 +6,8 @@ from .component import Component
 if TYPE_CHECKING:
     from inversionson.project import Project
 
-import salvus.flow.simple_config as sc
-from salvus.opt import smoothing
+import salvus.flow.simple_config as sc  # type: ignore
+from salvus.opt import smoothing  # type: ignore
 
 
 class Smoother(Component):
@@ -75,9 +75,9 @@ class Smoother(Component):
                 reference_velocity = param
             # If it is not some velocity, use P velocities
             elif not param.startswith("V"):
-                if "VPV" in self.project.inversion_params:
+                if "VPV" in self.project.config.inversion.inversion_parameters:
                     reference_velocity = "VPV"
-                elif "VP" in self.project.inversion_params:
+                elif "VP" in self.project.config.inversion.inversion_parameters:
                     reference_velocity = "VP"
                 else:
                     raise NotImplementedError(
@@ -87,7 +87,7 @@ class Smoother(Component):
             unique_id = (
                 "_".join([str(i).replace(".", "") for i in smoothing_lengths])
                 + "_"
-                + str(self.project.min_period)
+                + str(self.project.lasif_settings.min_period)
             )
 
             diff_model_file = f"{unique_id}diff_model_{ref_model_name}_{param}.h5"

@@ -1,13 +1,8 @@
 from __future__ import annotations
 import pathlib
-from inversionson import InversionsonError
 from salvus.flow.sites import job, remote_io_site  # type: ignore
-import salvus.flow.api as sapi  # type: ignore
 from .component import Component
 import os
-import inspect
-import shutil
-import multi_mesh.api as mapi  # type: ignore
 from pathlib import Path
 
 import toml
@@ -204,48 +199,45 @@ class MultiMesh(Component):
             no_db=False,
         )
 
-    def prepare_interpolation_toml(self, gradient, event):
-        hpc_cluster = self.project.flow.hpc_cluster
+    def prepare_interpolation_toml(self, gradient: bool, event: str):
         toml_name = "gradient_interp.toml" if gradient else "prepare_forward.toml"
-        toml_filename = (
-            self.project.inversion_root / "INTERPOLATION" / event / toml_name
-        )
-        if not os.path.exists(toml_filename.parent):
-            os.makedirs(toml_filename.parent)
+        toml_filename = self.project.paths.root / "INTERPOLATION" / event / toml_name
+        toml_filename.parent.mkdir(parents=True, exist_ok=True)
         tag = "GRADIENTS" if gradient else "MODELS"
 
-        remote_weights_path = os.path.join(
-            self.project.remote_inversionson_dir,
-            "INTERPOLATION_WEIGHTS",
-            tag,
-            event,
-        )
+        remote_weights_path = self.project.remote_paths.interp_weights_dir / tag / event
 
         information = toml.load(toml_filename) if os.path.exists(toml_filename) else {}
         information["gradient"] = gradient
         information["mesh_info"] = {
             "event_name": event,
-            "mesh_folder": str(self.project.fast_mesh_dir),
-            "long_term_mesh_folder": str(self.project.remote_mesh_dir),
+            "mesh_folder": str(self.project.remote_paths.mesh_dir),
             "min_period": self.project.lasif_settings.min_period,
-            "elems_per_quarter": self.project.elem_per_quarter,
+            "elems_per_quarter": self.project.config.meshing.elements_per_azimuthal_quarter,
             "interpolation_weights": remote_weights_path,
-            "elems_per_wavelength": self.project.elem_per_wavelength,
+            "elems_per_wavelength": self.project.config.meshing.elements_per_wavelength,
         }
-        information["data_processing"] = bool(
-            not gradient and self.project.remote_data_processing
-        )
-        information["multi-mesh"] = self.project.meshes == "multi-mesh"
+        information["data_processing"] = not gradient
+        information["multi-mesh"] = self.project.config.meshing.multi_mesh
         # Provide information for cut and clipping
         if gradient:
-            information["cutout_radius_in_km"] = self.project.cut_source_radius
+            information[
+                "cutout_radius_in_km"
+            ] = self.project.config.inversion.source_cut_radius_in_km
             information["source_location"] = self.project.lasif.get_source(
                 event_name=event
             )
-            information["clipping_percentile"] = self.project.clip_gradient
-            information["parameters"] = self.project.inversion_params
+            information[
+                "clipping_percentile"
+            ] = self.project.config.inversion.clipping_percentile
+            information[
+                "parameters"
+            ] = self.project.config.inversion.inversion_parameters
         else:
-            proc_filename = f"preprocessed_{int(self.project.lasif_settings.min_period)}s_to_{int(self.project.lasif_settings.max_period)}s.h5"
+            proc_filename = (
+                f"preprocessed_{int(self.project.lasif_settings.min_period)}s_"
+                f"to_{int(self.project.lasif_settings.max_period)}s.h5"
+            )
             remote_proc_path = f"{event}_{proc_filename}"
             remote_processed_dir = self.project.remote_paths.proc_data_dir
             remote_proc_path = remote_processed_dir / remote_proc_path
@@ -253,18 +245,18 @@ class MultiMesh(Component):
             processing_info = {
                 "minimum_period": self.project.lasif_settings.min_period,
                 "maximum_period": self.project.lasif_settings.max_period,
-                "npts": self.project.lasif_settings["number_of_time_steps"],
-                "dt": self.project.time_step,
-                "start_time_in_s": self.project.start_time,
+                "npts": self.project.lasif_settings.number_of_time_steps,
+                "dt": self.project.lasif_settings.time_step,
+                "start_time_in_s": self.project.lasif_settings.start_time,
                 "asdf_input_filename": "raw_event_data.h5",
-                "asdf_output_filename": remote_proc_path,
+                "asdf_output_filename": str(remote_proc_path),
                 "preprocessing_tag": self.project.lasif.lasif_comm.waveforms.preprocessing_tag,
             }
             information["processing_info"] = processing_info
 
             remote_receiver_dir = self.project.remote_paths.receiver_dir
-            information["receiver_json_path"] = os.path.join(
-                remote_receiver_dir, f"{event}_receivers.json"
+            information["receiver_json_path"] = str(
+                remote_receiver_dir / f"{event}_receivers.json"
             )
 
             # If we have a dict already, we can just update it with the proper
@@ -283,38 +275,35 @@ class MultiMesh(Component):
             )
 
             if not gradient:
-                if self.project.ellipticity:
+                if self.project.config.meshing.ellipticity:
                     information["ellipticity"] = 0.0033528106647474805
-                if self.project.topography["use"]:
-                    information["mesh_info"]["topography"] = self.project.topography
-                if self.project.ocean_loading["use"]:
-                    information["mesh_info"][
-                        "ocean_loading"
-                    ] = self.project.ocean_loading
+                if self.project.config.meshing.topography:
+                    information["mesh_info"]["topography"] = {
+                        "remote_path": str(self.project.remote_paths.topography_f),
+                        "variable": self.project.config.meshing.topography_var_name,
+                    }
+                if self.project.config.meshing.ocean_loading:
+                    information["mesh_info"]["ocean_loading"] = {
+                        "remote_path": str(self.project.remote_paths.ocean_loading_f),
+                        "variable": self.project.config.meshing.ocean_loading_var_name,
+                    }
                 source_info = self.project.lasif.get_source(event_name=event)
                 if isinstance(source_info, list):
                     source_info = source_info[0]
                 source_info["side_set"] = (
                     "r1_ol"
-                    if self.project.ocean_loading["use"]
-                    and self.project.meshes != "multi-mesh"
+                    if self.project.config.meshing.ocean_loading
+                    and not self.project.config.meshing.multi_mesh
                     else "r1"
                 )
                 source_info["stf"] = str(
-                    self.project.remote_inversionson_dir
-                    / "SOURCE_TIME_FUNCTIONS"
+                    self.project.remote_paths.stf_dir
                     / self.project.current_iteration
                     / "stf.h5"
                 )
                 information["source_info"] = source_info
 
-                if (
-                    not os.path.exists(toml_filename)
-                    and not self.project.remote_data_processing
-                ):  # this is a slow step, so let's skip it if we can
-                    receivers = self.project.lasif.get_receivers(event_name=event)
-                    information["receiver_info"] = receivers
-                if self.project.absorbing_boundaries:
+                if self.project.config.inversion.absorbing_boundaries:
                     if (
                         "inner_boundary"
                         in self.project.lasif.lasif_comm.project.domain.get_side_set_names()
@@ -332,17 +321,16 @@ class MultiMesh(Component):
                     side_sets = []
 
                 information["simulation_info"] = {
-                    "end_time": self.project.end_time,
-                    "time_step": self.project.time_step,
-                    "start_time": self.project.start_time,
-                    "minimum_period": self.project.lasif.lasif_comm.project.simulation_settings[
-                        "minimum_period_in_s"
-                    ],
+                    "end_time": self.project.lasif_settings.end_time,
+                    "time_step": self.project.lasif_settings.time_step,
+                    "start_time": self.project.lasif_settings.start_time,
+                    "minimum_period": self.project.lasif_settings.min_period,
                     "simulation_time_step": self.project.simulation_time_step,
-                    "attenuation": self.project.attenuation,
-                    "absorbing_boundaries": self.project.absorbing_boundaries,
+                    "attenuation": self.project.lasif_settings.attenuation,
+                    "absorbing_boundaries": self.project.config.inversion.absorbing_boundaries,
                     "side_sets": side_sets,
-                    "absorbing_boundary_length": self.project.abs_bound_length * 1000.0,
+                    "absorbing_boundary_length": self.project.lasif_settings.absorbing_boundaries_length
+                    * 1000.0,
                 }
 
         with open(toml_filename, "w") as fh:

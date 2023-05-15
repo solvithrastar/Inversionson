@@ -1,17 +1,17 @@
 from __future__ import annotations
-from .component import Component
 import os
 import shutil
 import toml
-import emoji
-from colorama import init, Fore
-
-init()
+import emoji  # type: ignore
+from .component import Component
 from typing import List, Optional, Union, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from inversionson.project import Project
 from inversionson import InversionsonError
+from colorama import init, Fore
+
+init()
 
 
 class StoryTeller(Component):
