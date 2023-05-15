@@ -24,6 +24,7 @@ class RemotePaths:
         self.model_dir = self.root / "MODELS"
         self.adj_src_dir = self.root / "ADJOINT_SOURCES"
         self.receiver_dir = self.root / "RECEIVERS"
+        self.gradient_proc_dir = self.root / "GRADIENT_PROCESSING"
         self.script_dir = self.root / "SCRIPTS"
         self.proc_data_dir = self.root / "PROCESSED_DATA"
 
@@ -61,8 +62,21 @@ class RemotePaths:
 
     def create_remote_directories(self, hpc_cluster):
         all_directories = [
-            d for d in self.__dict__.values() if isinstance(d, Path) and d.is_dir()
+            self.root,
+            self.diff_dir,
+            self.stf_dir,
+            self.interp_weights_dir,
+            self.multi_mesh_dir,
+            self.window_dir,
+            self.misfit_dir,
+            self.model_dir,
+            self.adj_src_dir,
+            self.receiver_dir,
+            self.gradient_proc_dir,
+            self.script_dir,
+            self.proc_data_dir,
         ]
+
         for directory in all_directories:
             if not hpc_cluster.remote_exists(directory):
                 hpc_cluster.remote_mkdir(directory)
@@ -82,13 +96,23 @@ class ProjectPaths:
 
         self.opt_dir = self.root / "OPTIMIZATION"
         self.reg_dir = self.opt_dir / "REGULARIZATION"
-        self.gradient_norm_dir = self.root / "GRADIENT_NORMS"
-        self.all_gradient_norms_toml = self.gradient_norm_dir / "all_gradients_norms.toml"
+        self.gradient_norm_dir = self.opt_dir / "GRADIENT_NORMS"
+        self.all_gradient_norms_toml = (
+            self.gradient_norm_dir / "all_gradients_norms.toml"
+        )
         self.model_dir = self.opt_dir / "MODELS"
+        self._initialize_dirs()
 
     def _initialize_dirs(self):
         all_directories = [
-            d for d in self.__dict__.values() if isinstance(d, Path) and d.is_dir()
+            self.doc_dir,
+            self.iteration_tomls,
+            self.misc_dir,
+            self.diff_model_dir,
+            self.opt_dir,
+            self.reg_dir,
+            self.gradient_norm_dir,
+            self.model_dir,
         ]
         for directory in all_directories:
             if not directory.is_dir():
@@ -139,7 +163,7 @@ class Project(object):
         a running inversion can be restarted although this is done.
         """
         self.config = config
-        self.paths = ProjectPaths(self.config)
+        self.paths = ProjectPaths(self)
         self.remote_paths = RemotePaths(self)
 
         self.lasif_settings = LASIFSimulationSettings(

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 import time
-from typing import Optional, List
+from typing import Dict, Optional, List, Tuple, Union
 import toml
 
 import json
@@ -58,11 +58,11 @@ class IterationListener(object):
     def print(
         self,
         message: str,
-        color="yellow",
+        color: str = "yellow",
         line_above: bool = False,
         line_below: bool = False,
-        emoji_alias=None,
-    ):
+        emoji_alias: Optional[Union[str, List[str]]] = None,
+    ) -> None:
         self.project.storyteller.printer.print(
             message=message,
             color=color,
@@ -71,7 +71,7 @@ class IterationListener(object):
             emoji_alias=emoji_alias,
         )
 
-    def __prepare_forward(self, event: str):
+    def __prepare_forward(self, event: str) -> None:
         """
         Interpolate model to a simulation mesh
 
@@ -89,7 +89,9 @@ class IterationListener(object):
 
         self.project.multi_mesh.prepare_forward(event=event)
 
-    def __submitted_retrieved(self, event: str, sim_type: str = "forward"):
+    def __submitted_retrieved(
+        self, event: str, sim_type: str = "forward"
+    ) -> Tuple[bool, bool]:
         """
         Get a tuple of boolean values whether job as been submitted
         and retrieved
@@ -111,7 +113,7 @@ class IterationListener(object):
             job_info = self.project.gradient_interp_job[event]
         return job_info["submitted"], job_info["retrieved"]
 
-    def _run_forward(self, event: str, verbose: bool = False):
+    def _run_forward(self, event: str, verbose: bool = False) -> None:
         """
         Submit forward simulation to daint and possibly monitor aswell
 
@@ -151,12 +153,12 @@ class IterationListener(object):
 
         self.print(f"Submitted forward job for event: {event}")
 
-    def __retrieve_seismograms(self, event: str, verbose: bool = False):
-        self.project.flow.retrieve_seismograms(event_name=event, sim_type="forward")
+    def __retrieve_seismograms(self, event: str, verbose: bool = False) -> None:
+        self.project.flow.retrieve_seismograms(event_name=event)
         if verbose:
             self.print(f"Copied seismograms for event {event} to lasif folder")
 
-    def __process_data(self, event: str):
+    def __process_data(self, event: str) -> None:
         """
         Process data for an event in the currently considered
         period range. If the processed data already exists,
@@ -169,7 +171,7 @@ class IterationListener(object):
         """
         self.project.lasif.process_data(event)
 
-    def _launch_hpc_processing_job(self, event: str):
+    def _launch_hpc_processing_job(self, event: str) -> None:
         """
         Here, we launch a job to select windows and get adjoint sources
         for an event.
@@ -227,7 +229,7 @@ class IterationListener(object):
             hpc_cluster.run_ssh_command(f"cp {window_path} {new_window_path}")
         else:
             windowing_needed = True
-            window_path = (remote_window_dir / get_window_filename(event, iteration),)
+            window_path = remote_window_dir / get_window_filename(event, iteration)
 
         misfits_path = remote_window_dir / get_misfits_filename(event, iteration)
         info = dict(
@@ -236,25 +238,24 @@ class IterationListener(object):
             forward_meta_json_filename=forward_meta_json_filename,
             parameterization=parameterization,
             windowing_needed=windowing_needed,
-            window_path=window_path,
+            window_path=str(window_path),
             event_name=event,
             delta=self.project.lasif_settings.time_step,
             npts=self.project.lasif_settings.number_of_time_steps,
             iteration_name=iteration,
-            misfit_json_filename=misfits_path,
+            misfit_json_filename=str(misfits_path),
             minimum_period=self.project.lasif_settings.min_period,
             maximum_period=self.project.lasif_settings.max_period,
             start_time_in_s=self.project.lasif_settings.start_time,
-            receiver_json_path=os.path.join(
-                self.project.remote_paths.receiver_dir, f"{event}_receivers.json"
+            receiver_json_path=str(
+                self.project.remote_paths.receiver_dir / f"{event}_receivers.json"
             ),
             ad_src_type=self.project.ad_src_type,
         )
 
         toml_filename = f"{iteration}_{event}_adj_info.toml"
-        remote_toml = self._upload_toml_to_remote(
-            toml_filename, info, self.project.remote_paths.adj_src_dir, hpc_cluster
-        )
+        remote_toml = self.project.remote_paths.adj_src_dir / toml_filename
+        self._write_and_upload_toml(toml_filename, info, remote_toml)
         # Copy processing script to hpc
         remote_script = os.path.join(
             self.project.remote_paths.adj_src_dir, "window_and_calc_adj_src.py"
@@ -314,30 +315,6 @@ class IterationListener(object):
         )
         self.print(f"HPC Processing job for event {event} submitted")
 
-    def __select_windows(self, event: str):
-        """
-        Select the windows for the event and the iteration
-
-        :param event: Name of event
-        :type event: str
-        """
-        iteration = self.project.current_iteration
-        window_set_name = f"{iteration}_{event}"
-        self.project.lasif.select_windows(window_set_name=window_set_name, event=event)
-
-    def __validation_misfit_quantification(self, event: str, window_set: str):
-
-        if not self.project.is_validation_event(event):
-            return
-
-        self.project.lasif.calculate_validation_misfit(
-            event, validation=True, window_set=window_set
-        )
-        self.project.storyteller.report_validation_misfit(
-            iteration=self.project.current_iteration,
-            event=event,
-        )
-
     def _misfit_quantification(
         self,
         event: str,
@@ -349,11 +326,13 @@ class IterationListener(object):
         :type event: str
         """
         if self.project.is_validation_event(event):
-            self.__validation_misfit_quantification(
-                event=event, window_set=self.project.current_iteration
+            self.project.lasif.calculate_validation_misfit(event)
+            self.project.storyteller.report_validation_misfit(
+                iteration=self.project.current_iteration,
+                event=event,
             )
 
-    def __dispatch_adjoint_simulation(self, event: str, verbose: bool = False):
+    def __dispatch_adjoint_simulation(self, event: str, verbose: bool = False) -> None:
         """
         Dispatch an adjoint simulation after finishing the forward
         processing
@@ -391,9 +370,7 @@ class IterationListener(object):
     def __work_with_retrieved_seismograms(
         self,
         event: str,
-        windows: bool,
-        verbose: bool = False,
-    ):
+    ) -> None:
         """
         Process data, select windows, compute adjoint sources
 
@@ -402,35 +379,12 @@ class IterationListener(object):
         :param windows: Should windows be selected?
         :type windows: bool
         """
-        if verbose:
-            self.print(
-                "Process data if needed",
-                line_above=True,
-                emoji_alias=":floppy_disk:",
-                color="green",
-            )
-
         self.__process_data(event)
-
-        # Skip window selection in case of validation data
-        if windows and not self.project.is_validation_event(event):
-            if verbose:
-                self.print(
-                    "Select windows",
-                    color="cyan",
-                    line_above=True,
-                    emoji_alias=":foggy:",
-                )
-            self.__select_windows(event)
-
-        if verbose:
-            self.print(
-                "Quantify Misfit", color="magenta", line_above=True, emoji_alias=":zap:"
-            )
-
         self._misfit_quantification(event)
 
-    def __listen_to_prepare_forward(self, events: List[str], verbose: bool):
+    def __listen_to_prepare_forward(
+        self, events: List[str], verbose: bool
+    ) -> Tuple[bool, List[str]]:
         """
         Listens to prepare forward jobs and waits for them to be done.
         Also submits simulations.
@@ -476,9 +430,8 @@ class IterationListener(object):
         self,
         events: List[str],
         windows: bool = True,
-        window_set: Optional[str] = None,
         verbose: bool = False,
-    ):
+    ) -> Tuple[bool, List[str]]:
 
         for_job_listener = RemoteJobListener(
             project=self.project, job_type="forward", events=events
@@ -504,8 +457,6 @@ class IterationListener(object):
             else:
                 self.__work_with_retrieved_seismograms(
                     event,
-                    windows,
-                    verbose,
                 )
             self.project.change_attribute(
                 attribute=f'forward_job["{event}"]["retrieved"]',
@@ -533,7 +484,7 @@ class IterationListener(object):
 
     def __listen_to_hpc_processing(
         self, events: List[str], adjoint: bool = True, verbose: bool = False
-    ):
+    ) -> Tuple[bool, List[str]]:
         """
         Here we listen hpc_processing. It is important that only
         events enter here that actually need to be listened to.
@@ -588,7 +539,9 @@ class IterationListener(object):
         anything_retrieved = bool(hpc_proc_job_listener.events_retrieved_now)
         return anything_retrieved, hpc_proc_job_listener.events_already_retrieved
 
-    def _listen_to_adjoint(self, events: List[str], verbose: bool = False):
+    def _listen_to_adjoint(
+        self, events: List[str], verbose: bool = False
+    ) -> Tuple[bool, List[str]]:
         """
         Here we listen to the adjoint jobs.
         Again it is important that only candidate events enter here.
@@ -600,13 +553,13 @@ class IterationListener(object):
 
         adj_job_listener.monitor_jobs()
         for event in adj_job_listener.events_retrieved_now:
-            self.__cut_and_clip_gradient(event=event, verbose=verbose)
+            self._cut_and_clip_gradient(event=event)
             self.project.change_attribute(
                 attribute=f'adjoint_job["{event}"]["retrieved"]',
                 new_value=True,
             )
             if self.project.config.meshing.multi_mesh:
-                self.__dispatch_raw_gradient_interpolation(event, verbose=verbose)
+                self._dispatch_raw_gradient_interpolation(event, verbose=verbose)
             adj_job_listener.events_already_retrieved.append(event)
 
         for event in adj_job_listener.to_repost:
@@ -631,7 +584,7 @@ class IterationListener(object):
         anything_retrieved = bool(adj_job_listener.events_retrieved_now)
         return anything_retrieved, adj_job_listener.events_already_retrieved
 
-    def listen_to_gradient_interp(self, events: List[str]):
+    def listen_to_gradient_interp(self, events: List[str]) -> Tuple[bool, List[str]]:
         """
         Monitor the status of the interpolations.
 
@@ -658,15 +611,15 @@ class IterationListener(object):
                 attribute=f'gradient_interp_job["{event}"]["submitted"]',
                 new_value=False,
             )
-            self.__dispatch_raw_gradient_interpolation(event=event)
+            self._dispatch_raw_gradient_interpolation(event=event)
 
         for event in int_job_listener.not_submitted:
-            self.__dispatch_raw_gradient_interpolation(event=event)
+            self._dispatch_raw_gradient_interpolation(event=event)
 
         anything_retrieved = bool(int_job_listener.events_retrieved_now)
         return anything_retrieved, int_job_listener.events_already_retrieved
 
-    def listen(self, verbose: bool = False):
+    def listen(self, verbose: bool = False) -> None:
         """
         Listen to all steps in the iteration.
         It will listen to prepare forward (if needed) and forward
@@ -794,7 +747,9 @@ class IterationListener(object):
         for event in non_validation_events[:1]:
             self.project.find_simulation_time_step(event)
 
-    def __dispatch_raw_gradient_interpolation(self, event: str, verbose: bool = False):
+    def _dispatch_raw_gradient_interpolation(
+        self, event: str, verbose: bool = False
+    ) -> None:
         """
         Take the gradient out of the adjoint simulations and
         interpolate them to the inversion grid.
@@ -814,11 +769,9 @@ class IterationListener(object):
         if not hpc_cluster.remote_exists(interp_folder):
             hpc_cluster.remote_mkdir(interp_folder)
 
-        self.project.multi_mesh.interpolate_gradient_to_model(
-            event, smooth=False, interp_folder=interp_folder
-        )
+        self.project.multi_mesh.interpolate_gradient_to_model(event)
 
-    def __cut_and_clip_gradient(self, event: str, verbose: bool = False):
+    def _cut_and_clip_gradient(self, event: str) -> None:
         """
         Cut sources and receivers from gradient before summing or potential
         smoothing.
@@ -836,14 +789,8 @@ class IterationListener(object):
         job = self.project.flow.get_job(event, "adjoint")
         output_files = job.get_output_files()
         gradient_path = output_files[0][("adjoint", "gradient", "output_filename")]
-        # Connect to daint
         hpc_cluster = self.project.flow.hpc_cluster
-
-        remote_inversionson_dir = os.path.join(
-            self.project.config.hpc.inversionson_folder, "GRADIENT_PROCESSING"
-        )
-        if not hpc_cluster.remote_exists(remote_inversionson_dir):
-            hpc_cluster.remote_mkdir(remote_inversionson_dir)
+        remote_inversionson_dir = self.project.remote_paths.gradient_proc_dir
 
         # copy processing script to hpc
         remote_script = os.path.join(remote_inversionson_dir, "cut_and_clip.py")
@@ -859,9 +806,8 @@ class IterationListener(object):
         info["parameters"] = self.project.config.inversion.inversion_parameters
 
         toml_filename = f"{event}_gradient_process.toml"
-        remote_toml = self._upload_toml_to_remote(
-            toml_filename, info, remote_inversionson_dir, hpc_cluster
-        )
+        remote_toml = remote_inversionson_dir / toml_filename
+        self._write_and_upload_toml(toml_filename, info, remote_toml)
         # Call script
         _, stdout, stderr = hpc_cluster.run_ssh_command(
             f"python {remote_script} {remote_toml}"
@@ -874,15 +820,13 @@ class IterationListener(object):
             print("Something went wrong in cutting and clipping on the remote.")
             raise InversionsonError(stdout, stderr)
 
-    def _upload_toml_to_remote(
-        self, toml_filename, info_dict, remote_folder, hpc_cluster
-    ) -> str:
+    def _write_and_upload_toml(
+        self, toml_filename: str, info_dict: Dict, remote_toml_path: Union[Path, str]
+    ) -> None:
         """Write a dictionary ato toml and copy to the remote.
         Returns the path on the remote
         """
         with open(toml_filename, "w") as fh:
             toml.dump(info_dict, fh)
-        result = os.path.join(remote_folder, toml_filename)
-        hpc_cluster.remote_put(toml_filename, result)
+        self.project.flow.safe_put(toml_filename, remote_toml_path)
         os.remove(toml_filename)
-        return result

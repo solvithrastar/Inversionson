@@ -58,7 +58,7 @@ class RemoteJobListener(object):
             emoji_alias=emoji_alias,
         )
 
-    def monitor_jobs(self):
+    def monitor_jobs(self) -> None:
         """
         Takes the job type of the object and monitors the status of
         all the events in the object.
@@ -78,7 +78,9 @@ class RemoteJobListener(object):
 
         self.__monitor_jobs(job_dict=job_dict)
 
-    def __check_status_of_job(self, event: str, reposts: int, verbose: bool = False):
+    def __check_status_of_job(
+        self, event: str, reposts: int, verbose: bool = False
+    ) -> str:
         """
         Query Salvus Flow for the status of the job
 
@@ -121,7 +123,7 @@ class RemoteJobListener(object):
 
     def __monitor_jobs(
         self, job_dict: Dict, events: Optional[List[str]] = None, verbose: bool = False
-    ):
+    ) -> None:
         """
         Takes the job type of the object and monitors the status of
         all the events in the object.

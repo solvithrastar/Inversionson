@@ -267,7 +267,7 @@ class LASIF(Component):
         if self._already_processed(event):
             return
 
-        # Get local proc filename
+        # Get name of local proc filename
         proc_filename = (
             f"preprocessed_{int(self.project.lasif_settings.min_period)}s_"
             f"to_{int(self.project.lasif_settings.max_period)}s.h5"
@@ -285,8 +285,11 @@ class LASIF(Component):
         remote_proc_path = (
             self.project.remote_paths.proc_data_dir / remote_proc_file_name
         )
-        if hpc_cluster.remote_exists(remote_proc_path):
-            self.project.flow.safe_get(remote_proc_path, local_proc_file)
+        assert hpc_cluster.remote_exists(
+            remote_proc_path
+        ), "No remote processed data found."
+
+        self.project.flow.safe_get(remote_proc_path, local_proc_file)
 
     def find_seismograms(self, event: str, iteration: str) -> Path:
         """
@@ -305,7 +308,7 @@ class LASIF(Component):
         folder.parent.mkdir(exist_ok=True, parents=True)
         return folder / "receivers.h5"
 
-    def calculate_validation_misfit(self, event: str):
+    def calculate_validation_misfit(self, event: str) -> float:
         """
         Quantify misfit and calculate adjoint sources.
 

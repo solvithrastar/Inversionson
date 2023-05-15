@@ -28,7 +28,7 @@ class StoryTeller(Component):
 
         self.events_used = (
             self._create_initial_events_used_toml()
-            if self.events_used_toml.exists()
+            if not self.events_used_toml.exists()
             else toml.load(self.events_used_toml)
         )
         self.printer = PrettyPrinter()

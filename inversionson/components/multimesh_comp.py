@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 import toml
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 if TYPE_CHECKING:
     from inversionson.project import Project
@@ -30,7 +30,7 @@ class MultiMesh(Component):
         line_above: bool = False,
         line_below: bool = False,
         emoji_alias: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
         self.project.storyteller.printer.print(
             message=message,
             color=color,
@@ -42,7 +42,7 @@ class MultiMesh(Component):
     def prepare_forward(
         self,
         event: str,
-    ):
+    ) -> None:
         """
         Interpolate current master model to a simulation mesh.
 
@@ -68,7 +68,7 @@ class MultiMesh(Component):
                 emoji_alias=":white_check_mark:",
             )
 
-    def interpolate_gradient_to_model(self, event: str):
+    def interpolate_gradient_to_model(self, event: str) -> None:
         """
         Interpolate gradient parameters from simulation mesh to master
         dicretisation. In minibatch approach gradients are not summed,
@@ -86,7 +86,7 @@ class MultiMesh(Component):
 
         self._create_and_launch_remote_interp_job(event)
 
-    def _create_and_launch_remote_interp_job(self, event: str):
+    def _create_and_launch_remote_interp_job(self, event: str) -> None:
         job = self.construct_remote_interpolation_job(
             event=event,
             gradient=True,
@@ -106,7 +106,9 @@ class MultiMesh(Component):
         )
         self.project.update_iteration_toml()
 
-    def construct_remote_interpolation_job(self, event: str, gradient: bool = False):
+    def construct_remote_interpolation_job(
+        self, event: str, gradient: bool = False
+    ) -> job.Job:
         """
         Construct a custom Salvus job which can be submitted to an HPC cluster
         The job can either do an interpolation of model or gradient
@@ -172,7 +174,7 @@ class MultiMesh(Component):
             no_db=False,
         )
 
-    def prepare_interpolation_toml(self, gradient: bool, event: str):
+    def prepare_interpolation_toml(self, gradient: bool, event: str) -> Path:
         toml_name = "gradient_interp.toml" if gradient else "prepare_forward.toml"
         toml_filename = self.project.paths.root / "INTERPOLATION" / event / toml_name
         toml_filename.parent.mkdir(parents=True, exist_ok=True)
@@ -213,108 +215,112 @@ class MultiMesh(Component):
                 "parameters"
             ] = self.project.config.inversion.inversion_parameters
         else:
-            proc_filename = (
-                f"preprocessed_{int(self.project.lasif_settings.min_period)}s_"
-                f"to_{int(self.project.lasif_settings.max_period)}s.h5"
-            )
-            remote_proc_path = f"{event}_{proc_filename}"
-            remote_processed_dir = self.project.remote_paths.proc_data_dir
-            remote_proc_path = remote_processed_dir / remote_proc_path
-
-            processing_info = {
-                "minimum_period": self.project.lasif_settings.min_period,
-                "maximum_period": self.project.lasif_settings.max_period,
-                "npts": self.project.lasif_settings.number_of_time_steps,
-                "dt": self.project.lasif_settings.time_step,
-                "start_time_in_s": self.project.lasif_settings.start_time,
-                "asdf_input_filename": "raw_event_data.h5",
-                "asdf_output_filename": str(remote_proc_path),
-                "preprocessing_tag": self.project.lasif.lasif_comm.waveforms.preprocessing_tag,
-            }
-            information["processing_info"] = processing_info
-
-            remote_receiver_dir = self.project.remote_paths.receiver_dir
-            information["receiver_json_path"] = str(
-                remote_receiver_dir / f"{event}_receivers.json"
-            )
-
-            # If we have a dict already, we can just update it with the proper
-            # remote mesh files and also we don't need to create the simulation
-            # dict again in the interpolation job.
-            local_simulation_dict = (
-                (
-                    self.project.lasif.lasif_comm.project.paths["salvus_files"]
-                    / "SIMULATION_DICTS"
-                )
-                / event
-            ) / "simulation_dict.toml"
-            # Only create simulation dict when we don't have it yet.
-            information["create_simulation_dict"] = not os.path.exists(
-                local_simulation_dict
-            )
-
-            if not gradient:
-                if self.project.config.meshing.ellipticity:
-                    information["ellipticity"] = 0.0033528106647474805
-                if self.project.config.meshing.topography:
-                    information["mesh_info"]["topography"] = {
-                        "remote_path": str(self.project.remote_paths.topography_f),
-                        "variable": self.project.config.meshing.topography_var_name,
-                    }
-                if self.project.config.meshing.ocean_loading:
-                    information["mesh_info"]["ocean_loading"] = {
-                        "remote_path": str(self.project.remote_paths.ocean_loading_f),
-                        "variable": self.project.config.meshing.ocean_loading_var_name,
-                    }
-                source_info = self.project.lasif.get_source(event_name=event)
-                if isinstance(source_info, list):
-                    source_info = source_info[0]
-                source_info["side_set"] = (
-                    "r1_ol"
-                    if self.project.config.meshing.ocean_loading
-                    and not self.project.config.meshing.multi_mesh
-                    else "r1"
-                )
-                source_info["stf"] = str(
-                    self.project.remote_paths.stf_dir
-                    / self.project.current_iteration
-                    / "stf.h5"
-                )
-                information["source_info"] = source_info
-
-                if self.project.config.inversion.absorbing_boundaries:
-                    if (
-                        "inner_boundary"
-                        in self.project.lasif.lasif_comm.project.domain.get_side_set_names()
-                    ):
-                        side_sets = ["inner_boundary"]
-                    else:
-                        side_sets = [
-                            "r0",
-                            "t0",
-                            "t1",
-                            "p0",
-                            "p1",
-                        ]
-                else:
-                    side_sets = []
-
-                information["simulation_info"] = {
-                    "end_time": self.project.lasif_settings.end_time,
-                    "time_step": self.project.lasif_settings.time_step,
-                    "start_time": self.project.lasif_settings.start_time,
-                    "minimum_period": self.project.lasif_settings.min_period,
-                    "simulation_time_step": self.project.simulation_time_step,
-                    "attenuation": self.project.lasif_settings.attenuation,
-                    "absorbing_boundaries": self.project.config.inversion.absorbing_boundaries,
-                    "side_sets": side_sets,
-                    "absorbing_boundary_length": self.project.lasif_settings.absorbing_boundaries_length
-                    * 1000.0,
-                }
-
+            information = self._add_info_to_information_toml(event, information)
         with open(toml_filename, "w") as fh:
             toml.dump(information, fh)
         return toml_filename
+
+    # TODO Rename this here and in `prepare_interpolation_toml`
+    def _add_info_to_information_toml(self, event: str, information: Dict) -> Dict:
+        proc_filename = (
+            f"preprocessed_{int(self.project.lasif_settings.min_period)}s_"
+            f"to_{int(self.project.lasif_settings.max_period)}s.h5"
+        )
+        remote_proc_file = f"{event}_{proc_filename}"
+        remote_processed_dir = self.project.remote_paths.proc_data_dir
+        remote_proc_path = remote_processed_dir / remote_proc_file
+
+        processing_info = {
+            "minimum_period": self.project.lasif_settings.min_period,
+            "maximum_period": self.project.lasif_settings.max_period,
+            "npts": self.project.lasif_settings.number_of_time_steps,
+            "dt": self.project.lasif_settings.time_step,
+            "start_time_in_s": self.project.lasif_settings.start_time,
+            "asdf_input_filename": "raw_event_data.h5",
+            "asdf_output_filename": str(remote_proc_path),
+            "preprocessing_tag": self.project.lasif.lasif_comm.waveforms.preprocessing_tag,
+        }
+        information["processing_info"] = processing_info
+
+        remote_receiver_dir = self.project.remote_paths.receiver_dir
+        information["receiver_json_path"] = str(
+            remote_receiver_dir / f"{event}_receivers.json"
+        )
+
+        # If we have a dict already, we can just update it with the proper
+        # remote mesh files and also we don't need to create the simulation
+        # dict again in the interpolation job.
+        local_simulation_dict = (
+            (
+                self.project.lasif.lasif_comm.project.paths["salvus_files"]
+                / "SIMULATION_DICTS"
+            )
+            / event
+        ) / "simulation_dict.toml"
+        # Only create simulation dict when we don't have it yet.
+        information["create_simulation_dict"] = not os.path.exists(
+            local_simulation_dict
+        )
+
+        if self.project.config.meshing.ellipticity:
+            information["ellipticity"] = 0.0033528106647474805
+        if self.project.config.meshing.topography:
+            information["mesh_info"]["topography"] = {
+                "remote_path": str(self.project.remote_paths.topography_f),
+                "variable": self.project.config.meshing.topography_var_name,
+            }
+        if self.project.config.meshing.ocean_loading:
+            information["mesh_info"]["ocean_loading"] = {
+                "remote_path": str(self.project.remote_paths.ocean_loading_f),
+                "variable": self.project.config.meshing.ocean_loading_var_name,
+            }
+        source_info = self.project.lasif.get_source(event_name=event)
+        if isinstance(source_info, list):
+            source_info = source_info[0]
+        source_info["side_set"] = (
+            "r1_ol"
+            if self.project.config.meshing.ocean_loading
+            and not self.project.config.meshing.multi_mesh
+            else "r1"
+        )
+        source_info["stf"] = str(
+            self.project.remote_paths.stf_dir
+            / self.project.current_iteration
+            / "stf.h5"
+        )
+        information["source_info"] = source_info
+
+        if self.project.config.inversion.absorbing_boundaries:
+            side_sets = (
+                ["inner_boundary"]
+                if (
+                    "inner_boundary"
+                    in self.project.lasif.lasif_comm.project.domain.get_side_set_names()
+                )
+                else [
+                    "r0",
+                    "t0",
+                    "t1",
+                    "p0",
+                    "p1",
+                ]
+            )
+        else:
+            side_sets = []
+
+        information["simulation_info"] = {
+            "end_time": self.project.lasif_settings.end_time,
+            "time_step": self.project.lasif_settings.time_step,
+            "start_time": self.project.lasif_settings.start_time,
+            "minimum_period": self.project.lasif_settings.min_period,
+            "simulation_time_step": self.project.simulation_time_step,
+            "attenuation": self.project.lasif_settings.attenuation,
+            "absorbing_boundaries": self.project.config.inversion.absorbing_boundaries,
+            "side_sets": side_sets,
+            "absorbing_boundary_length": self.project.lasif_settings.absorbing_boundaries_length
+            * 1000.0,
+        }
+        return information
 
     def move_toml_to_hpc(self, toml_filename: pathlib.Path, event: str) -> pathlib.Path:
         """
@@ -339,7 +345,7 @@ class MultiMesh(Component):
         self,
         event: str,
         gradient: bool,
-    ) -> list:
+    ) -> List[remote_io_site.site_utils.RemoteCommand]:
         """
         Get the interpolation commands needed to do remote interpolations.
         If not gradient, we will look for a smoothie mesh and create it if needed.
