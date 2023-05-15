@@ -346,4 +346,3 @@ class LASIF(Component):
         with open(misfit_toml_path, mode="w") as fh:
             toml.dump(misfits, fh)
         return misfit
-  

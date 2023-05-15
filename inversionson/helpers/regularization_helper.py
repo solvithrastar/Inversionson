@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import time
 import toml
-from typing import Any, Dict, Optional, Union, List, TYPE_CHECKING
+from typing import Dict, Optional, Union, List, TYPE_CHECKING
 
 from salvus.flow import api as sapi  # type: ignore
 from salvus.opt.smoothing import get_smooth_model  # type: ignore
