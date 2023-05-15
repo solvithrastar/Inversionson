@@ -43,16 +43,6 @@ class AutoInverter(object):
             emoji_alias=emoji_alias,
         )
 
-    @staticmethod
-    def safe_put(hpc_cluster, local_path: str, remote_path: str):
-        remote_parent = Path(remote_path).parent
-        if not hpc_cluster.remote_exists(remote_parent):
-            hpc_cluster.remote_mkdir(remote_parent)
-
-        tmp_remote_path = f"{remote_path}__tmp"
-        hpc_cluster.remote_put(local_path, tmp_remote_path)
-        hpc_cluster.run_ssh_command(f"mv {tmp_remote_path} {remote_path}")
-
     def move_files_to_cluster(self):
         """
         Move all the remote scripts to hpc.
@@ -77,33 +67,24 @@ class AutoInverter(object):
                     self.project.config.meshing.ocean_loading_file,
                     self.project.remote_paths.ocean_loading_f,
                 )
-        if self.project.config.meshing.topography:
-            if hpc_cluster.remote_exists(self.project.remote_paths.topography_f):
-                self.print(
-                    "Remote Topography file is already uploaded",
-                    emoji_alias=":white_check_mark:",
-                )
+        if self.project.config.meshing.topography and not hpc_cluster.remote_exists(
+            self.project.remote_paths.topography_f
+        ):
+            self.project.flow.safe_put(
+                self.project.config.meshing.topography_file,
+                self.project.remote_paths.topography_f,
+            )
 
-            else:
-                self.safe_put(
-                    hpc_cluster,
-                    self.project.config.meshing.topography_file,
-                    self.project.remote_paths.topography_f,
-                )
         if not hpc_cluster.remote_exists(self.project.remote_paths.interp_script):
             local_interpolation_script = (
                 Path(__file__).parent / "remote_scripts" / "interpolation.py"
             )
-            self.safe_put(
-                hpc_cluster,
-                local_interpolation_script,
-                self.project.remote_paths.interp_script,
+            self.project.flow.safe_put(
+                local_interpolation_script, self.project.remote_paths.interp_script
             )
 
         if self.project.config.meshing.multi_mesh:
-            self.project.lasif.move_gradient_to_cluster(
-                hpc_cluster=hpc_cluster, overwrite=False
-            )
+            self.project.lasif.move_gradient_to_cluster()
 
     def _run_optson(self):
         """
@@ -115,12 +96,17 @@ class AutoInverter(object):
         from optson.monitor import BasicMonitor
         from inversionson.optson_link.problem import Problem
         from inversionson.optson_link.helpers import mesh_to_vector
-        
+
         sc = BasicStoppingCriterion(tolerance=1e-5, max_iterations=1)
         monitor = BasicMonitor(step=1)
         problem = Problem()
-        
-        opt = Optimizer(problem=problem, update=AdamUpdate(alpha=1.5), stopping_criterion=sc, monitor=monitor)
+
+        opt = Optimizer(
+            problem=problem,
+            update=AdamUpdate(alpha=1.5),
+            stopping_criterion=sc,
+            monitor=monitor,
+        )
         m = opt.iterate(x0=mesh_to_vector(self.project.lasif.master_mesh))
         print(m.x)
 

@@ -6,11 +6,7 @@ from typing import List
 @dataclass(frozen=True)
 class MonitoringConfig:
     iterations_between_validation_checks: int = 0  # not used if zero
-
-    # Average models between validation checks or not
-    use_model_averaging: bool = False
     validation_dataset: List[str] = field(default_factory=lambda: [])
-    test_dataset: List[str] = field(default_factory=lambda: [])
 
 
 @dataclass(frozen=True)
