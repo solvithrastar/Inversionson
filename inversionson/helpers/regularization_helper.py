@@ -1,11 +1,11 @@
 from __future__ import annotations
 import os
+import time
 import toml
-from typing import Dict, Union, List, TYPE_CHECKING
+from typing import Any, Dict, Optional, Union, List, TYPE_CHECKING
 
-from salvus.flow import api as sapi
-from salvus.opt.smoothing import get_smooth_model
-from inversionson.utils import sleep_or_process
+from salvus.flow import api as sapi  # type: ignore
+from salvus.opt.smoothing import get_smooth_model  # type: ignore
 
 if TYPE_CHECKING:
     from inversionson.project import Project
@@ -21,8 +21,7 @@ class RegularizationHelper(object):
         self,
         project: Project,
         iteration_name: str,
-        tasks: Union[Dict, bool],
-        optimizer=None,
+        tasks: Optional[Dict] = None,
     ):
         """
         Each tasks is a dict that has a reference model, a model that contains the fields
@@ -40,16 +39,17 @@ class RegularizationHelper(object):
         :type iteration_name: str
         """
         self.project = project
-        self.site_name = self.project.smoothing_site_name
+        self.site_name = self.project.config.hpc.sitename
         self.iteration_name = iteration_name
-        self.optimizer = optimizer or self.comm.project.get_optimizer()
         self.job_toml = (
-            self.optimizer.regularization_dir / f"regularization_{iteration_name}.toml"
+            self.project.paths.reg_dir / f"regularization_{iteration_name}.toml"
         )
-        self._write_tasks(tasks)
+        if tasks is not None:
+            self._write_tasks(tasks)
         if os.path.exists(self.job_toml):
             self.tasks = toml.load(self.job_toml)
         else:
+            assert tasks is not None
             self.tasks = tasks
 
     def print(
@@ -69,10 +69,10 @@ class RegularizationHelper(object):
         )
 
     @property
-    def base_dict(self):
+    def base_dict(self) -> Dict:
         return dict(job_name="", submitted=False, retrieved=False, reposts=0)
 
-    def _write_tasks(self, tasks):
+    def _write_tasks(self, tasks) -> None:
         """
         This function writes the tasks to file or updates the task file.
         """
@@ -102,13 +102,13 @@ class RegularizationHelper(object):
         for task_name, task_dict in self.tasks.items():
             if (
                 not task_dict["submitted"]
-                and task_dict["reposts"] < self.comm.project.max_reposts
+                and task_dict["reposts"] < self.project.config.hpc.max_reposts
             ):
                 if dispatching_msg:
                     self.print("Dispatching Smoothing Tasks")
                     dispatching_msg = False
 
-                sims = self.comm.smoother.get_sims_for_smoothing_task(
+                sims = self.project.smoother.get_sims_for_smoothing_task(
                     reference_model=task_dict["reference_model"],
                     model_to_smooth=task_dict["model_to_smooth"],
                     smoothing_lengths=task_dict["smoothing_lengths"],
@@ -117,21 +117,21 @@ class RegularizationHelper(object):
 
                 job = sapi.run_many_async(
                     input_files=sims,
-                    site_name=self.comm.project.smoothing_site_name,
-                    ranks_per_job=self.comm.project.smoothing_ranks,
-                    wall_time_in_seconds_per_job=self.comm.project.smoothing_wall_time,
+                    site_name=self.project.config.hpc.sitename,
+                    ranks_per_job=self.project.config.hpc.n_diff_ranks,
+                    wall_time_in_seconds_per_job=self.project.config.hpc.diff_wall_time,
                 )
                 self.tasks[task_name]["submitted"] = True
                 self.tasks[task_name]["job_name"] = job.job_array_name
                 self._write_tasks(self.tasks)
-            elif task_dict["reposts"] >= self.comm.project.max_reposts:
+            elif task_dict["reposts"] >= self.project.config.hpc.max_reposts:
                 raise ValueError(
                     "Too many reposts in smoothing, "
                     "please check the time steps and the inputs."
                     "and reset the number of reposts in the toml file."
                 )
 
-    def update_task_status_and_retrieve(self):
+    def update_task_status_and_retrieve(self) -> None:
         for task_dict in self.tasks.values():
             if task_dict["retrieved"]:
                 continue
@@ -157,19 +157,21 @@ class RegularizationHelper(object):
                 task_dict["retrieved"] = True
                 self._write_tasks(self.tasks)
 
-    def all_retrieved(self):
+    def all_retrieved(self) -> bool:
         return all(task_dict["retrieved"] for task_dict in self.tasks.values())
 
-    def monitor_tasks(self):
+    def monitor_tasks(self) -> None:
         if not self.tasks:
             return
         self.dispatch_smoothing_tasks()
         first = True
+        sleep_time = self.project.config.hpc.sleep_time_in_seconds
         self.update_task_status_and_retrieve()  # Start with retrieval to skip loop
         while not self.all_retrieved():
             if first:
                 self.print("Monitoring smoothing jobs...")
                 first = False
-            sleep_or_process(self.comm, color="magenta", emoji_alias=":cop:")
+            time.sleep(self.project.config.hpc.sleep_time_in_seconds)
+            print(f"Will check job status again in {sleep_time} seconds.")
             self.dispatch_smoothing_tasks()
             self.update_task_status_and_retrieve()

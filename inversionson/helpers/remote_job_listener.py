@@ -2,7 +2,7 @@ import warnings
 
 from typing import Dict, List, Optional
 
-import emoji
+import emoji  # type: ignore
 from tqdm import tqdm
 
 from inversionson import InversionsonError, InversionsonWarning

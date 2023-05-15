@@ -173,57 +173,6 @@ class Mesh(Component):
         mesh = UnstructuredMesh.from_h5(filename)
         mesh.write_h5(filename)
 
-    def get_average_model(self, iteration_range: tuple) -> Path:
-        """
-        Get an average model between a list of iteration numbers.
-        Can be used to get a smoother misfit curve for validation
-        data set.
-
-        :param iteration_range: From iteration to iteration tuple
-        :type iterations: tuple
-        """
-        # I have to make sure the I am consistent with naming of things, might be a bit off there
-
-        folder_name = f"it_{iteration_range[0]}_to_{iteration_range[1]}"
-        full_path = self.average_meshes / folder_name / "mesh.h5"
-        if not os.path.exists(full_path.parent):
-            os.makedirs(full_path.parent)
-        if os.path.exists(full_path):
-            return full_path
-
-        # We copy the newest mesh from SALVUS_OPT to LASIF and write the
-        # average fields onto those.
-        # No, that may be an error, we copy the master model from LASIF
-        # and put average field onto that one.
-
-        # model = self.project.salvus_opt.get_model_path()
-        model = self.project.lasif.get_master_model()
-        shutil.copy(model, full_path)
-
-        m = UnstructuredMesh.from_h5(full_path)
-        fields = m.element_nodal_fields
-        new_fields = {field: np.zeros_like(fields[field]) for field in fields.keys()}
-        # m.element_nodal_fields = {}
-        optimizer = self.project.get_optimizer()
-        for iteration in range(iteration_range[0], iteration_range[1] + 1):
-            model_path = optimizer.get_path_for_iteration(
-                iteration, optimizer.model_path
-            )
-            m_tmp = UnstructuredMesh.from_h5(model_path)
-            for field_name, field in new_fields.items():
-                field += m_tmp.element_nodal_fields[field_name]
-
-        for field_name, field in new_fields.items():
-            field /= len(range(iteration_range[0], iteration_range[1] + 1))
-            m.attach_field(field_name, field)
-        m.write_h5(full_path)
-        self.print(
-            f"Wrote and average model of iteration {iteration_range[0]} to"
-            f" iteration {iteration_range[1]} onto mesh: {full_path}"
-        )
-
-        return full_path
-
     def sum_two_fields_on_a_mesh(
         self,
         mesh: str,
@@ -282,7 +231,7 @@ class Mesh(Component):
         else:
             m.attach_field(newname, summed_field)
 
-    def fill_inversion_params_with_zeroes(self, mesh: str):
+    def fill_inversion_params_with_zeroes(self, mesh: Union[Path, str]):
         """
         This is done because we don't interpolate every layer and then
         we want to make sure there is nothing sneaking into the gradients

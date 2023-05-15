@@ -22,7 +22,6 @@ class RemotePaths:
         self.window_dir = self.root / "WINDOWS"
         self.misfit_dir = self.root / "MISFITS"
         self.model_dir = self.root / "MODELS"
-        self.avg_model_dir = self.model_dir / "AVG_MODELS"
         self.adj_src_dir = self.root / "ADJOINT_SOURCES"
         self.receiver_dir = self.root / "RECEIVERS"
         self.script_dir = self.root / "SCRIPTS"
@@ -60,11 +59,6 @@ class RemotePaths:
         """This is the path to the cached event-specific mesh without the model interpolated"""
         return self.multi_mesh_dir / f"{event}.h5"
 
-    def get_avg_model_path(self, iteration: Optional[str] = None):
-        iteration = iteration or self.project.current_iteration
-        """This is the path to the master average mdoel."""
-        return self.avg_model_dir / f"{iteration}.h5"
-
     def create_remote_directories(self, hpc_cluster):
         all_directories = [
             d for d in self.__dict__.values() if isinstance(d, Path) and d.is_dir()
@@ -87,6 +81,9 @@ class ProjectPaths:
         self.diff_model_dir = self.root / "DIFFUSION_MODELS"
 
         self.opt_dir = self.root / "OPTIMIZATION"
+        self.reg_dir = self.opt_dir / "REGULARIZATION"
+        self.gradient_norm_dir = self.root / "GRADIENT_NORMS"
+        self.all_gradient_norms_toml = self.gradient_norm_dir / "all_gradients_norms.toml"
         self.model_dir = self.opt_dir / "MODELS"
 
     def _initialize_dirs(self):
@@ -102,6 +99,10 @@ class ProjectPaths:
 
     def get_iteration_toml(self, iteration: str) -> Path:
         return self.iteration_tomls / f"{iteration}.toml"
+
+    def gradient_norms_path(self, iteration: Optional[str] = None) -> Path:
+        iteration = iteration or self.project.current_iteration
+        return self.gradient_norm_dir / f"gradient_norms_{iteration}.toml"
 
 
 class LASIFSimulationSettings:

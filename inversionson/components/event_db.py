@@ -19,7 +19,7 @@ class EventDataBase(Component):
         self.event_numbering_file = self.project.paths.doc_dir / "event_numbering.json"
         self.enumerate_all_data()
 
-    def enumerate_all_data(self):
+    def enumerate_all_data(self) -> None:
         all_events = self.project.lasif.list_events()
         if not self.event_numbering_file.exists():
             self.event_dict = {e: i for i, e in enumerate(all_events)}
@@ -47,17 +47,17 @@ class EventDataBase(Component):
             int(idx): name for name, idx in self.event_dict.items()
         }
 
-    def get_event_idx(self, event: str):
+    def get_event_idx(self, event: str) -> int:
         return self.event_dict[event]
 
-    def get_event_indices(self, events: List[str]):
+    def get_event_indices(self, events: List[str]) -> List[int]:
         return [self.event_dict[event] for event in events]
 
     def get_event_name(self, event_idx: Union[str, int]) -> str:
         """Gives a list of string names for indices of events. Given on a list of integers given either in the form
         of ints of strings of ints.
         Strings of ints are supported to allow easy conversion from toml files."""
-        return self.flipped_event_dict[event_idx]
+        return self.flipped_event_dict[int(event_idx)]
 
     def get_event_names(self, event_indices: Union[List[str], List[int]]) -> List[str]:
         """Gives a list of string names for indices of events. Given on a list of integers given either in the form

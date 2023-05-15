@@ -24,7 +24,6 @@ class GradientSummer(object):
         :param comm: Inversionson communicator
         """
         self.project = project
-        self.optimizer = self.project.get_optimizer()
 
     def print(
         self,
@@ -133,14 +132,12 @@ class GradientSummer(object):
         if sum_vpv_vph:
             sum_two_parameters_h5(output_location, ["VPV", "VPH"])
 
-    # TODO Rename this here and in `sum_gradients`
     def _store_norms(self, hpc_cluster, remote_norms_path: str):
-        norm_dict_toml = self.optimizer.gradient_norm_path
+        norm_dict_toml = self.project.paths.gradient_norms_path()
 
         hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
-        all_norms_path = os.path.join(
-            self.optimizer.gradient_norm_dir, "all_norms.toml"
-        )
+        all_norms_path = self.project.paths.all_gradient_norms_toml
+
         norm_dict = toml.load(all_norms_path) if os.path.exists(all_norms_path) else {}
         norm_iter_dict = toml.load(norm_dict_toml)
         for event, norm in norm_iter_dict.items():

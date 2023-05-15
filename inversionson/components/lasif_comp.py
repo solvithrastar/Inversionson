@@ -3,11 +3,13 @@ import shutil
 import warnings
 import lasif.api as lapi  # type: ignore
 import toml
+import lasif
 import os
 from .component import Component
 from lasif.utils import write_custom_stf  # type: ignore
 from inversionson import InversionsonWarning
 from pathlib import Path
+
 from lasif.components.project import Project as LASIFProject  # type: ignore
 from typing import List, Dict, Union, TYPE_CHECKING, Optional
 from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
@@ -36,7 +38,7 @@ class LASIF(Component):
         line_above: bool = False,
         line_below: bool = False,
         emoji_alias: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
         self.project.storyteller.printer.print(
             message=message,
             color=color,
@@ -45,7 +47,7 @@ class LASIF(Component):
             emoji_alias=emoji_alias,
         )
 
-    def _find_project_comm(self):
+    def _find_project_comm(self) -> lasif.components.communicator.Communicaator:
         """
         Get lasif communicator.
         """
@@ -71,7 +73,7 @@ class LASIF(Component):
             it_name = it_name.replace("ITERATION_", "")
         return isinstance(iterations, list) and it_name in iterations
 
-    def move_gradient_to_cluster(self):
+    def move_gradient_to_cluster(self) -> None:
         """
         Empty gradient moved to a dedicated directory on cluster
 
@@ -95,7 +97,7 @@ class LASIF(Component):
         self.project.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
         self.project.flow.safe_put(local_grad, remote_gradient)
 
-    def set_up_iteration(self, name: str, events: Optional[List[str]] = None):
+    def set_up_iteration(self, name: str, events: Optional[List[str]] = None) -> None:
         """
         Create a new iteration in the lasif project
 
@@ -163,7 +165,7 @@ class LASIF(Component):
                 local_stf, self.project.remote_paths.stf_dir / iteration / "stf.h5"
             )
 
-    def get_master_model(self) -> str:
+    def get_master_model(self) -> Path:
         """
         Get the path to the inversion grid used in inversion
 
@@ -173,7 +175,7 @@ class LASIF(Component):
         return self.project.config.inversion.initial_model
 
     @property
-    def master_mesh(self):
+    def master_mesh(self) -> UnstructuredMesh:
         """
         Get the salvus mesh object.
         This function is there to keep the mesh object in memory.
@@ -184,10 +186,10 @@ class LASIF(Component):
         # We assume the lasif domain is the inversion grid
         if self._master_mesh is None:
             path = self.project.config.inversion.initial_model
-            self.master_mesh = UnstructuredMesh.from_h5(path)
+            self._master_mesh = UnstructuredMesh.from_h5(path)
         return self._master_mesh
 
-    def get_source(self, event_name: str) -> dict:
+    def get_source(self, event_name: str) -> Dict:
         """
         Get information regarding source used in simulation
 
@@ -235,92 +237,6 @@ class LASIF(Component):
             self.lasif_comm, weight_set=weight_set_name, events=[weight_set_name]
         )
 
-    def misfit_quantification(
-        self, event: str, validation: bool = False, window_set: Optional[str] = None
-    ):
-        """
-        Quantify misfit and calculate adjoint sources.
-
-        :param event: Name of event
-        :type event: str
-        :param n: How many ranks to run on
-        :type n: int
-        :param validation: Whether this is for a validation set, default False
-        :type validation: bool, optional
-        :param window_set: Name of a window set, if None will select a logical
-            one, default None
-        :type window: str, optional
-        """
-
-        iteration = self.project.current_iteration
-        if window_set is None:
-            if self.project.config.inversion.mini_batch:
-                window_set = f"{iteration}_{event}"
-            else:
-                window_set = event
-        # Check if adjoint sources exist:
-        adjoint_path = os.path.join(
-            self.lasif_root,
-            "ADJOINT_SOURCES",
-            f"ITERATION_{iteration}",
-            event,
-            "stf.h5",
-        )
-        if os.path.exists(adjoint_path) and not validation:
-            self.print(
-                f"Adjoint source exists for event: {event} ",
-                emoji_alias=":white_check_mark:",
-            )
-            self.print(
-                "Will not be recalculated. If you want them "
-                f"calculated, delete file: {adjoint_path}"
-            )
-        elif validation:
-            misfit = self.lasif_comm.adj_sources.calculate_validation_misfits_multiprocessing(
-                event, iteration
-            )
-        else:
-            lapi.calculate_adjoint_sources_multiprocessing(
-                self.lasif_comm,
-                iteration=iteration,
-                window_set=window_set,
-                weight_set=event,
-                events=[event],
-                num_processes=12,
-            )
-
-        misfit_toml_path = (
-            self.lasif_comm.project.paths["iterations"]
-            / f"ITERATION_{iteration}"
-            / "misfits.toml"
-        )
-        if validation:  # We just return some random value as it is not used
-            if os.path.exists(misfit_toml_path):
-                misfits = toml.load(misfit_toml_path)
-            else:
-                misfits = {}
-            if event not in misfits.keys():
-                misfits[event] = {}
-            misfits[event]["event_misfit"] = misfit
-            with open(misfit_toml_path, mode="w") as fh:
-                toml.dump(misfits, fh)
-            return 1.1
-        # See if misfit has already been written into iteration toml
-        if self.project.misfits[event] == 0.0:
-            misfit_toml_path = (
-                self.lasif_comm.project.paths["iterations"]
-                / f"ITERATION_{iteration}"
-                / "misfits.toml"
-            )
-            misfit = toml.load(misfit_toml_path)[event]["event_misfit"]
-        else:
-            misfit = self.project.misfits[event]
-            self.print(
-                f"Misfit for {event} has already been computed.",
-                emoji_alias=":white_check_mark:",
-            )
-        return misfit
-
     def _already_processed(self, event: str) -> bool:
         """
         Looks for processed data for a certain event
@@ -341,7 +257,7 @@ class LASIF(Component):
             os.path.join(processed_data_folder, event, processed_filename)
         )
 
-    def process_data(self, event: str):
+    def process_data(self, event: str) -> None:
         """
         Process the data for the periods specified in Lasif project.
 
@@ -388,3 +304,46 @@ class LASIF(Component):
         folder = self.lasif_root / "SYNTHETICS" / "EARTHQUAKES" / iteration / event
         folder.parent.mkdir(exist_ok=True, parents=True)
         return folder / "receivers.h5"
+
+    def calculate_validation_misfit(self, event: str):
+        """
+        Quantify misfit and calculate adjoint sources.
+
+        :param event: Name of event
+        :type event: str
+        :param n: How many ranks to run on
+        :type n: int
+        :param validation: Whether this is for a validation set, default False
+        :type validation: bool, optional
+        :param window_set: Name of a window set, if None will select a logical
+            one, default None
+        :type window: str, optional
+        """
+
+        iteration = self.project.current_iteration
+        assert self.project.is_validation_event(event)
+
+        # Check if adjoint sources exist:
+
+        misfit = (
+            self.lasif_comm.adj_sources.calculate_validation_misfits_multiprocessing(
+                event, iteration
+            )
+        )
+
+        misfit_toml_path = (
+            self.lasif_comm.project.paths["iterations"]
+            / f"ITERATION_{iteration}"
+            / "misfits.toml"
+        )
+        if os.path.exists(misfit_toml_path):
+            misfits = toml.load(misfit_toml_path)
+        else:
+            misfits = {}
+        if event not in misfits.keys():
+            misfits[event] = {}
+        misfits[event]["event_misfit"] = misfit
+        with open(misfit_toml_path, mode="w") as fh:
+            toml.dump(misfits, fh)
+        return misfit
+  

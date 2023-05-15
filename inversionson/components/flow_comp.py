@@ -6,17 +6,19 @@ import time
 import pathlib
 import toml
 import random
-from typing import Optional, Union, List, TYPE_CHECKING
+from typing import Dict, Optional, Tuple, Union, List, TYPE_CHECKING
 
 from .component import Component
-from salvus.flow import schema_validator  # type: ignore
-import typing
+from salvus.flow import schema_validator
+
+import salvus.flow
 from salvus.flow.simple_config.simulation import Waveform  # type: ignore
-from salvus.flow.sites import job as s_job  # type: ignore
-from salvus.flow.api import get_site  # type: ignore
+from salvus.flow.sites import job as s_job, BaseSite  # type: ignore
+from salvus.flow.api import get_site
 from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
 from salvus.flow.db import SalvusFlowDoesNotExistDBException  # type: ignore
+from salvus.flow.sites.salvus_job import SalvusJob  # type: ignore
 
 if TYPE_CHECKING:
     from inversionson.project import Project
@@ -38,7 +40,7 @@ class SalvusFlow(Component):
         line_above: bool = False,
         line_below: bool = False,
         emoji_alias: Optional[Union[str, List[str]]] = None,
-    ):
+    ) -> None:
         self.project.storyteller.printer.print(
             message=message,
             color=color,
@@ -48,7 +50,7 @@ class SalvusFlow(Component):
         )
 
     @property
-    def hpc_cluster(self):
+    def hpc_cluster(self) -> BaseSite:
         if not self.__hpc_cluster:
             self.__hpc_cluster = get_site(self.project.config.hpc.sitename)
         return self.__hpc_cluster
@@ -57,7 +59,7 @@ class SalvusFlow(Component):
         self,
         local_file: Union[pathlib.Path, str],
         remote_file: Union[pathlib.Path, str],
-    ):
+    ) -> None:
         tmp_remote_file = f"{remote_file}_tmp"
         self.hpc_cluster.remote_put(local_file, tmp_remote_file)
         self.hpc_cluster.run_ssh_command(f"mv {tmp_remote_file} {remote_file}")
@@ -66,13 +68,13 @@ class SalvusFlow(Component):
         self,
         remote_file: Union[pathlib.Path, str],
         local_file: Union[pathlib.Path, str],
-    ):
+    ) -> None:
         tmp_local_path = f"{local_file}_tmp"
         self.hpc_cluster.remote_get(remote_file, tmp_local_path)
         shutil.move(tmp_local_path, local_file)
 
     def _get_job_name(
-        self, event: str, sim_type: str, new=True, iteration="current"
+        self, event: str, sim_type: str, new: bool = True, iteration: str = "current"
     ) -> str:
         """
         We need to relate iteration and event to job name. Here you can find
@@ -130,12 +132,16 @@ class SalvusFlow(Component):
         self.project.update_iteration_toml()
         return job
 
-    def get_job_name(self, event: str, sim_type: str, iteration="current"):
+    def get_job_name(
+        self, event: str, sim_type: str, iteration: str = "current"
+    ) -> str:
         return self._get_job_name(
             event=event, sim_type=sim_type, new=False, iteration=iteration
         )
 
-    def get_job(self, event: str, sim_type: str, iteration: Optional[str] = None):
+    def get_job(
+        self, event: str, sim_type: str, iteration: Optional[str] = None
+    ) -> SalvusJob:
         """
         Get Salvus.flow.job.Job Object
         """
@@ -170,7 +176,9 @@ class SalvusFlow(Component):
             job_name = it_dict["events"][event_index]["job_info"][sim_type]["name"]
         return sapi.get_job(job_name=job_name, site_name=site_name)
 
-    def __get_custom_job(self, event: str, sim_type: str, iteration=None):
+    def __get_custom_job(
+        self, event: str, sim_type: str, iteration: Optional[str] = None
+    ) -> s_job.Job:
         """
         A get_job function which handles job types which are not of type
         salvus.flow.sites.salvus_job.SalvusJob
@@ -181,8 +189,7 @@ class SalvusFlow(Component):
         :type sim_type: str
         """
         gradient = False
-        if not iteration:
-            iteration = self.project.current_iteration
+        iteration = iteration or self.project.current_iteration
         if iteration != self.project.current_iteration:
             self.project.change_attribute(
                 "current_iteration", self.project.current_iteration
@@ -239,7 +246,7 @@ class SalvusFlow(Component):
             initialize_on_site=False,
         )
 
-    def retrieve_outputs(self, event_name: str, sim_type: str):
+    def retrieve_seismograms(self, event_name: str) -> None:
         """
         Currently we need to use command line salvus opt to
         retrieve the seismograms. There must be some better way
@@ -251,34 +258,21 @@ class SalvusFlow(Component):
         :type sim_type: str
         """
 
-        job_name = self._get_job_name(event=event_name, sim_type=sim_type, new=False)
+        job_name = self._get_job_name(event=event_name, sim_type="forward", new=False)
         salvus_job = sapi.get_job(
             site_name=self.project.config.hpc.sitename, job_name=job_name
         )
-        if sim_type == "forward":
-            destination = self.project.lasif.find_seismograms(
-                event=event_name, iteration=self.project.current_iteration
-            )
 
-        elif sim_type == "adjoint":
-            destination = self.project.lasif.find_gradient(
-                iteration=self.project.current_iteration,
-                event=event_name,
-                smooth=False,
-                inversion_grid=False,
-                just_give_path=True,
-            )
+        destination = self.project.lasif.find_seismograms(
+            event=event_name, iteration=self.project.current_iteration
+        )
 
-        else:
-            raise InversionsonError(
-                f"Simulation type {sim_type} not supported in this function"
-            )
         salvus_job.copy_output(
             destination=os.path.dirname(destination),
             allow_existing_destination_folder=True,
         )
 
-    def forward_simulation_from_dict(self, event: str):
+    def forward_simulation_from_dict(self, event: str) -> Waveform:
         """
         Download a dictionary with the simulation object and use it to create a local simulation object
         without having any of the relevant data locally.
@@ -307,17 +301,13 @@ class SalvusFlow(Component):
 
         sim_dict = toml.load(destination)
 
-        local_dummy_mesh_path = self.project.lasif.get_master_model()
-        local_dummy_mesh = self.project.lasif.master_mesh
-        for key in ["mesh", "model", "geometry"]:
-            sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
-
-        return self.simulation_from_dict(sim_dict, local_dummy_mesh)
+        self._set_mesh_paths(sim_dict)
+        return self.simulation_from_dict(sim_dict, self.project.lasif.master_mesh)
 
     @classmethod
     def simulation_from_dict(
-        cls, dictionary: typing.Dict, mesh_object: UnstructuredMesh
-    ) -> "Waveform":
+        cls, dictionary: Dict, mesh_object: UnstructuredMesh
+    ) -> Waveform:
         """
         Custom version of the from Waveform.from_dict method
         to allow passing of mesh objects and prevent reading mesh files
@@ -361,7 +351,7 @@ class SalvusFlow(Component):
 
         return w
 
-    def construct_adjoint_simulation_from_dict(self, event: str):
+    def construct_adjoint_simulation_from_dict(self, event: str) -> Waveform:
         """
         Download a dictionary with the simulation object and use it to create a local simulation object
         without having any of the relevant data locally.
@@ -394,23 +384,24 @@ class SalvusFlow(Component):
 
         adjoint_sim_dict = toml.load(destination)
         remote_mesh = adjoint_sim_dict["domain"]["mesh"]["filename"]
-        local_dummy_mesh_path = self.project.lasif.get_master_model()
-        local_dummy_mesh = self.project.lasif.master_mesh
-        for key in ["mesh", "model", "geometry"]:
-            adjoint_sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
-
-        w = self.simulation_from_dict(adjoint_sim_dict, local_dummy_mesh)
+        self._set_mesh_paths(adjoint_sim_dict)
+        w = self.simulation_from_dict(adjoint_sim_dict, self.project.lasif.master_mesh)
         w.set_mesh(f"REMOTE:{str(remote_mesh)}")
         return w
+
+    def _set_mesh_paths(self, sim_dict: Dict) -> None:
+        local_dummy_mesh_path = self.project.lasif.get_master_model()
+        for key in ["mesh", "model", "geometry"]:
+            sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
 
     def submit_job(
         self,
         event: str,
         simulation: object,
         sim_type: str,
-        site="daint",
-        ranks=1024,
-    ):
+        site: str = "daint",
+        ranks: int = 1024,
+    ) -> None:
         """
         Submit a job with some information. Salvus flow returns an object
         which can be used to interact with job.
@@ -468,7 +459,9 @@ class SalvusFlow(Component):
                 poll_interval_in_seconds=self.project.config.hpc.sleep_time_in_seconds
             )
 
-    def get_job_status(self, event: str, sim_type: str, iteration="current") -> str:
+    def get_job_status(
+        self, event: str, sim_type: str, iteration: str = "current"
+    ) -> salvus.flow.sites.types.JobStatus:
         """
         Check the status of a salvus opt job
 
@@ -489,7 +482,9 @@ class SalvusFlow(Component):
         )
         return job.update_status(force_update=True)
 
-    def get_job_file_paths(self, event: str, sim_type: str) -> dict:
+    def get_job_file_paths(
+        self, event: str, sim_type: str
+    ) -> Tuple[Dict[Union[str, Tuple], pathlib.PosixPath], bool]:
         """
         Get the output folder for an event
 
@@ -513,7 +508,7 @@ class SalvusFlow(Component):
 
     def delete_stored_wavefields(
         self, iteration: str, sim_type: str, event_name: Optional[str] = None
-    ):
+    ) -> None:
         """
         Delete all stored jobs for a certain simulation type of an iteration
 

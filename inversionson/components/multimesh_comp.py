@@ -39,33 +39,6 @@ class MultiMesh(Component):
             emoji_alias=emoji_alias,
         )
 
-    def find_model_file(self, iteration: str):
-        """
-        Find the mesh which contains the model for this iteration
-
-        :param iteration: Name of iteration
-        :type iteration: str
-        """
-        optimizer = self.project.get_optimizer()
-        model = optimizer.model_path
-        val_it_itv = self.project.config.monitoring.iterations_between_validation_checks
-
-        if "validation_" in iteration:
-            iteration = iteration.replace("validation_", "")
-            if (
-                val_it_itv > 1
-                and iteration != "it0000_model"
-                and iteration != "model_00000"
-            ):
-                it_number = optimizer.iteration_number
-                old_it = it_number - val_it_itv + 1
-                model = (
-                    self.project.salvus_mesher.average_meshes
-                    / f"it_{old_it}_to_{it_number}"
-                    / "mesh.h5"
-                )
-        return model
-
     def prepare_forward(
         self,
         event: str,
@@ -207,7 +180,11 @@ class MultiMesh(Component):
 
         remote_weights_path = self.project.remote_paths.interp_weights_dir / tag / event
 
-        target_mesh = self.project.remote_paths.master_gradient if gradient else self.project.remote_paths.get_event_specific_mesh_path(event)  
+        target_mesh = (
+            self.project.remote_paths.master_gradient
+            if gradient
+            else self.project.remote_paths.get_event_specific_mesh_path(event)
+        )
 
         information = toml.load(toml_filename) if os.path.exists(toml_filename) else {}
         information["gradient"] = gradient
@@ -367,17 +344,12 @@ class MultiMesh(Component):
         Get the interpolation commands needed to do remote interpolations.
         If not gradient, we will look for a smoothie mesh and create it if needed.
         """
-        average_model = bool(
-            self.project.is_validation_event(event)
-            and self.project.config.monitoring.use_model_averaging
-            and "00000" not in self.project.current_iteration
-        )
 
         # Either the raw gradient or the model
         if gradient:
-            mesh_to_interpolate_from = self.project.remote_paths.get_event_specific_gradient(event)
-        elif average_model:
-            mesh_to_interpolate_from = self.project.remote_paths.get_avg_model_path()
+            mesh_to_interpolate_from = (
+                self.project.remote_paths.get_event_specific_gradient(event)
+            )
         else:
             mesh_to_interpolate_from = self.project.remote_paths.get_master_model_path()
 

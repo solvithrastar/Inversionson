@@ -132,18 +132,9 @@ class IterationListener(object):
         w = self.project.flow.forward_simulation_from_dict(event)
 
         # Get the average model when validation event
-        validation = bool(
-            (
-                self.project.is_validation_event(event)
-                and self.project.config.monitoring.use_model_averaging
-                and "00000" not in self.project.current_iteration
-            )
-        )
 
         if self.project.config.meshing.multi_mesh:
             remote_model = self.project.remote_paths.get_event_specific_model(event)
-        elif validation:
-            remote_model = self.project.remote_paths.get_avg_model_path()
         else:
             remote_model = self.project.remote_paths.get_master_model_path()
 
@@ -161,7 +152,7 @@ class IterationListener(object):
         self.print(f"Submitted forward job for event: {event}")
 
     def __retrieve_seismograms(self, event: str, verbose: bool = False):
-        self.project.flow.retrieve_outputs(event_name=event, sim_type="forward")
+        self.project.flow.retrieve_seismograms(event_name=event, sim_type="forward")
         if verbose:
             self.print(f"Copied seismograms for event {event} to lasif folder")
 
@@ -334,64 +325,23 @@ class IterationListener(object):
         window_set_name = f"{iteration}_{event}"
         self.project.lasif.select_windows(window_set_name=window_set_name, event=event)
 
-    def __need_misfit_quantification(
-        self, iteration: str, event: str, window_set: str
-    ) -> bool:
-        """
-        Check whether validation misfit needs to be computed or not
-
-        :param iteration: Name of iteration
-        :type iteration: str
-        :param event: Name of event
-        :type event: str
-        :param window_set: Name of window set
-        :type window_set: str
-        """
-        validation_dict = self.project.storyteller.validation_dict
-
-        quantify_misfit = (
-            iteration not in validation_dict.keys()
-            or event not in validation_dict[iteration]["events"].keys()
-            or validation_dict[iteration]["events"][event] == 0.0
-        )
-        if not quantify_misfit:
-            message = (
-                f"Will not quantify misfit for event {event}, "
-                f"iteration {iteration} "
-                f"window set {window_set}. If you want it computed, "
-                f"change value in validation toml to 0.0"
-            )
-            self.print(message)
-
-        return quantify_misfit
-
     def __validation_misfit_quantification(self, event: str, window_set: str):
 
-        iteration = self.project.current_iteration
+        if not self.project.is_validation_event(event):
+            return
 
-        if self.__need_misfit_quantification(
-            iteration=iteration, event=event, window_set=window_set
-        ):
-            self.project.lasif.misfit_quantification(
-                event, validation=True, window_set=window_set
-            )
-            self.project.storyteller.report_validation_misfit(
-                iteration=iteration,
-                event=event,
-                total_sum=False,
-            )
+        self.project.lasif.calculate_validation_misfit(
+            event, validation=True, window_set=window_set
+        )
+        self.project.storyteller.report_validation_misfit(
+            iteration=self.project.current_iteration,
+            event=event,
+        )
 
-            self.project.storyteller.report_validation_misfit(
-                iteration=self.project.current_iteration,
-                event=event,
-                total_sum=True,
-            )
-
-    def __misfit_quantification(
+    def _misfit_quantification(
         self,
         event: str,
-        window_set: Optional[str] = None,
-    ):
+    ) -> None:
         """
         Compute Misfits and Adjoint sources
 
@@ -402,10 +352,6 @@ class IterationListener(object):
             self.__validation_misfit_quantification(
                 event=event, window_set=self.project.current_iteration
             )
-            return
-        misfit = self.project.lasif.misfit_quantification(event, window_set=window_set)
-
-        self.project.change_attribute(attribute=f'misfits["{event}"]', new_value=misfit)
 
     def __dispatch_adjoint_simulation(self, event: str, verbose: bool = False):
         """
@@ -446,7 +392,6 @@ class IterationListener(object):
         self,
         event: str,
         windows: bool,
-        window_set: Optional[str] = None,
         verbose: bool = False,
     ):
         """
@@ -483,7 +428,7 @@ class IterationListener(object):
                 "Quantify Misfit", color="magenta", line_above=True, emoji_alias=":zap:"
             )
 
-        self.__misfit_quantification(event, window_set=window_set)
+        self._misfit_quantification(event)
 
     def __listen_to_prepare_forward(self, events: List[str], verbose: bool):
         """
@@ -560,7 +505,6 @@ class IterationListener(object):
                 self.__work_with_retrieved_seismograms(
                     event,
                     windows,
-                    window_set,
                     verbose,
                 )
             self.project.change_attribute(
