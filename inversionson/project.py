@@ -95,6 +95,7 @@ class ProjectPaths:
         self.diff_model_dir = self.root / "DIFFUSION_MODELS"
 
         self.opt_dir = self.root / "OPTIMIZATION"
+        self.gradient_dir = self.opt_dir / "GRADIENTS"
         self.reg_dir = self.opt_dir / "REGULARIZATION"
         self.gradient_norm_dir = self.opt_dir / "GRADIENT_NORMS"
         self.all_gradient_norms_toml = (
@@ -110,6 +111,7 @@ class ProjectPaths:
             self.misc_dir,
             self.diff_model_dir,
             self.opt_dir,
+            self.gradient_dir,
             self.reg_dir,
             self.gradient_norm_dir,
             self.model_dir,
@@ -120,6 +122,9 @@ class ProjectPaths:
 
     def get_model_path(self, model_descriptor: str) -> Path:
         return self.model_dir / f"{model_descriptor}.h5"
+
+    def get_raw_gradient_path(self, model_descriptor: str) -> Path:
+        return self.gradient_dir / f"grad_{model_descriptor}.h5"
 
     def get_iteration_toml(self, iteration: str) -> Path:
         return self.iteration_tomls / f"{iteration}.toml"

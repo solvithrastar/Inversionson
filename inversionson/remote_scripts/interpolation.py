@@ -60,6 +60,7 @@ def process_data(processing_info):
     """
 
     from inversionson.hpc_processing.data_processing import preprocessing_function_asdf
+
     preprocessing_function_asdf(processing_info)
 
 
@@ -100,15 +101,11 @@ def create_mesh(mesh_info, source_info):
 
 
 def get_standard_gradient(mesh_info):
-    remote_gradient = (
-        pathlib.Path(mesh_info["mesh_folder"]) / "standard_gradient" / "mesh.h5"
-    )
-
-    shutil.copy(remote_gradient, "./to_mesh.h5")
+    shutil.copy(mesh_info["master_gradient"], "./to_mesh.h5")
 
 
-def move_mesh(mesh_folder, event_name):
-    mesh_location = pathlib.Path(mesh_folder) / event_name / "mesh.h5"
+def move_mesh(mesh_path):
+    mesh_location = pathlib.Path(mesh_path)
     if not os.path.exists(mesh_location):
         if not os.path.exists(mesh_location.parent):
             os.makedirs(mesh_location.parent)
@@ -134,9 +131,8 @@ def move_nodal_field_to_gradient(mesh_info, field):
     """
     from salvus.mesh.unstructured_mesh import UnstructuredMesh as um
 
-    mesh_location = os.path.join(
-        mesh_info["mesh_folder"], mesh_info["event_name"], "mesh.h5"
-    )
+    mesh_location = mesh_info["event_specific_mesh"]
+
     m_for = um.from_h5(mesh_location)
     m_grad = um.from_h5("from_mesh.h5")
     m_grad.attach_field(field, m_for.element_nodal_fields[field])
@@ -310,9 +306,7 @@ if __name__ == "__main__":
         shutil.move("./to_mesh.h5", "./output/mesh.h5")
     if not info["gradient"]:
         if info["multi-mesh"]:
-            move_mesh(
-                mesh_folder=mesh_info["mesh_folder"], event_name=mesh_info["event_name"]
-            )
+            move_mesh(mesh_info["event_specific_mesh"])
             print("Meshed moved to longer term storage")
         if info["create_simulation_dict"]:
             print("Creating simulation object")

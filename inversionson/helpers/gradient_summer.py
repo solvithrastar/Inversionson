@@ -104,9 +104,9 @@ class GradientSummer(object):
         info = dict(
             filenames=gradient_paths,
             parameters=self.project.config.inversion.inversion_parameters,
-            output_gradient=remote_output_path,
+            output_gradient=str(remote_output_path),
             events_list=events,
-            gradient_norms_path=remote_norms_path,
+            gradient_norms_path=str(remote_norms_path),
             batch_average=batch_average,
         )
 

@@ -182,17 +182,14 @@ class MultiMesh(Component):
 
         remote_weights_path = self.project.remote_paths.interp_weights_dir / tag / event
 
-        target_mesh = (
-            self.project.remote_paths.master_gradient
-            if gradient
-            else self.project.remote_paths.get_event_specific_mesh_path(event)
-        )
-
         information = toml.load(toml_filename) if os.path.exists(toml_filename) else {}
         information["gradient"] = gradient
         information["mesh_info"] = {
             "event_name": event,
-            "target_mesh": str(target_mesh),
+            "event_specific_mesh": str(
+                self.project.remote_paths.get_event_specific_mesh_path(event)
+            ),
+            "master_gradient": str(self.project.remote_paths.master_gradient),
             "min_period": self.project.lasif_settings.min_period,
             "elems_per_quarter": self.project.config.meshing.elements_per_azimuthal_quarter,
             "interpolation_weights": remote_weights_path,

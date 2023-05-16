@@ -751,13 +751,15 @@ class IterationListener(object):
                 elif len(all_adj_retrieved_events) == num_non_validation_events:
                     break
 
+            if not any_checked:
+                print("nothing chcked")
+                break
+
             if not any_retrieved:
                 print(
                     f"Waiting for {self.project.config.hpc.sleep_time_in_seconds} seconds."
                 )
                 time.sleep(self.project.config.hpc.sleep_time_in_seconds)
-            if not any_checked:
-                break
 
         # Finally update the estimated timestep
         for event in non_validation_events[:1]:

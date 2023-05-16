@@ -56,8 +56,7 @@ class Mesh(Component):
             m.attach_field(param, zero_element_nodal)
         m.write_h5(mesh)
 
-
-    def move_model_to_cluster(self, iteration: Optional[str]=None):
+    def move_model_to_cluster(self, iteration: Optional[str] = None):
         iteration = iteration or self.project.current_iteration
         local_model = self.project.paths.get_model_path(iteration)
         remote_model = self.project.remote_paths.get_master_model_path(iteration)
