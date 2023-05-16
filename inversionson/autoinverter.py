@@ -90,16 +90,16 @@ class AutoInverter(object):
         """
         This function will be extracted and become user configurable.
         """
-        from optson.optimizer import Optimizer
-        from optson.methods import AdamUpdate
-        from optson.stopping_criterion import BasicStoppingCriterion
-        from optson.monitor import BasicMonitor
+        from optson.optimizer import Optimizer  # type: ignore
+        from optson.methods import AdamUpdate  # type: ignore
+        from optson.stopping_criterion import BasicStoppingCriterion  # type: ignore
+        from optson.monitor import BasicMonitor  # type: ignore
         from inversionson.optson_link.problem import Problem
         from inversionson.optson_link.helpers import mesh_to_vector
 
         sc = BasicStoppingCriterion(tolerance=1e-5, max_iterations=1)
         monitor = BasicMonitor(step=1)
-        problem = Problem()
+        problem = Problem(project=self.project)
 
         opt = Optimizer(
             problem=problem,
@@ -107,8 +107,12 @@ class AutoInverter(object):
             stopping_criterion=sc,
             monitor=monitor,
         )
-        m = opt.iterate(x0=mesh_to_vector(self.project.lasif.master_mesh))
-        print(m.x)
+        opt.iterate(
+            x0=mesh_to_vector(
+                self.project.lasif.master_mesh,
+                params_to_invert=self.project.config.inversion.inversion_parameters,
+            )
+        )
 
     def run_inversion(self):
         self.move_files_to_cluster()

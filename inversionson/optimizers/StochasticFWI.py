@@ -3,7 +3,7 @@ from typing import List, Optional
 import numpy as np
 import json
 
-from inversionson.helpers.autoinverter_helpers import IterationListener
+from inversionson.helpers.iteration_listener import IterationListener
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.utils import write_xdmf

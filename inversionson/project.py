@@ -190,7 +190,7 @@ class Project(object):
         self.lasif = LASIF(project=self)
         self.multi_mesh = MultiMesh(project=self)
         self.flow = SalvusFlow(project=self)
-        self.salvus_mesher = Mesh(project=self)
+        self.mesh = Mesh(project=self)
         self.storyteller = StoryTeller(project=self)
         self.smoother = Smoother(project=self)
         self.event_db = EventDataBase(project=self)
@@ -239,15 +239,12 @@ class Project(object):
             shutil.copyfile(iteration_toml, backup)
 
         it_dict = {"name": iteration, "events": {}}
-        if not self.config.meshing.multi_mesh:
-            it_dict["remote_simulation_mesh"] = ""
 
         job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
 
         for event in events:
             str_idx = str(self.event_db.get_event_idx(event))
-            if self.is_validation_event(event):
-                jobs = {"prepare_forward": job_dict, "forward": job_dict}
+            jobs = {"prepare_forward": job_dict, "forward": job_dict}
 
             if not self.is_validation_event(event):
                 jobs.update(
@@ -257,7 +254,7 @@ class Project(object):
                     }
                 )
                 if self.config.meshing.multi_mesh:
-                    jobs.update({"gradient_interp": job_dict})
+                    jobs["gradient_interp"] = job_dict
 
             it_dict["events"][str_idx] = {
                 "name": event,
@@ -276,7 +273,13 @@ class Project(object):
         assert isinstance(attribute, str)
         if type(new_value) not in [list, bool, dict, float, int, str]:
             raise ValueError(f"Method not implemented for type {type(new_value)}.")
-        setattr(self, attribute, new_value)
+
+        if isinstance(new_value, str):
+            command = f'self.{attribute} = "{new_value}"'
+        else:
+            command = f"self.{attribute} = {new_value}"
+
+        exec(command)
         self.update_iteration_toml()
 
     def update_iteration_toml(self, iteration: Optional[str] = None):
@@ -348,9 +351,10 @@ class Project(object):
                 self.adjoint_job[event] = it_dict["events"][ev_idx]["job_info"][
                     "adjoint"
                 ]
-                self.gradient_interp_job[event] = it_dict["events"][ev_idx]["job_info"][
-                    "gradient_interp"
-                ]
+                if self.config.meshing.multi_mesh:
+                    self.gradient_interp_job[event] = it_dict["events"][ev_idx][
+                        "job_info"
+                    ]["gradient_interp"]
                 self.updated[event] = it_dict["events"][ev_idx]["usage_updated"]
 
     def get_old_iteration_info(self, iteration: str) -> dict:

@@ -307,13 +307,17 @@ class MultiMesh(Component):
             )
         else:
             side_sets = []
-
+        simulation_time_step = (
+            self.project.simulation_time_step
+            if self.project.simulation_time_step
+            else False
+        )
         information["simulation_info"] = {
             "end_time": self.project.lasif_settings.end_time,
             "time_step": self.project.lasif_settings.time_step,
             "start_time": self.project.lasif_settings.start_time,
             "minimum_period": self.project.lasif_settings.min_period,
-            "simulation_time_step": self.project.simulation_time_step,
+            "simulation_time_step": simulation_time_step,
             "attenuation": self.project.lasif_settings.attenuation,
             "absorbing_boundaries": self.project.config.inversion.absorbing_boundaries,
             "side_sets": side_sets,

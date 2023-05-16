@@ -94,7 +94,7 @@ class LASIF(Component):
         )
         local_grad.mkdir(parents=True, exist_ok=True)
         shutil.copy(self.get_master_model(), local_grad)
-        self.project.salvus_mesher.fill_inversion_params_with_zeroes(local_grad)
+        self.project.mesh.fill_inversion_params_with_zeroes(local_grad)
         self.project.flow.safe_put(local_grad, remote_gradient)
 
     def set_up_iteration(self, name: str, events: Optional[List[str]] = None) -> None:

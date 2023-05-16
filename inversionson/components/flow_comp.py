@@ -156,7 +156,7 @@ class SalvusFlow(Component):
             "hpc_processing",
         }
         if custom_job:
-            return self.__get_custom_job(
+            return self._get_custom_job(
                 event=event, sim_type=sim_type, iteration=iteration
             )
 
@@ -176,7 +176,7 @@ class SalvusFlow(Component):
             job_name = it_dict["events"][event_index]["job_info"][sim_type]["name"]
         return sapi.get_job(job_name=job_name, site_name=site_name)
 
-    def __get_custom_job(
+    def _get_custom_job(
         self, event: str, sim_type: str, iteration: Optional[str] = None
     ) -> s_job.Job:
         """
@@ -392,7 +392,7 @@ class SalvusFlow(Component):
     def _set_mesh_paths(self, sim_dict: Dict) -> None:
         local_dummy_mesh_path = self.project.lasif.get_master_model()
         for key in ["mesh", "model", "geometry"]:
-            sim_dict["domain"][key]["filename"] = local_dummy_mesh_path
+            sim_dict["domain"][key]["filename"] = str(local_dummy_mesh_path)
 
     def submit_job(
         self,
