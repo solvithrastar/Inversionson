@@ -39,7 +39,6 @@ class IterationListener(object):
         events: List[str],
         misfit_only: bool = False,
         submit_adjoint: bool = True,
-        control_group_events: Optional[List[str]] = None,
         prev_control_group_events: Optional[List[str]] = None,
         prev_iteration: Optional[str] = None,
     ):
@@ -48,13 +47,10 @@ class IterationListener(object):
         """
         if prev_control_group_events is not None:
             assert prev_iteration is not None
-        if control_group_events is None:
-            control_group_events = []
         if prev_control_group_events is None:
             prev_control_group_events = []
         self.project = project
         self.events = events
-        self.control_group_events = control_group_events
         self.prev_control_group_events = prev_control_group_events
         self.misfit_only = misfit_only
         self.submit_adjoint = submit_adjoint

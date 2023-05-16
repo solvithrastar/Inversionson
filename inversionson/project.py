@@ -271,6 +271,7 @@ class Project(object):
 
         with open(iteration_toml, "w") as fh:
             toml.dump(it_dict, fh)
+        self.set_iteration_attributes(iteration)
 
     def change_attribute(
         self, attribute: str, new_value: Union[list, bool, dict, float, int, str]

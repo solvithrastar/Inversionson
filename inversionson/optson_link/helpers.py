@@ -1,10 +1,13 @@
-from typing import List
+from typing import List, Union
 from salvus.mesh.unstructured_mesh import UnstructuredMesh as UM
 from optson.problem import OptsonVec
+from pathlib import Path
 import numpy as np
 
 
-def mesh_to_vector(m: UM, params_to_invert: List[str]) -> OptsonVec:
+def mesh_to_vector(m: Union[UM, str, Path], params_to_invert: List[str]) -> OptsonVec:
+    if isinstance(m, (str, Path)):
+        m = UM.from_h5(m)
     par_list = [m.element_nodal_fields[param].flatten() for param in params_to_invert]
     return OptsonVec(np.concatenate(par_list))
 

@@ -5,7 +5,7 @@ from typing import Optional, Union, List
 from pathlib import Path
 
 from inversionson.project import Project
-from inversionson.utils import sum_two_parameters_h5
+from inversionson.utils import sum_two_parameters_h5, write_xdmf
 
 
 SUM_GRADIENTS_SCRIPT_PATH = (
@@ -131,6 +131,7 @@ class GradientSummer(object):
         # Only sum the raw gradient in AdamOpt, not the update
         if sum_vpv_vph:
             sum_two_parameters_h5(output_location, ["VPV", "VPH"])
+        write_xdmf(output_location)
 
     def _store_norms(self, hpc_cluster, remote_norms_path: str):
         norm_dict_toml = self.project.paths.gradient_norms_path()
