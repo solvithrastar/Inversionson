@@ -69,6 +69,7 @@ class InversionSettings:
     mini_batch: bool = True  # Use mini-batches or not.
     initial_batch_size: int = 4
     source_cut_radius_in_km: float = 100.0
+    smoothing_lengths: List[float] = field(default_factory=lambda: [0.5, 0.5, 0.5])
     # Values between 0.55 - 1.0. The number represents the quantile where the gradient will be clipped. If 1.0 nothing will be clipped.
     clipping_percentile: float = 1.0
     # You specify the length of the absorbing boundaries in the lasif config

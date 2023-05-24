@@ -45,10 +45,11 @@ class IterationListener(object):
         """
         Extension to include special cases for control group related stuff
         """
-        if prev_control_group_events is not None:
-            assert prev_iteration is not None
-        if prev_control_group_events is None:
-            prev_control_group_events = []
+        prev_control_group_events = prev_control_group_events or []
+        if prev_control_group_events != []:
+            assert (
+                prev_iteration is not None
+            ), f"prev_iteration cannot be none with control_events: {prev_control_group_events}"
         self.project = project
         self.events = events
         self.prev_control_group_events = prev_control_group_events
@@ -411,10 +412,10 @@ class IterationListener(object):
                 attribute=f'prepare_forward_job["{event}"]["submitted"]',
                 new_value=False,
             )
-            self.project.flow.delete_stored_wavefields(
+            self.project.flow.delete_remote_content(
                 iteration=self.project.current_iteration,
                 sim_type="prepare_forward",
-                event_name=event,
+                event=event,
             )
             self._prepare_forward(event=event)
         if len(vint_job_listener.events_retrieved_now) > 0:
@@ -473,10 +474,10 @@ class IterationListener(object):
                 attribute=f'forward_job["{event}"]["submitted"]',
                 new_value=False,
             )
-            self.project.flow.delete_stored_wavefields(
+            self.project.flow.delete_remote_content(
                 iteration=self.project.current_iteration,
                 sim_type="forward",
-                event_name=event,
+                event=event,
             )
             self._run_forward(event=event)
         if len(for_job_listener.events_retrieved_now) > 0:
@@ -534,10 +535,10 @@ class IterationListener(object):
                 attribute=f'hpc_processing_job["{event}"]["submitted"]',
                 new_value=False,
             )
-            self.project.flow.delete_stored_wavefields(
+            self.project.flow.delete_remote_content(
                 iteration=self.project.current_iteration,
                 sim_type="hpc_processing",
-                event_name=event,
+                event=event,
             )
             self._launch_hpc_processing_job(event)
 
@@ -572,10 +573,10 @@ class IterationListener(object):
                 attribute=f'adjoint_job["{event}"]["submitted"]',
                 new_value=False,
             )
-            self.project.flow.delete_stored_wavefields(
+            self.project.flow.delete_remote_content(
                 iteration=self.project.current_iteration,
                 sim_type="adjoint",
-                event_name=event,
+                event=event,
             )
             self.__dispatch_adjoint_simulation(event=event, verbose=verbose)
 
@@ -748,7 +749,6 @@ class IterationListener(object):
                     break
 
             if not any_checked:
-                print("nothing chcked")
                 break
 
             if not any_retrieved:

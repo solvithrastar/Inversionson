@@ -22,6 +22,7 @@ class RemotePaths:
         self.window_dir = self.root / "WINDOWS"
         self.misfit_dir = self.root / "MISFITS"
         self.model_dir = self.root / "MODELS"
+        self.sum_dir = self.root / "SUMMING"
         self.adj_src_dir = self.root / "ADJOINT_SOURCES"
         self.receiver_dir = self.root / "RECEIVERS"
         self.gradient_proc_dir = self.root / "GRADIENT_PROCESSING"
@@ -70,6 +71,7 @@ class RemotePaths:
             self.window_dir,
             self.misfit_dir,
             self.model_dir,
+            self.sum_dir,
             self.adj_src_dir,
             self.receiver_dir,
             self.gradient_proc_dir,
@@ -96,6 +98,7 @@ class ProjectPaths:
 
         self.opt_dir = self.root / "OPTIMIZATION"
         self.gradient_dir = self.opt_dir / "GRADIENTS"
+        self.smoothed_gradient_dir = self.opt_dir / "GRADIENTS"
         self.reg_dir = self.opt_dir / "REGULARIZATION"
         self.gradient_norm_dir = self.opt_dir / "GRADIENT_NORMS"
         self.all_gradient_norms_toml = (
@@ -120,11 +123,28 @@ class ProjectPaths:
             if not directory.is_dir():
                 directory.mkdir()
 
-    def get_model_path(self, model_descriptor: str) -> Path:
+    def get_model_path(self, model_descriptor: str, tag: Optional[str] = None) -> Path:
         return self.model_dir / f"{model_descriptor}.h5"
 
-    def get_raw_gradient_path(self, model_descriptor: str) -> Path:
-        return self.gradient_dir / f"grad_{model_descriptor}.h5"
+    def get_raw_gradient_path(
+        self, model_descriptor: str, tag: Optional[str] = None
+    ) -> Path:
+        grad_file = (
+            f"grad_{model_descriptor}_{tag}.h5"
+            if tag
+            else f"grad_{model_descriptor}.h5"
+        )
+        return self.gradient_dir / grad_file
+
+    def get_smooth_gradient_path(
+        self, model_descriptor: str, tag: Optional[str] = None
+    ) -> Path:
+        grad_file = (
+            f"smooth_grad_{model_descriptor}_{tag}.h5"
+            if tag
+            else f"smooth_grad_{model_descriptor}.h5"
+        )
+        return self.smoothed_gradient_dir / grad_file
 
     def get_iteration_toml(self, iteration: str) -> Path:
         return self.iteration_tomls / f"{iteration}.toml"
@@ -225,7 +245,12 @@ class Project(object):
             ".h5"
         ), "Provide a valid initial model."
 
-    def create_iteration_toml(self, iteration: str, events: List[str]):
+    def create_iteration_toml(
+        self,
+        iteration: str,
+        events: List[str],
+        previous_iteration: Optional[str] = None,
+    ):
         """
         Create the toml file for an iteration. This toml file is then updated.
         To create the toml, we need the events
@@ -244,6 +269,9 @@ class Project(object):
             shutil.copyfile(iteration_toml, backup)
 
         it_dict = {"name": iteration, "events": {}}
+
+        if previous_iteration:
+            it_dict["previous_iteration"] = previous_iteration
 
         job_dict = dict(name="", submitted=False, retrieved=False, reposts=0)
 
@@ -328,6 +356,12 @@ class Project(object):
 
         it_dict = toml.load(iteration_toml)
         self.current_iteration = it_dict["name"]
+
+        if "previous_iteration" in it_dict:
+            self.previous_iteration = it_dict["previous_iteration"]
+        else:
+            self.previous_iteration = None
+
         self.events_in_iteration = self.event_db.get_event_names(
             list(it_dict["events"].keys())
         )

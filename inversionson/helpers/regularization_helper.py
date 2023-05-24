@@ -144,6 +144,7 @@ class RegularizationHelper(object):
                 if s.name != "finished":
                     finished = False
                 if s.name in ["unknown", "failed"]:
+                    self.project.flow._delete_remote_job(task_dict["job_name"])
                     task_dict["reposts"] += 1
                     task_dict["submitted"] = False
                     self._write_tasks(self.tasks)

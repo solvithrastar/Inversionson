@@ -10,6 +10,9 @@ from typing import List, Union, Tuple
 import numpy as np
 from pathlib import Path
 import h5py  # type: ignore
+from salvus.mesh.unstructured_mesh import UnstructuredMesh as UM
+from optson.vector import Vec
+import numpy as np
 
 __FILE_TEMPLATES_DIR = Path(__file__).parent / "file_templates"
 
@@ -143,3 +146,21 @@ def sum_two_parameters_h5(filename: Union[str, Path], parameters: List[str]):
         par_sum = dat[:, indices[0], :] + dat[:, indices[1], :]
         dat[:, indices[0], :] = par_sum
         dat[:, indices[1], :] = par_sum
+
+
+def mesh_to_vector(m: Union[UM, str, Path], params_to_invert: List[str]) -> Vec:
+    if isinstance(m, (str, Path)):
+        m = UM.from_h5(m)
+    par_list = [m.element_nodal_fields[param].flatten() for param in params_to_invert]
+    return np.concatenate(par_list)
+
+
+def vector_to_mesh(x: Vec, target_mesh: UM, params_to_invert=List[str]) -> UM:
+    par_vals = np.array_split(x, len(params_to_invert))
+    m = target_mesh.copy()
+
+    for idx, param in enumerate(params_to_invert):
+        m.element_nodal_fields[param][:] = par_vals[idx].reshape(
+            m.element_nodal_fields[param].shape
+        )
+    return m

@@ -19,6 +19,7 @@ from inversionson import InversionsonError
 from salvus.mesh.unstructured_mesh import UnstructuredMesh  # type: ignore
 from salvus.flow.db import SalvusFlowDoesNotExistDBException  # type: ignore
 from salvus.flow.sites.salvus_job import SalvusJob  # type: ignore
+from pathlib import Path
 
 if TYPE_CHECKING:
     from inversionson.project import Project
@@ -74,7 +75,7 @@ class SalvusFlow(Component):
         shutil.move(tmp_local_path, local_file)
 
     def _get_job_name(
-        self, event: str, sim_type: str, new: bool = True, iteration: str = "current"
+        self, event: str, sim_type: str, iteration: str = "current"
     ) -> str:
         """
         We need to relate iteration and event to job name. Here you can find
@@ -105,16 +106,7 @@ class SalvusFlow(Component):
             iteration = self.project.current_iteration
         old_iter = iteration != self.project.current_iteration
 
-        if new:
-            unique_id = "".join(random.choice("0123456789ABCDEF") for _ in range(8))
-            job = f"{iteration}_{sim_type}_{unique_id}"
-            if sim_type == "adjoint":
-                self.project.adjoint_job[event]["name"] = job
-            elif sim_type == "forward":
-                self.project.forward_job[event]["name"] = job
-            else:
-                raise InversionsonError("This isn't even used anyway")
-        elif old_iter:
+        if old_iter:
             iteration_info = self.project.get_old_iteration_info(iteration)
             event_index = str(self.project.event_db.get_event_idx(event))
             job = iteration_info["events"][event_index]["job_info"][sim_type]["name"]
@@ -135,9 +127,7 @@ class SalvusFlow(Component):
     def get_job_name(
         self, event: str, sim_type: str, iteration: str = "current"
     ) -> str:
-        return self._get_job_name(
-            event=event, sim_type=sim_type, new=False, iteration=iteration
-        )
+        return self._get_job_name(event=event, sim_type=sim_type, iteration=iteration)
 
     def get_job(
         self, event: str, sim_type: str, iteration: Optional[str] = None
@@ -361,7 +351,7 @@ class SalvusFlow(Component):
         :type event: str
         """
 
-        hpc_cluster = sapi.get_site(self.project.config.hpc.sitename)
+        hpc_cluster = self.hpc_cluster
         hpc_proc_job = self.get_job(event, sim_type="hpc_processing")
 
         # Always write events to the same folder
@@ -439,7 +429,6 @@ class SalvusFlow(Component):
             emoji_alias=":hourglass:",
             color="magenta",
         )
-        hpc_cluster = sapi.get_site(self.project.config.hpc.sitename)
 
         if sim_type == "forward":
             self.project.change_attribute(
@@ -453,7 +442,7 @@ class SalvusFlow(Component):
             )
             self.project.change_attribute(f'adjoint_job["{event}"]["submitted"]', True)
         self.project.update_iteration_toml()
-        if hpc_cluster.config["site_type"] == "local":
+        if self.hpc_cluster.config["site_type"] == "local":
             self.print(f"Running {sim_type} simulation...")
             job.wait(
                 poll_interval_in_seconds=self.project.config.hpc.sleep_time_in_seconds
@@ -506,8 +495,24 @@ class SalvusFlow(Component):
 
         return job.get_output_files()
 
-    def delete_stored_wavefields(
-        self, iteration: str, sim_type: str, event_name: Optional[str] = None
+    def _delete_remote_job(self, job_name: str, verbose: bool = False):
+        """Remove the remote job."""
+        if not job_name:
+            return
+        job_rpath = Path(self.hpc_cluster.config["run_directory"]) / job_name
+        job_tmppath = Path(self.hpc_cluster.config["tmp_directory"]) / job_name
+
+        for p in [job_rpath, job_tmppath]:
+            if self.hpc_cluster.remote_exists(p):
+                print(f"Deleting {str(p)}")
+                self.hpc_cluster.run_ssh_command(f"rm -r {str(p)}")
+
+    def delete_remote_content(
+        self,
+        iteration: str,
+        sim_type: str,
+        event: Optional[str] = None,
+        verbose: bool = False,
     ) -> None:
         """
         Delete all stored jobs for a certain simulation type of an iteration
@@ -521,34 +526,29 @@ class SalvusFlow(Component):
             Defaults to None
         :type event_name: str, optional
         """
+        current_iter = self.project.current_iteration
+        if iteration != current_iter:
+            self.project.set_iteration_attributes(iteration)
+        events = [event] if event else self.project.events_in_iteration
 
-        if event_name is not None:
-            try:
-                job = self.get_job(event=event_name, sim_type=sim_type)
-                job.delete(verbosity=0)
-            except (SalvusFlowDoesNotExistDBException, InversionsonError) as e:
-                self.print(
-                    f"Could not delete job {sim_type} for event {event_name}",
-                    emoji_alias=":hankey:",
-                )
-                print(e)
-            return
-        events_in_iteration = self.project.lasif.list_events(iteration=iteration)
-        non_val_tasks = ["gradient_interp", "hpc_processing"]
-        for event in events_in_iteration:
-            if self.project.is_validation_event(event) and sim_type in non_val_tasks:
+        for event in events:
+            job_name = self.get_job_name(event, sim_type, iteration)
+            if job_name == "":
                 continue
-            try:
-                try:
-                    job = self.get_job(
-                        event=event, sim_type=sim_type, iteration=iteration
-                    )
-                    job.delete(verbosity=0)
-                except (KeyError, InversionsonError):
-                    continue
-            except SalvusFlowDoesNotExistDBException as e:
-                self.print(
-                    f"Could not delete job {sim_type} for event {event}",
-                    emoji_alias=":hankey:",
-                )
-                print(e)
+            self._delete_remote_job(job_name, verbose=verbose)
+
+        self.project.set_iteration_attributes(current_iter)
+
+    def delete_remote_iteration(self, iteration: str, verbose: bool = False):
+        sim_types = [
+            "prepare_forward",
+            "forward",
+            "hpc_processing",
+            "adjoint",
+        ]
+        if self.project.config.meshing.multi_mesh:
+            sim_types.append("gradient_interp")
+        for sim_type in sim_types:
+            self.delete_remote_content(
+                iteration=iteration, sim_type=sim_type, verbose=verbose
+            )

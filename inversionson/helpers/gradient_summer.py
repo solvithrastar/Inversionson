@@ -44,7 +44,7 @@ class GradientSummer(object):
     def sum_gradients(
         self,
         events: List[str],
-        output_location: str,
+        output_location: Union[str, Path],
         batch_average: bool = True,
         sum_vpv_vph: bool = True,
         store_norms: bool = True,
@@ -87,12 +87,7 @@ class GradientSummer(object):
         # Connect to daint
         hpc_cluster = self.project.flow.hpc_cluster
 
-        remote_inversionson_dir = (
-            self.project.config.hpc.inversionson_folder / "SUMMING"
-        )
-        if not hpc_cluster.remote_exists(remote_inversionson_dir):
-            hpc_cluster.remote_mkdir(remote_inversionson_dir)
-
+        remote_inversionson_dir = self.project.remote_paths.sum_dir
         remote_output_path = remote_inversionson_dir / "summed_gradient.h5"
         remote_norms_path = remote_inversionson_dir / f"{iteration}_gradient_norms.toml"
 
@@ -116,7 +111,7 @@ class GradientSummer(object):
 
         # Copy toml to HPC and remove locally
         remote_toml = os.path.join(remote_inversionson_dir, toml_filename)
-        hpc_cluster.remote_put(toml_filename, remote_toml)
+        self.project.flow.safe_put(toml_filename, remote_toml)
         os.remove(toml_filename)
 
         # Call script
@@ -125,18 +120,18 @@ class GradientSummer(object):
         self.print("Remote summing completed...")
 
         if store_norms:
-            self._store_norms(hpc_cluster, remote_norms_path)
-        hpc_cluster.remote_get(remote_output_path, output_location)
+            self._store_norms(remote_norms_path)
+        self.project.flow.safe_get(remote_output_path, output_location)
 
         # Only sum the raw gradient in AdamOpt, not the update
         if sum_vpv_vph:
             sum_two_parameters_h5(output_location, ["VPV", "VPH"])
         write_xdmf(output_location)
 
-    def _store_norms(self, hpc_cluster, remote_norms_path: str):
+    def _store_norms(self, remote_norms_path: str):
         norm_dict_toml = self.project.paths.gradient_norms_path()
 
-        hpc_cluster.remote_get(remote_norms_path, norm_dict_toml)
+        self.project.flow.safe_get(remote_norms_path, norm_dict_toml)
         all_norms_path = self.project.paths.all_gradient_norms_toml
 
         norm_dict = toml.load(all_norms_path) if os.path.exists(all_norms_path) else {}

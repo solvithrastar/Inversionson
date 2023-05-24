@@ -90,20 +90,21 @@ class AutoInverter(object):
         """
         This function will be extracted and become user configurable.
         """
-        from optson.optimizer import Optimizer  # type: ignore
-        from optson.methods import AdamUpdate  # type: ignore
-        from optson.stopping_criterion import BasicStoppingCriterion  # type: ignore
-        from optson.monitor import BasicMonitor  # type: ignore
-        from inversionson.optson_link.problem import Problem
-        from inversionson.optson_link.helpers import mesh_to_vector
+        from optson.optimizer import Optimizer
+        from optson.methods import AdamUpdate, TRUpdate, SteepestDescentUpdate
+        from optson.stopping_criterion import BasicStoppingCriterion
+        from optson.monitor import BasicMonitor
+        from inversionson.problem import Problem
+        from inversionson.utils import mesh_to_vector
 
-        sc = BasicStoppingCriterion(tolerance=1e-5, max_iterations=1)
+        sc = BasicStoppingCriterion(tolerance=1e-30, max_iterations=1000)
         monitor = BasicMonitor(step=1)
-        problem = Problem(project=self.project)
-
+        problem = Problem(project=self.project, smooth_gradients=True)
+        st_upd = SteepestDescentUpdate(initial=0.5, step_size_as_percentage=True)
+        update = TRUpdate(fallback=st_upd, verbose=True)
         opt = Optimizer(
             problem=problem,
-            update=AdamUpdate(alpha=1.5),
+            update=update,
             stopping_criterion=sc,
             monitor=monitor,
         )
