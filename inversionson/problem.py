@@ -10,7 +10,7 @@ from optson.vector import Vec
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.iteration_listener import IterationListener
-from inversionson.utils import mesh_to_vector, vector_to_mesh
+from inversionson.utils import get_list_hash, mesh_to_vector, vector_to_mesh
 from inversionson.project import Project
 from optson.problem import ModelProxy
 
@@ -35,12 +35,13 @@ class Problem(AbstractProblem):
     def _get_tag(model: ModelProxy, indices: Optional[List[int]]) -> Optional[str]:
         if indices is None:
             return None
+        hash_id = get_list_hash(indices)
         if indices == model.batch:
-            return "mb"
+            return f"mb_{hash_id}"
         elif indices == model.control_group:
-            return "cg"
+            return f"cg_{hash_id}"
         elif indices == model.control_group_previous:
-            return "cg_prev"
+            return f"cg_prev_{hash_id}"
         raise ValueError("This should not occur.")
 
     def _time_for_validation(self, iteration_number: int) -> bool:
@@ -138,10 +139,7 @@ class Problem(AbstractProblem):
             return [model.batch]
 
         indices = [model.batch, model.control_group]
-        if (
-            model.control_group_previous != []
-            or model.control_group_previous is not None
-        ):
+        if model.control_group_previous != []:
             indices.append(model.control_group_previous)
         return indices
 

@@ -13,6 +13,7 @@ import h5py  # type: ignore
 from salvus.mesh.unstructured_mesh import UnstructuredMesh as UM
 from optson.vector import Vec
 import numpy as np
+import hashlib
 
 __FILE_TEMPLATES_DIR = Path(__file__).parent / "file_templates"
 
@@ -164,3 +165,14 @@ def vector_to_mesh(x: Vec, target_mesh: UM, params_to_invert=List[str]) -> UM:
             m.element_nodal_fields[param].shape
         )
     return m
+
+
+def get_list_hash(lst: List[int]) -> str:
+    """Compute a hash for a list of strings. Useful for identifying a (new) set of
+    samples."""
+    sorted_lst = sorted(lst)
+    lst_str = "".join(str(i) for i in sorted_lst)
+
+    # Calculate the SHA-256 hash of the string representation
+    hash_object = hashlib.sha256(lst_str.encode())
+    return hash_object.hexdigest()[:7]

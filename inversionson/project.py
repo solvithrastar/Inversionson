@@ -98,7 +98,7 @@ class ProjectPaths:
 
         self.opt_dir = self.root / "OPTIMIZATION"
         self.gradient_dir = self.opt_dir / "GRADIENTS"
-        self.smoothed_gradient_dir = self.opt_dir / "GRADIENTS"
+        self.smoothed_gradient_dir = self.opt_dir / "SMOOTHED_GRADIENTS"
         self.reg_dir = self.opt_dir / "REGULARIZATION"
         self.gradient_norm_dir = self.opt_dir / "GRADIENT_NORMS"
         self.all_gradient_norms_toml = (
@@ -115,6 +115,7 @@ class ProjectPaths:
             self.diff_model_dir,
             self.opt_dir,
             self.gradient_dir,
+            self.smoothed_gradient_dir,
             self.reg_dir,
             self.gradient_norm_dir,
             self.model_dir,
@@ -130,9 +131,7 @@ class ProjectPaths:
         self, model_descriptor: str, tag: Optional[str] = None
     ) -> Path:
         grad_file = (
-            f"grad_{model_descriptor}_{tag}.h5"
-            if tag
-            else f"grad_{model_descriptor}.h5"
+            f"g_{model_descriptor}_{tag}.h5" if tag else f"g_{model_descriptor}.h5"
         )
         return self.gradient_dir / grad_file
 
@@ -140,9 +139,9 @@ class ProjectPaths:
         self, model_descriptor: str, tag: Optional[str] = None
     ) -> Path:
         grad_file = (
-            f"smooth_grad_{model_descriptor}_{tag}.h5"
+            f"sm_g_{model_descriptor}_{tag}.h5"
             if tag
-            else f"smooth_grad_{model_descriptor}.h5"
+            else f"sm_g_{model_descriptor}.h5"
         )
         return self.smoothed_gradient_dir / grad_file
 

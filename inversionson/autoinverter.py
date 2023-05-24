@@ -1,6 +1,6 @@
 import emoji  # type: ignore
 import sys
-from typing import List, Optional, Union
+from typing import List, Optional, Set, Union
 
 from pathlib import Path
 from colorama import init
@@ -95,18 +95,37 @@ class AutoInverter(object):
         from optson.stopping_criterion import BasicStoppingCriterion
         from optson.monitor import BasicMonitor
         from inversionson.problem import Problem
+        from optson.batch_manager import BasicBatchManager
         from inversionson.utils import mesh_to_vector
+        from optson.optson_helpers import cached_property
+
+        all_samples = self.project.event_db.get_all_event_indices(
+            non_validation_only=True
+        )
+
+        class BM(BasicBatchManager):
+            @cached_property
+            def _all_samples_set(self) -> Set[int]:
+                return set(all_samples)
 
         sc = BasicStoppingCriterion(tolerance=1e-30, max_iterations=1000)
         monitor = BasicMonitor(step=1)
         problem = Problem(project=self.project, smooth_gradients=True)
-        st_upd = SteepestDescentUpdate(initial=0.5, step_size_as_percentage=True)
+        st_upd = SteepestDescentUpdate(initial=0.05, step_size_as_percentage=True)
         update = TRUpdate(fallback=st_upd, verbose=True)
+        n_samples = len(
+            self.project.event_db.get_all_event_indices(non_validation_only=True)
+        )
+        bm = BM(
+            n_samples=n_samples,
+            batch_size=self.project.config.inversion.initial_batch_size,
+        )
         opt = Optimizer(
             problem=problem,
             update=update,
             stopping_criterion=sc,
             monitor=monitor,
+            batch_manager=bm,
         )
         opt.iterate(
             x0=mesh_to_vector(
