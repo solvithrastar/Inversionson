@@ -90,49 +90,9 @@ class AutoInverter(object):
         """
         This function will be extracted and become user configurable.
         """
-        from optson.optimizer import Optimizer
-        from optson.methods import AdamUpdate, TRUpdate, SteepestDescentUpdate
-        from optson.stopping_criterion import BasicStoppingCriterion
-        from optson.monitor import BasicMonitor
-        from inversionson.problem import Problem
-        from optson.batch_manager import BasicBatchManager
-        from inversionson.utils import mesh_to_vector
-        from optson.optson_helpers import cached_property
+        from inversionson.file_templates.optson_config import optson_run_config
 
-        all_samples = self.project.event_db.get_all_event_indices(
-            non_validation_only=True
-        )
-
-        class BM(BasicBatchManager):
-            @cached_property
-            def _all_samples_set(self) -> Set[int]:
-                return set(all_samples)
-
-        sc = BasicStoppingCriterion(tolerance=1e-30, max_iterations=1000)
-        monitor = BasicMonitor(step=1)
-        problem = Problem(project=self.project, smooth_gradients=True)
-        st_upd = SteepestDescentUpdate(initial=0.05, step_size_as_percentage=True)
-        update = TRUpdate(fallback=st_upd, verbose=True)
-        n_samples = len(
-            self.project.event_db.get_all_event_indices(non_validation_only=True)
-        )
-        bm = BM(
-            n_samples=n_samples,
-            batch_size=self.project.config.inversion.initial_batch_size,
-        )
-        opt = Optimizer(
-            problem=problem,
-            update=update,
-            stopping_criterion=sc,
-            monitor=monitor,
-            batch_manager=bm,
-        )
-        opt.iterate(
-            x0=mesh_to_vector(
-                self.project.lasif.master_mesh,
-                params_to_invert=self.project.config.inversion.inversion_parameters,
-            )
-        )
+        optson_run_config(self.project)
 
     def run_inversion(self):
         self.move_files_to_cluster()

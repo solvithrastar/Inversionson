@@ -132,7 +132,8 @@ class RegularizationHelper(object):
                 )
 
     def update_task_status_and_retrieve(self) -> None:
-        for task_dict in self.tasks.values():
+        task_str = ""
+        for task_name, task_dict in self.tasks.items():
             if task_dict["retrieved"]:
                 continue
             job = sapi.get_job_array(
@@ -140,7 +141,10 @@ class RegularizationHelper(object):
             )
             status = job.update_status(force_update=True)
             finished = True
+            i = 0
             for s in status:
+                task_str += f" {task_name}_{i}: {s.name} \n"
+                i += 1
                 if s.name != "finished":
                     finished = False
                 if s.name in ["unknown", "failed"]:
@@ -157,6 +161,7 @@ class RegularizationHelper(object):
                 smooth_gradient.write_h5(task_dict["output_location"])
                 task_dict["retrieved"] = True
                 self._write_tasks(self.tasks)
+        print(task_str)
 
     def all_retrieved(self) -> bool:
         return all(task_dict["retrieved"] for task_dict in self.tasks.values())
@@ -173,6 +178,8 @@ class RegularizationHelper(object):
                 self.print("Monitoring smoothing jobs...")
                 first = False
             time.sleep(self.project.config.hpc.sleep_time_in_seconds)
-            print(f"Will check job status again in {sleep_time} seconds.")
+            print(
+                f"Waiting for smoothing jobs, will check again in {sleep_time} seconds."
+            )
             self.dispatch_smoothing_tasks()
             self.update_task_status_and_retrieve()

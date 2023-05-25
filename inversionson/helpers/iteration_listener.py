@@ -647,9 +647,9 @@ class IterationListener(object):
         num_non_validation_events = len(non_validation_events)
 
         # Stage data
-        self.project.mesh.move_model_to_cluster
+        self.project.mesh.move_model_to_cluster()
         self.project.lasif.upload_stf(iteration=self.project.current_iteration)
-
+        first = True
         while True:
             any_retrieved_pf = False
             any_retrieved_f = False
@@ -751,11 +751,13 @@ class IterationListener(object):
             if not any_checked:
                 break
 
-            if not any_retrieved:
+            if not any_retrieved and not first:
+                # Only sleep the second to avoid sleeping if all were already completed.
                 print(
                     f"Waiting for {self.project.config.hpc.sleep_time_in_seconds} seconds."
                 )
                 time.sleep(self.project.config.hpc.sleep_time_in_seconds)
+            first = False
 
         # Finally update the estimated timestep
         for event in non_validation_events[:1]:

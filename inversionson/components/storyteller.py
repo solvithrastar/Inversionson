@@ -27,9 +27,9 @@ class StoryTeller(Component):
         self.validation_toml = self.root / "validation.toml"
 
         self.events_used = (
-            self._create_initial_events_used_toml()
-            if not self.events_used_toml.exists()
-            else toml.load(self.events_used_toml)
+            toml.load(self.events_used_toml)
+            if self.events_used_toml.exists()
+            else self._create_initial_events_used_toml()
         )
         self.printer = PrettyPrinter()
 
@@ -112,6 +112,7 @@ class StoryTeller(Component):
         """
         Update event usage and possibly other things at the  end of the iteration.
         """
+        # TODO: Consider adding this back into Problem.
         self._update_usage_of_events()
 
 

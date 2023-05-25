@@ -60,4 +60,7 @@ class Mesh(Component):
         iteration = iteration or self.project.current_iteration
         local_model = self.project.paths.get_model_path(iteration)
         remote_model = self.project.remote_paths.get_master_model_path(iteration)
-        self.project.flow.safe_put(local_model, remote_model)
+
+        hpc_cluster = self.project.flow.hpc_cluster
+        if not hpc_cluster.remote_exists(remote_model):
+            self.project.flow.safe_put(local_model, remote_model)

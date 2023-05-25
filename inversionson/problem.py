@@ -10,9 +10,59 @@ from optson.vector import Vec
 from inversionson.helpers.regularization_helper import RegularizationHelper
 from inversionson.helpers.gradient_summer import GradientSummer
 from inversionson.helpers.iteration_listener import IterationListener
-from inversionson.utils import get_list_hash, mesh_to_vector, vector_to_mesh
+from inversionson.utils import (
+    get_list_hash,
+    mesh_to_vector,
+    vector_to_mesh,
+    hash_vector,
+)
 from inversionson.project import Project
+import numpy as np
 from optson.problem import ModelProxy
+from optson.preconditioner import AbstractUpdatePreconditioner
+
+
+class InversionsonUpdatePrecondtioner(AbstractUpdatePreconditioner):
+    def __init__(self, project: Project):
+        self.project = project
+
+    def __call__(self, x: Vec, model_descriptor: str) -> Vec:
+        vec_hash = hash_vector(np.array(x))
+        unsmoothed_filename = (
+            self.project.paths.reg_dir / f"usm_p_{model_descriptor}_{vec_hash}.h5"
+        )
+        smoothed_filename = (
+            self.project.paths.reg_dir / f"sm_p_{model_descriptor}_{vec_hash}.h5"
+        )
+        params = self.project.config.inversion.inversion_parameters
+        if smoothed_filename.exists():
+            return mesh_to_vector(smoothed_filename, params_to_invert=params)
+        if not unsmoothed_filename.exists():
+            m = vector_to_mesh(
+                x, target_mesh=self.project.lasif.master_mesh, params_to_invert=params
+            )
+            m.write_h5(unsmoothed_filename)
+
+        smoothing_lengths = self.project.config.inversion.smoothing_lengths
+
+        if max(smoothing_lengths) <= 0.0:
+            return x
+
+        tag = unsmoothed_filename.name
+        tasks = {
+            tag: {
+                "reference_model": str(self.project.lasif.get_master_model()),
+                "model_to_smooth": str(unsmoothed_filename),
+                "smoothing_lengths": smoothing_lengths,
+                "smoothing_parameters": self.project.config.inversion.inversion_parameters,
+                "output_location": str(smoothed_filename),
+            }
+        }
+        reg = RegularizationHelper(
+            project=self.project, iteration_name=model_descriptor, tasks=tasks
+        )
+        reg.monitor_tasks()
+        return mesh_to_vector(smoothed_filename, params_to_invert=params)
 
 
 class Problem(AbstractProblem):
@@ -21,6 +71,7 @@ class Problem(AbstractProblem):
         self.project = project
         self.smooth_gradients = smooth_gradients  # TODO: implement this
         self.deleted_iters: List[str] = []
+        self.completed_full_batches: List[str] = []
 
     def _clean_old_iters(self):
         all_tomls = sorted(self.project.paths.iteration_tomls.glob("*.toml"))
@@ -41,7 +92,7 @@ class Problem(AbstractProblem):
         elif indices == model.control_group:
             return f"cg_{hash_id}"
         elif indices == model.control_group_previous:
-            return f"cg_prev_{hash_id}"
+            return f"cgp_{hash_id}"
         raise ValueError("This should not occur.")
 
     def _time_for_validation(self, iteration_number: int) -> bool:
@@ -84,7 +135,7 @@ class Problem(AbstractProblem):
             iteration, events, previous_iteration=previous_iter
         )
 
-    def _prepare_model(self, model: ModelProxy) -> None:
+    def _prepare_iteration(self, model: ModelProxy) -> None:
         model_file = self.project.paths.get_model_path(model.descriptor)
         if not model_file.exists():
             vector_to_mesh(
@@ -92,16 +143,6 @@ class Problem(AbstractProblem):
                 self.project.lasif.master_mesh,
                 self.project.config.inversion.inversion_parameters,
             ).write_h5(model_file)
-        hpc_cluster = self.project.flow.hpc_cluster
-        remote_model_path = self.project.remote_paths.get_master_model_path(
-            model.descriptor
-        )
-        # Ensure model exists on remote.
-        if not hpc_cluster.remote_exists(remote_model_path):
-            self.project.flow.safe_put(model_file, remote_model_path)
-
-    def _prepare_iteration(self, model: ModelProxy) -> None:
-        self._prepare_model(model)
         self._get_or_create_iteration(model)
 
     def previous_control_group(self, model: ModelProxy) -> Optional[List[str]]:
@@ -131,14 +172,15 @@ class Problem(AbstractProblem):
         total_misfit /= len(train_events)
         return total_misfit
 
-    def _get_all_batch_indices(self, model: ModelProxy) -> List[Optional[List[int]]]:
+    def get_remaining_batch_indices(
+        self, model: ModelProxy
+    ) -> List[Optional[List[int]]]:
         """This returns a list of indices for all the required batches."""
-        if model.batch is None:
-            return [None]
         if model.control_group == [] or model.control_group is None:
-            return [model.batch]
+            return []
 
-        indices = [model.batch, model.control_group]
+        # The below line should trigger control group selection
+        indices = [model.control_group]
         if model.control_group_previous != []:
             indices.append(model.control_group_previous)
         return indices
@@ -220,8 +262,12 @@ class Problem(AbstractProblem):
         non-overlapping_batch: only a mini batch and no control group
         3"""
 
+        # First ensure the batch gradient is there.
+        if model.descriptor not in self.completed_full_batches:
+            self._g(model, model.batch or None)
+
         # Collect all the relevant raw grads.
-        for index_set in self._get_all_batch_indices(model):
+        for index_set in self.get_remaining_batch_indices(model):
             self._g(model, index_set)
 
         batch_tag = self._get_tag(model, indices)
@@ -237,7 +283,7 @@ class Problem(AbstractProblem):
             grad_f = self.project.paths.get_smooth_gradient_path(
                 model_descriptor=model.descriptor, tag=batch_tag
             )
-
-        return mesh_to_vector(
+        scale_fac = 1e10
+        return scale_fac * mesh_to_vector(
             grad_f, self.project.config.inversion.inversion_parameters
         )

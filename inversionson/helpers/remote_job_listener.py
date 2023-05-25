@@ -159,6 +159,10 @@ class RemoteJobListener(object):
                     self.not_submitted.append(event)
                     continue
                 status = self.__check_status_of_job(event, reposts, verbose=verbose)
+                if status in ["unknown", "failed"]:
+                    job_name = job_dict[event]["name"]
+                    print(f"job: {job_name} status unknown or failed.")
+                    self.project.flow._delete_remote_job(job_name, verbose=True)
             if status == "finished":
                 self.events_retrieved_now.append(event)
                 finished += 1

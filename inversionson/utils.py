@@ -6,6 +6,7 @@ Maybe one day some of these will be moved to a handyman component
 or something like that.
 """
 
+import random
 from typing import List, Union, Tuple
 import numpy as np
 from pathlib import Path
@@ -176,3 +177,21 @@ def get_list_hash(lst: List[int]) -> str:
     # Calculate the SHA-256 hash of the string representation
     hash_object = hashlib.sha256(lst_str.encode())
     return hash_object.hexdigest()[:7]
+
+
+def hash_vector(vector: np.ndarray, max_sample_size: int = int(1e6)):
+    """Get a hash for a vector. It's possible to only
+    use a subset of the indices for very large vectors to save time."""
+    # Fixing the seed for repeatability
+    rng = np.random.RandomState(0)
+    vector_length = len(vector)
+
+    if vector_length > max_sample_size:
+        indices = rng.randint(low=0, high=vector_length, size=max_sample_size)
+        sample = vector[indices]
+        sample_bytes = sample.tobytes()
+    else:
+        sample_bytes = vector.tobytes()
+
+    hash_object = hashlib.sha256(sample_bytes)
+    return hash_object.hexdigest()[:8]

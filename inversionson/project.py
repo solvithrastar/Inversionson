@@ -92,6 +92,7 @@ class ProjectPaths:
         assert self.root.is_dir()
         assert self.lasif_root.is_dir()
         self.doc_dir = self.root / "DOCUMENTATION"
+        self.batch_json = self.doc_dir / "batches.json"
         self.iteration_tomls = self.doc_dir / "ITERATIONS"
         self.misc_dir = self.doc_dir / "MISC"
         self.diff_model_dir = self.root / "DIFFUSION_MODELS"
