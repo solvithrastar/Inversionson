@@ -1,12 +1,3 @@
-"""
-A collection of useful scripts which don't really fall into one of
-the components.
-Stuff like cutting away sources and receivers and such.
-Maybe one day some of these will be moved to a handyman component
-or something like that.
-"""
-
-import random
 from typing import List, Union, Tuple
 import numpy as np
 from pathlib import Path

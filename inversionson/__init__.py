@@ -12,11 +12,3 @@ class InversionsonWarning(UserWarning):
     """
 
     pass
-
-
-class InversionsonOptError(Exception):
-    """
-    Salvus Opt exception class for Inversionson
-    """
-
-    pass

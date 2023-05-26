@@ -277,7 +277,7 @@ class Problem(AbstractProblem):
             reg_helper = RegularizationHelper(
                 project=self.project,
                 iteration_name=model.descriptor,
-                tasks=False,
+                tasks=None,
             )
             reg_helper.monitor_tasks()
             grad_f = self.project.paths.get_smooth_gradient_path(

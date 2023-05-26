@@ -136,4 +136,4 @@ class InversionsonBatchManager(AbstractBatchManager):
 
     @property
     def stochastic(self) -> bool:
-        True
+        return True
