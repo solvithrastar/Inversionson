@@ -160,7 +160,7 @@ def vector_to_mesh(x: Vec, target_mesh: UM, params_to_invert=List[str]) -> UM:
 
 
 def get_list_hash(lst: List[int]) -> str:
-    """Compute a hash for a list of strings. Useful for identifying a (new) set of
+    """Compute a hash for a list of ints. Useful for identifying a set of
     samples."""
     sorted_lst = sorted(lst)
     lst_str = "".join(str(i) for i in sorted_lst)

@@ -19,20 +19,21 @@ from inversionson.utils import (
 from inversionson.project import Project
 import numpy as np
 from optson.problem import ModelProxy
-from optson.preconditioner import AbstractUpdatePreconditioner
+from optson.preconditioner import AbstractPreconditioner
 
 
-class InversionsonUpdatePrecondtioner(AbstractUpdatePreconditioner):
+class InversionsonAdamUpdatePrecondtioner(AbstractPreconditioner):
     def __init__(self, project: Project):
         self.project = project
 
-    def __call__(self, x: Vec, model_descriptor: str) -> Vec:
+    def __call__(self, x: Vec) -> Vec:
         vec_hash = hash_vector(np.array(x))
+        current_iter = self.project.current_iteration
         unsmoothed_filename = (
-            self.project.paths.reg_dir / f"usm_p_{model_descriptor}_{vec_hash}.h5"
+            self.project.paths.reg_dir / f"usm_p_{current_iter}_{vec_hash}.h5"
         )
         smoothed_filename = (
-            self.project.paths.reg_dir / f"sm_p_{model_descriptor}_{vec_hash}.h5"
+            self.project.paths.reg_dir / f"sm_p_{current_iter}_{vec_hash}.h5"
         )
         params = self.project.config.inversion.inversion_parameters
         if smoothed_filename.exists():
@@ -59,10 +60,18 @@ class InversionsonUpdatePrecondtioner(AbstractUpdatePreconditioner):
             }
         }
         reg = RegularizationHelper(
-            project=self.project, iteration_name=model_descriptor, tasks=tasks
+            project=self.project,
+            iteration_name=self.project.current_iteration,
+            tasks=tasks,
         )
         reg.monitor_tasks()
-        return mesh_to_vector(smoothed_filename, params_to_invert=params)
+
+        x_new = mesh_to_vector(smoothed_filename, params_to_invert=params)
+        p_max_0 = abs(x).max()
+        p_max_1 = abs(x_new).max()
+        factor = float(p_max_0 / p_max_1)
+        x_new *= factor
+        return x_new
 
 
 class Problem(AbstractProblem):
@@ -72,8 +81,10 @@ class Problem(AbstractProblem):
         self.smooth_gradients = smooth_gradients  # TODO: implement this
         self.deleted_iters: List[str] = []
         self.completed_full_batches: List[str] = []
+        self.scaling_fac = 1e10
 
     def _clean_old_iters(self):
+        """Delete old job files."""
         all_tomls = sorted(self.project.paths.iteration_tomls.glob("*.toml"))
         for toml in all_tomls[:-1]:
             iter_name = toml.stem
@@ -84,6 +95,8 @@ class Problem(AbstractProblem):
 
     @staticmethod
     def _get_tag(model: ModelProxy, indices: Optional[List[int]]) -> Optional[str]:
+        """Get a unique tag for a set of indices and type of gradient.
+        This allows Inversionson to distinguish the different gradient files."""
         if indices is None:
             return None
         hash_id = get_list_hash(indices)
@@ -108,7 +121,6 @@ class Problem(AbstractProblem):
             events = self.project.event_db.get_all_event_names(non_validation_only=True)
         else:
             events = self.project.event_db.get_event_names(model.batch)
-
         if self._time_for_validation(model.iteration):
             events += self.project.config.monitoring.validation_dataset
         return events
@@ -136,6 +148,7 @@ class Problem(AbstractProblem):
         )
 
     def _prepare_iteration(self, model: ModelProxy) -> None:
+        """Prepares Inversionson for being able to compute misfits and gradients."""
         model_file = self.project.paths.get_model_path(model.descriptor)
         if not model_file.exists():
             vector_to_mesh(
@@ -146,6 +159,7 @@ class Problem(AbstractProblem):
         self._get_or_create_iteration(model)
 
     def previous_control_group(self, model: ModelProxy) -> Optional[List[str]]:
+        """Get the previous control group if applicable."""
         if model.batch is None and model.iteration != 0:  # Handle mono-batch case.
             return self.project.events_in_iteration
         previous_control_indices = model.control_group_previous
@@ -155,6 +169,16 @@ class Problem(AbstractProblem):
 
     @CallCounter
     def f(self, model: ModelProxy, indices: Optional[List[int]] = None) -> float:
+        """Computes the misfit for a model and a set of indices.
+        If no indices are given, all events will be computed.
+
+        Args:
+            model (ModelProxy): An instance of ModelProxy that holds the model vector and the descriptor.
+            indices (Optional[List[int]], optional): The event indices. Defaults to None.
+
+        Returns:
+            float: The misfit value.
+        """
         self._prepare_iteration(model)
         IterationListener(
             project=self.project,
@@ -212,15 +236,8 @@ class Problem(AbstractProblem):
                 project=self.project, iteration_name=model.descriptor, tasks=tasks
             )
 
-    def _g(self, model: ModelProxy, indices: Optional[List[int]] = None) -> Vec:
-        """I can probably implement a version that figures out if all need to be done.
-        Then it first computes all gradients and then smoothes all of them here.
-
-        3 cases:
-        mono-batch, batch=None, control_group=[]
-        overlapping_batch: has a batch and a control group
-        non-overlapping_batch: only a mini batch and no control group
-        3"""
+    def _g(self, model: ModelProxy, indices: Optional[List[int]] = None) -> None:
+        """Computes the raw gradient and writes a task for smoothing if required."""
 
         raw_grad_f = self.project.paths.get_raw_gradient_path(
             model.descriptor, self._get_tag(model, indices)
@@ -247,21 +264,19 @@ class Problem(AbstractProblem):
             if self.smooth_gradients:
                 self._write_smoothing_task(model, indices, raw_grad_f)
 
-        return mesh_to_vector(
-            raw_grad_f, self.project.config.inversion.inversion_parameters
-        )
-
     @CallCounter
     def g(self, model: ModelProxy, indices: Optional[List[int]] = None) -> Vec:
-        """I can probably implement a version that figures out if all need to be done.
-        Then it first computes all gradients and then smoothes all of them here.
+        """Computes the gradient for Optson.
+        We first call _g to compute raw gradients for all possible subsets.
+        Then we return asked for gradient.
 
-        3 cases:
-        mono-batch, batch=None, control_group=[]
-        overlapping_batch: has a batch and a control group
-        non-overlapping_batch: only a mini batch and no control group
-        3"""
+        Args:
+            model (ModelProxy): Object that stores information of the model.
+            indices (Optional[List[int]], optional): The event indices. Defaults to None.
 
+        Returns:
+            Vec: A gradient vector.
+        """
         # First ensure the batch gradient is there.
         if model.descriptor not in self.completed_full_batches:
             self._g(model, model.batch or None)
@@ -283,7 +298,6 @@ class Problem(AbstractProblem):
             grad_f = self.project.paths.get_smooth_gradient_path(
                 model_descriptor=model.descriptor, tag=batch_tag
             )
-        scale_fac = 1e10
-        return scale_fac * mesh_to_vector(
+        return self.scaling_fac * mesh_to_vector(
             grad_f, self.project.config.inversion.inversion_parameters
         )

@@ -61,14 +61,18 @@ class InversionsonBatchManager(AbstractBatchManager):
             prev_control_group = []
 
         eligible_samples = set(self.all_samples) - set(prev_control_group)
-        n_events = self.batch_size - len(self.control_group_previous)
+        n_events = self.batch_size - len(prev_control_group)
 
         if n_events > 0:
             new_events = self._get_norm_derived_batch(n_events, list(eligible_samples))
-        self.all_mini_batches[it_str] = self.project.event_db.get_event_indices(
-            new_events + prev_control_group
+        else:
+            new_events = []
+
+        self.all_mini_batches[it_str] = (
+            self.project.event_db.get_event_indices(new_events) + prev_control_group
         )
-        self._dict_to_json()
+
+        self._dict_to_json()  # Store results.
         return self.all_mini_batches[it_str]
 
     def _get_norm_derived_batch(
@@ -92,7 +96,7 @@ class InversionsonBatchManager(AbstractBatchManager):
         )
 
     def get_control_group(self, iteration: int) -> List[int]:
-        if not self.use_overlapping_batches:
+        if not self.use_overlapping_batches or iteration == -1:
             return []
         it_str = str(iteration)
         if it_str in self.all_control_groups:

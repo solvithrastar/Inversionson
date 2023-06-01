@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 from inversionson import InversionsonWarning
 import warnings
-from typing import Optional, Union, List
+from typing import Dict, Optional, Union, List
 from inversionson.file_templates.inversion_info_template import InversionsonConfig
 from inversionson.utils import get_tensor_order
 
@@ -397,7 +397,7 @@ class Project(object):
                     ]["gradient_interp"]
                 self.updated[event] = it_dict["events"][ev_idx]["usage_updated"]
 
-    def get_old_iteration_info(self, iteration: str) -> dict:
+    def get_old_iteration_info(self, iteration: str) -> Dict:
         """
         For getting information about something else than current iteration.
 

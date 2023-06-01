@@ -90,15 +90,13 @@ class AutoInverter(object):
         """
         This function will be extracted and become user configurable.
         """
-        from inversionson.file_templates.optson_config import optson_run_config
+        from inversionson.file_templates.optson_config import run_optson
 
-        optson_run_config(self.project)
+        run_optson(self.project)
 
     def run_inversion(self):
         self.move_files_to_cluster()
         self._run_optson()
-
-        # Here, we initialize Optson
 
 
 def _initialize_inversionson(root, info_toml_path):
