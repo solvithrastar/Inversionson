@@ -75,6 +75,14 @@ class InversionsonAdamUpdatePrecondtioner(AbstractPreconditioner):
 
 
 class Problem(AbstractProblem):
+    """This is the implementation of Problem that allows us to pass
+    gradients and misfits to Optson.
+
+    Args:
+        AbstractProblem (_type_): A abstract class that provides basic functionality and forces
+        us to implement the required methods.
+    """
+
     def __init__(self, project: Project, smooth_gradients: bool = False):
         super().__init__()
         self.project = project
