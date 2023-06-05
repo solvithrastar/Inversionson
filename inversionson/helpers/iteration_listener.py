@@ -596,7 +596,7 @@ class IterationListener(object):
 
         It is important that only candidate events enter here
         """
-        assert not self.project.config.meshing.multi_mesh
+        assert self.project.config.meshing.multi_mesh
 
         int_job_listener = RemoteJobListener(
             project=self.project,
