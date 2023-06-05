@@ -96,7 +96,7 @@ class ProjectPaths:
         self.iteration_tomls = self.doc_dir / "ITERATIONS"
         self.misc_dir = self.doc_dir / "MISC"
         self.diff_model_dir = self.root / "DIFFUSION_MODELS"
-
+        self.optson_config = self.root / "optson_config.py"
         self.opt_dir = self.root / "OPTIMIZATION"
         self.gradient_dir = self.opt_dir / "GRADIENTS"
         self.smoothed_gradient_dir = self.opt_dir / "SMOOTHED_GRADIENTS"

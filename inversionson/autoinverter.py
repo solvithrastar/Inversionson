@@ -1,3 +1,4 @@
+import shutil
 import emoji  # type: ignore
 import sys
 from typing import List, Optional, Set, Union
@@ -90,13 +91,23 @@ class AutoInverter(object):
         """
         This function will be extracted and become user configurable.
         """
-        from inversionson.file_templates.optson_config import run_optson
+        import importlib
 
-        run_optson(self.project)
+        optson_config = importlib.import_module(
+            "optson_config", str(self.project.paths.optson_config)
+        )
+        optson_config.run_optson(self.project)
 
     def run_inversion(self):
         self.move_files_to_cluster()
         self._run_optson()
+
+
+def _write_optson_config(optson_config_path: Union[Path, str]):
+    optson_template = Path(__file__).parent / "file_templates" / "optson_config.py"
+    optson_config_path = Path(optson_config_path)
+    shutil.copy(optson_template, optson_config_path)
+    print(f"Wrote the optimizer config to {optson_config_path.absolute()}")
 
 
 def _initialize_inversionson(root, info_toml_path):
@@ -130,8 +141,18 @@ def get_config(root: Optional[Union[str, Path]] = None) -> InversionsonConfig:
             f"Specified project root {inversion_root} is not a directory"
         )
     info_toml_path = inversion_root / config_path
+    optson_path = "optson_config.py"
+    optson_config_path = inversion_root / optson_path
+    config_exists = True
+    if not optson_config_path.exists():
+        config_exists = False
+        _write_optson_config(optson_path)
+
     if not info_toml_path.is_file():
         _initialize_inversionson(inversion_root, config_path)
+
+    if not config_exists:
+        sys.exit()
     print(f"Using configuration file {config_path}")
     return _get_inversionson_config(info_toml_path)
 

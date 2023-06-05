@@ -47,7 +47,9 @@ def get_dynamic_mini_batch_opt(project: Project):
         use_overlapping_batches=True,
     )
     problem = Problem(project=project, smooth_gradients=True)
-    st_upd = SteepestDescentUpdate(initial=0.03, step_size_as_percentage=True, verbose=True)
+    st_upd = SteepestDescentUpdate(
+        initial=0.03, step_size_as_percentage=True, verbose=True
+    )
     update = TRUpdate(fallback=st_upd, verbose=True)
     return Optimizer(
         problem=problem,
@@ -57,11 +59,13 @@ def get_dynamic_mini_batch_opt(project: Project):
         batch_manager=ibm,
     )
 
+
 def gradient_test(project: Project):
     from optson.gradient_test import GradientTest
-    x0=mesh_to_vector(
-            project.lasif.master_mesh,
-            params_to_invert=project.config.inversion.inversion_parameters,
+
+    x0 = mesh_to_vector(
+        project.lasif.master_mesh,
+        params_to_invert=project.config.inversion.inversion_parameters,
     )
     h = np.logspace(-7, -1, 7)
     problem = Problem(project=project, smooth_gradients=False)
@@ -74,8 +78,8 @@ def run_optson(project: Project):
     """
     This function is called by Inversionson and runs Optson.
     """
-    gradient_test = False
-    if gradient_test:
+    do_gradient_test = False
+    if do_gradient_test:
         gradient_test(project)
         sys.exit()
 
