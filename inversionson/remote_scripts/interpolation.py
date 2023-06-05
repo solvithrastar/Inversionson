@@ -65,9 +65,8 @@ def process_data(processing_info):
 
 
 def create_mesh(mesh_info, source_info):
-    mesh_location = os.path.join(
-        mesh_info["mesh_folder"], mesh_info["event_name"], "mesh.h5"
-    )
+    mesh_location = mesh_info["event_specific_mesh"]
+
     if os.path.exists(mesh_location):
         print("Mesh already exists, copying it to here")
         shutil.copy(mesh_location, "./to_mesh.h5")
