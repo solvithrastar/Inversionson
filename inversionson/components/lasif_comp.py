@@ -92,7 +92,7 @@ class LASIF(Component):
         local_grad = (
             Path(self.lasif_comm.project.paths["models"]) / "GRADIENT" / "mesh.h5"
         )
-        local_grad.mkdir(parents=True, exist_ok=True)
+        local_grad.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(self.get_master_model(), local_grad)
         self.project.mesh.fill_inversion_params_with_zeroes(local_grad)
         self.project.flow.safe_put(local_grad, remote_gradient)

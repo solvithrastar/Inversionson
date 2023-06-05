@@ -62,7 +62,7 @@ class AutoInverter(object):
                 )
 
             else:
-                self.safe_put(
+                self.project.flow.safe_put(
                     hpc_cluster,
                     self.project.config.meshing.ocean_loading_file,
                     self.project.remote_paths.ocean_loading_f,
