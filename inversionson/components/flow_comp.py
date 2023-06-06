@@ -526,12 +526,18 @@ class SalvusFlow(Component):
             Defaults to None
         :type event_name: str, optional
         """
+        validation_sim_types = [
+            "prepare_forward",
+            "forward",
+        ]
         current_iter = self.project.current_iteration
         if iteration != current_iter:
             self.project.set_iteration_attributes(iteration)
         events = [event] if event else self.project.events_in_iteration
 
         for event in events:
+            if self.project.is_validation_event(event) and sim_type not in validation_sim_types:
+                continue
             job_name = self.get_job_name(event, sim_type, iteration)
             if job_name == "":
                 continue
