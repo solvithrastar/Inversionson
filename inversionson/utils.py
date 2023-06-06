@@ -144,17 +144,21 @@ def sum_two_parameters_h5(filename: Union[str, Path], parameters: List[str]):
 def mesh_to_vector(m: Union[UM, str, Path], params_to_invert: List[str]) -> Vec:
     if isinstance(m, (str, Path)):
         m = UM.from_h5(m)
-    par_list = [m.element_nodal_fields[param].flatten() for param in params_to_invert]
+    layer_mask = np.where(m.elemental_fields["layer"] < 1.1, False, True).squeeze()
+    par_list = [
+        m.element_nodal_fields[param][layer_mask].flatten()
+        for param in params_to_invert
+    ]
     return np.concatenate(par_list)
 
 
 def vector_to_mesh(x: Vec, target_mesh: UM, params_to_invert=List[str]) -> UM:
     par_vals = np.array_split(x, len(params_to_invert))
     m = target_mesh.copy()
-
+    layer_mask = np.where(m.elemental_fields["layer"] < 1.1, False, True).squeeze()
     for idx, param in enumerate(params_to_invert):
-        m.element_nodal_fields[param][:] = par_vals[idx].reshape(
-            m.element_nodal_fields[param].shape
+        m.element_nodal_fields[param][layer_mask] = par_vals[idx].reshape(
+            m.element_nodal_fields[param][layer_mask].shape
         )
     return m
 
