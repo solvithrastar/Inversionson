@@ -194,7 +194,7 @@ class Problem(AbstractProblem):
             prev_control_group_events=self.previous_control_group(model),
             misfit_only=True,
             prev_iteration=self.project.previous_iteration,
-            submit_adjoint=False,  # consider setting this to true.
+            submit_adjoint=self.project.config.inversion.speculative_adjoints,  # consider setting this to true.
         ).listen()
 
         train_events = self._get_events_from_indices(indices)
