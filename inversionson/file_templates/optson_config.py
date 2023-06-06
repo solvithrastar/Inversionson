@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 import sys
 
 
-_SC = BasicStoppingCriterion(
+SC = BasicStoppingCriterion(
     tolerance=1e-100, divergence_tolerance=1e100, max_iterations=99999
 )
-_MONITOR = BasicMonitor(step=1)
+MONITOR = BasicMonitor(step=1)
 
 
 def get_adam_opt(project: Project) -> Optimizer:
@@ -33,8 +33,9 @@ def get_adam_opt(project: Project) -> Optimizer:
     return Optimizer(
         problem=problem,
         update=ad_upd,
-        stopping_criterion=_SC,
-        monitor=_MONITOR,
+        stopping_criterion=SC,
+        monitor=MONITOR,
+        state_file=project.paths.optson_state_file,
         batch_manager=ibm,
     )
 
@@ -54,8 +55,9 @@ def get_dynamic_mini_batch_opt(project: Project):
     return Optimizer(
         problem=problem,
         update=update,
-        stopping_criterion=_SC,
-        monitor=_MONITOR,
+        stopping_criterion=SC,
+        monitor=MONITOR,
+        state_file=project.paths.optson_state_file,
         batch_manager=ibm,
     )
 

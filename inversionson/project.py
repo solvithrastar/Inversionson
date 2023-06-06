@@ -98,6 +98,7 @@ class ProjectPaths:
         self.diff_model_dir = self.root / "DIFFUSION_MODELS"
         self.optson_config = self.root / "optson_config.py"
         self.opt_dir = self.root / "OPTIMIZATION"
+        self.optson_state_file = self.opt_dir / "state_file.h5"
         self.gradient_dir = self.opt_dir / "GRADIENTS"
         self.smoothed_gradient_dir = self.opt_dir / "SMOOTHED_GRADIENTS"
         self.reg_dir = self.opt_dir / "REGULARIZATION"

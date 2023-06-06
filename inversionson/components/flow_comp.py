@@ -248,7 +248,7 @@ class SalvusFlow(Component):
         :type sim_type: str
         """
 
-        job_name = self._get_job_name(event=event_name, sim_type="forward", new=False)
+        job_name = self._get_job_name(event=event_name, sim_type="forward")
         salvus_job = sapi.get_job(
             site_name=self.project.config.hpc.sitename, job_name=job_name
         )
