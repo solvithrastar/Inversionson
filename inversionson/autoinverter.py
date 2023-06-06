@@ -64,7 +64,6 @@ class AutoInverter(object):
 
             else:
                 self.project.flow.safe_put(
-                    hpc_cluster,
                     self.project.config.meshing.ocean_loading_file,
                     self.project.remote_paths.ocean_loading_f,
                 )
@@ -74,6 +73,11 @@ class AutoInverter(object):
             self.project.flow.safe_put(
                 self.project.config.meshing.topography_file,
                 self.project.remote_paths.topography_f,
+            )
+        else:
+            self.print(
+                "Remote Topography file is already uploaded",
+                emoji_alias=":white_check_mark:",
             )
 
         if not hpc_cluster.remote_exists(self.project.remote_paths.interp_script):
