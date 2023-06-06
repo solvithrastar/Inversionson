@@ -4,7 +4,7 @@ TODO: Figure out what the previous iteration was. Probably this is best figured 
 
 """
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 from optson.problem import AbstractProblem, CallCounter
 from optson.vector import Vec
 from inversionson.helpers.regularization_helper import RegularizationHelper
@@ -20,6 +20,8 @@ from inversionson.project import Project
 import numpy as np
 from optson.problem import ModelProxy
 from optson.preconditioner import AbstractPreconditioner
+import h5py
+from inversionson.utils import get_h5_parameter_indices, get_elemental_parameter_indices
 
 
 class InversionsonAdamUpdatePrecondtioner(AbstractPreconditioner):
@@ -90,11 +92,13 @@ class Problem(AbstractProblem):
         self.deleted_iters: List[str] = []
         self.completed_full_batches: List[str] = []
         self.scaling_fac = 1e10
+        self.layer_mask = None
 
     def _clean_old_iters(self):
         """Delete old job files."""
         all_tomls = sorted(self.project.paths.iteration_tomls.glob("*.toml"))
-        for toml in all_tomls[:-1]:
+        # TODO, Ensure that this not accidentally delete an iterationion.
+        for toml in all_tomls:
             iter_name = toml.stem
             if iter_name in self.deleted_iters:
                 continue
@@ -309,3 +313,29 @@ class Problem(AbstractProblem):
         return self.scaling_fac * mesh_to_vector(
             grad_f, self.project.config.inversion.inversion_parameters
         )
+
+    # def _mesh_to_vector(self, filename: Union[str, Path]):
+    #     parameters = self.project.config.inversion.inversion_parameters
+    #     indices = np.array(get_h5_parameter_indices(filename, parameters))
+    #     layer_idx = get_elemental_parameter_indices(filename, ["layer"])
+
+    #     with h5py.File(filename, "r") as h5:
+    #         if self.layer_mask is None:
+    #             layer = h5["MODEL/element_data"][:, layer_idx]
+    #             self.layer_mask = np.where(layer < 1.1, False, True).squeeze()
+
+    #         data = h5["MODEL/data"][:, :, :][self.layer_mask]
+    #         return data[:, indices, :]
+
+    # def _mesh_to_vector(self, filename: Union[str, Path]):
+    #     parameters = self.project.config.inversion.inversion_parameters
+    #     indices = np.array(get_h5_parameter_indices(filename, parameters))
+    #     layer_idx = get_elemental_parameter_indices(filename, ["layer"])
+
+    #     with h5py.File(filename, "r") as h5:
+    #         if self.layer_mask is None:
+    #             layer = h5["MODEL/element_data"][:, layer_idx]
+    #             self.layer_mask = np.where(layer < 1.1, False, True).squeeze()
+
+    #         data = h5["MODEL/data"][:, :, :][self.layer_mask]
+    #         return data[:, indices, :]

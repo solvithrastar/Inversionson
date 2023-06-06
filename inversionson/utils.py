@@ -125,6 +125,17 @@ def get_h5_parameter_indices(
         indices = [dim_labels.index(param) for param in parameters]
     return indices
 
+def get_elemental_parameter_indices(filename, parameters):
+    """Get elemental parameter indices in h5 file"""
+    with h5py.File(filename, "r") as h5:
+        h5_data = h5["MODEL/element_data"]
+        dim_labels = h5_data.attrs.get("DIMENSION_LABELS")[1][1:-1]
+        if type(dim_labels) != str:
+            dim_labels = dim_labels.decode()
+        dim_labels = dim_labels.replace(" ", "").split("|")
+        indices = [dim_labels.index(param) for param in parameters]
+    return indices
+
 
 def sum_two_parameters_h5(filename: Union[str, Path], parameters: List[str]):
     """sum two parameters in h5 file. Mostly used for summing VPV and VPH"""
