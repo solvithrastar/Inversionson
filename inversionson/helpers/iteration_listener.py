@@ -632,7 +632,9 @@ class IterationListener(object):
         for all jobs. And it will listen to hpc proc (if needed) and
         adjoint, and gradient interp (if needed) jobs.
         """
-        # TODO when nothing gets submitted it gets stuck here. needs a fix
+        self.print(
+            f"Starting iteration listener for iteration {self.project.current_iteration}."
+        )
         # Initialize variables
         all_pf_retrieved_events: List[str] = []
         all_f_retrieved_events: List[str] = []
