@@ -74,7 +74,7 @@ class AutoInverter(object):
                 self.project.config.meshing.topography_file,
                 self.project.remote_paths.topography_f,
             )
-        else:
+        elif self.project.config.meshing.topography:
             self.print(
                 "Remote Topography file is already uploaded",
                 emoji_alias=":white_check_mark:",
